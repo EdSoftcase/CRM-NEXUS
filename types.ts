@@ -67,6 +67,7 @@ export interface User {
   relatedClientId?: string;
   xp?: number;
   level?: number;
+  active?: boolean; // New field for user status
 }
 
 export interface Note {
