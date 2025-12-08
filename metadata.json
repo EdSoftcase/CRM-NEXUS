@@ -1,0 +1,7 @@
+{
+  "name": "SOFT-CRM Enterprise",
+  "description": "Um CRM corporativo integrado com módulos de Comercial, Suporte, Desenvolvimento e Financeiro, potencializado por IA Gemini para automação e insights.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
