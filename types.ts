@@ -460,8 +460,8 @@ export interface Project {
     installAddress?: string;
     photos?: string[];
     notes?: ProjectNote[];
-    archived?: boolean;
-    completedAt?: string;
+    archived?: boolean; // New: Archived status
+    completedAt?: string; // New: Completion date
 }
 
 export interface KPIMetric {

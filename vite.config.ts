@@ -29,12 +29,9 @@ export default defineConfig(({ mode }) => {
       }
     },
     build: {
-      // Aumenta o limite do aviso para 1600kb para evitar alertas desnecessários em apps grandes
       chunkSizeWarningLimit: 1600,
       rollupOptions: {
         output: {
-          // Estratégia manual de divisão de código (Code Splitting)
-          // Separa bibliotecas grandes em arquivos individuais para melhor cache e carregamento
           manualChunks(id) {
             if (id.includes('node_modules')) {
               if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
@@ -55,7 +52,6 @@ export default defineConfig(({ mode }) => {
               if (id.includes('lucide-react')) {
                 return 'icons';
               }
-              // Qualquer outra dependência vai para o chunk 'vendor' genérico
               return 'vendor';
             }
           }
