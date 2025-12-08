@@ -459,6 +459,8 @@ export interface Project {
     installAddress?: string;
     photos?: string[];
     notes?: ProjectNote[];
+    archived?: boolean;
+    completedAt?: string;
 }
 
 export interface KPIMetric {
