@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { DataProvider, useData } from './context/DataContext'; 
 import { Sidebar } from './components/Sidebar';
 import { PortalLayout } from './components/PortalLayout';
