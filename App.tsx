@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DataProvider, useData } from './context/DataContext'; 
+import { DataProvider, useData } from './context/DataContext';
 import { Sidebar } from './components/Sidebar';
 import { PortalLayout } from './components/PortalLayout';
 import { CommandPalette } from './components/CommandPalette';
@@ -8,8 +8,8 @@ import { SplashScreen } from './components/SplashScreen';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AIAssistant } from './components/AIAssistant';
 import { NexusVoice } from './components/NexusVoice';
-import { ToastContainer } from './components/Toast'; 
-import { PushNotificationModal } from './components/PushNotificationModal'; 
+import { ToastContainer } from './components/Toast';
+import { PushNotificationModal } from './components/PushNotificationModal';
 import { Menu, Lock, AlertTriangle, LogOut } from 'lucide-react';
 
 // Pages
@@ -23,16 +23,16 @@ import { Reports } from './pages/Reports';
 import { Clients } from './pages/Clients';
 import { CustomerSuccess } from './pages/CustomerSuccess';
 import { Proposals } from './pages/Proposals';
-import { Retention } from './pages/Retention'; 
+import { Retention } from './pages/Retention';
 import { Calendar } from './pages/Calendar';
 import { Marketing } from './pages/Marketing';
 import { Automation } from './pages/Automation';
 import { GeoIntelligence } from './pages/GeoIntelligence';
 import { Projects } from './pages/Projects';
-import { Operations } from './pages/Operations'; 
-import { Prospecting } from './pages/Prospecting'; 
-import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence'; 
-import { Inbox } from './pages/Inbox'; 
+import { Operations } from './pages/Operations';
+import { Prospecting } from './pages/Prospecting';
+import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence';
+import { Inbox } from './pages/Inbox';
 import { Login } from './pages/Login';
 
 // Client Portal Pages
@@ -42,11 +42,11 @@ import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
 // Version Control Constant
-const APP_VERSION = "v3.5.3 - DEBUG FIX";
+const APP_VERSION = "v3.6.0 - STABLE";
 
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
-  const { togglePushNotifications, pushEnabled } = useData(); 
+  const { togglePushNotifications, pushEnabled } = useData();
   
   // STATE PERSISTENCE
   const [activeModule, setActiveModule] = useState(() => {
