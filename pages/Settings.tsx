@@ -20,30 +20,6 @@ const ROLE_NAMES: Record<string, string> = {
     client: 'Cliente Externo (Portal)'
 };
 
-const MODULE_NAMES: Record<string, string> = {
-    dashboard: 'Visão Geral',
-    inbox: 'Inbox Unificado',
-    prospecting: 'Prospecção IA',
-    'competitive-intelligence': 'Nexus Spy',
-    calendar: 'Agenda',
-    marketing: 'Marketing',
-    commercial: 'Comercial',
-    proposals: 'Propostas',
-    operations: 'Operações',
-    clients: 'Carteira de Clientes',
-    'geo-intelligence': 'Mapa Inteligente',
-    projects: 'Projetos',
-    'customer-success': 'Sucesso do Cliente',
-    retention: 'Retenção',
-    automation: 'Nexus Flow',
-    finance: 'Financeiro',
-    support: 'Suporte',
-    dev: 'Desenvolvimento',
-    reports: 'Relatórios',
-    settings: 'Configurações',
-    portal: 'Portal do Cliente'
-};
-
 const SUPER_ADMIN_EMAILS = ['superadmin@nexus.com', 'edson.softcase@gmail.com'];
 
 export const Settings: React.FC = () => {
@@ -61,7 +37,6 @@ export const Settings: React.FC = () => {
       return sessionStorage.getItem('nexus_settings_edit_profile') === 'true';
   });
 
-  const [logSearch, setLogSearch] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
   
   const isSuperAdmin = currentUser?.email && SUPER_ADMIN_EMAILS.includes(currentUser.email);
@@ -91,10 +66,6 @@ export const Settings: React.FC = () => {
 
   const [portalForm, setPortalForm] = useState<PortalSettings>(portalSettings);
 
-  const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(
-      'Notification' in window ? Notification.permission : 'default'
-  );
-
   const [bridgeStatus, setBridgeStatus] = useState<{whatsapp: string, smtp: string}>({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
   const [bridgeQr, setBridgeQr] = useState<string | null>(null);
   const [smtpForm, setSmtpForm] = useState({ host: 'smtp.gmail.com', port: 587, user: '', pass: '' });
@@ -107,8 +78,6 @@ export const Settings: React.FC = () => {
   
   const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '', cpf: '', password: '', confirmPassword: '', avatar: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [selectedRoleForPerms, setSelectedRoleForPerms] = useState<Role>('sales');
 
   useEffect(() => {
       if (currentUser) {
@@ -152,19 +121,6 @@ export const Settings: React.FC = () => {
           }
       }
   }, [activeTab, isSuperAdmin]);
-
-  useEffect(() => {
-      if ('permissions' in navigator && 'query' in navigator.permissions) {
-          navigator.permissions.query({ name: 'notifications' }).then((permissionStatus) => {
-              setPermissionStatus(Notification.permission);
-              permissionStatus.onchange = () => {
-                  setPermissionStatus(Notification.permission);
-              };
-          });
-      } else if ('Notification' in window) {
-          setPermissionStatus(Notification.permission);
-      }
-  }, [pushEnabled]);
 
   const fetchBridgeStatus = async (manual: boolean = false) => {
       if (!bridgeStatus.whatsapp && manual) setLoadingBridge(true);
@@ -316,8 +272,6 @@ export const Settings: React.FC = () => {
 
         {/* Content Area */}
         <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 overflow-y-auto">
-            
-            {/* ... (Other Tabs remain the same) ... */}
             
             {/* PROFILE TAB */}
             {activeTab === 'profile' && (
@@ -613,5 +567,6 @@ create policy "Users can view leads in their org" on public.leads for all using 
             )}
         </div>
       </div>
+    </div>
   );
 };
