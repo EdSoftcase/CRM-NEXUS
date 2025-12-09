@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DataProvider, useData } from './context/DataContext';
+import { DataProvider, useData } from './context/DataContext'; 
 import { Sidebar } from './components/Sidebar';
 import { PortalLayout } from './components/PortalLayout';
 import { CommandPalette } from './components/CommandPalette';
@@ -9,8 +9,8 @@ import { SplashScreen } from './components/SplashScreen';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AIAssistant } from './components/AIAssistant';
 import { NexusVoice } from './components/NexusVoice';
-import { ToastContainer } from './components/Toast';
-import { PushNotificationModal } from './components/PushNotificationModal';
+import { ToastContainer } from './components/Toast'; 
+import { PushNotificationModal } from './components/PushNotificationModal'; 
 import { Menu, Lock, AlertTriangle, LogOut } from 'lucide-react';
 
 // Pages
@@ -24,17 +24,16 @@ import { Reports } from './pages/Reports';
 import { Clients } from './pages/Clients';
 import { CustomerSuccess } from './pages/CustomerSuccess';
 import { Proposals } from './pages/Proposals';
-import { Retention } from './pages/Retention';
+import { Retention } from './pages/Retention'; 
 import { Calendar } from './pages/Calendar';
 import { Marketing } from './pages/Marketing';
 import { Automation } from './pages/Automation';
 import { GeoIntelligence } from './pages/GeoIntelligence';
 import { Projects } from './pages/Projects';
-import { Operations } from './pages/Operations';
-import { Prospecting } from './pages/Prospecting';
-import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence';
-import { Inbox } from './pages/Inbox';
-import { ContactCenter } from './pages/ContactCenter'; 
+import { Operations } from './pages/Operations'; 
+import { Prospecting } from './pages/Prospecting'; 
+import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence'; 
+import { Inbox } from './pages/Inbox'; 
 import { Login } from './pages/Login';
 
 // Client Portal Pages
@@ -43,12 +42,9 @@ import { ClientFinancial } from './pages/portal/ClientFinancial';
 import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
-// Version Control Constant
-const APP_VERSION = "v4.3.0 - STABLE";
-
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
-  const { togglePushNotifications, pushEnabled } = useData();
+  const { togglePushNotifications, pushEnabled } = useData(); 
   
   // STATE PERSISTENCE
   const [activeModule, setActiveModule] = useState(() => {
@@ -125,10 +121,6 @@ const AppContent: React.FC = () => {
         <>
           {showSplash && <SplashScreen isFadingOut={isFadingOut} />}
           <Login />
-          {/* Debug Badge on Login Screen */}
-          <div className="fixed bottom-2 right-2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-50 z-[9999] pointer-events-none font-mono">
-            {APP_VERSION}
-          </div>
         </>
       );
   }
@@ -179,11 +171,6 @@ const AppContent: React.FC = () => {
     <div className="flex h-[100dvh] bg-slate-50 dark:bg-slate-900 font-sans overflow-hidden relative z-0 animate-fade-in text-slate-900 dark:text-slate-100">
       {showSplash && <SplashScreen isFadingOut={isFadingOut} />}
       
-      {/* GLOBAL DEBUG VERSION BADGE */}
-      <div className="fixed bottom-1 right-1 bg-black text-white text-[9px] px-2 py-0.5 rounded opacity-40 z-[99999] pointer-events-none font-mono">
-        {APP_VERSION}
-      </div>
-
       <ToastContainer />
       <CommandPalette onNavigate={setActiveModule} />
       <OnboardingTour />
@@ -240,7 +227,6 @@ const AppContent: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}
-            {activeModule === 'contact-center' && <ContactCenter />} 
             {activeModule === 'commercial' && <Commercial />}
             {activeModule === 'inbox' && <Inbox />} 
             {activeModule === 'prospecting' && <Prospecting />} 
