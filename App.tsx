@@ -34,7 +34,7 @@ import { Operations } from './pages/Operations';
 import { Prospecting } from './pages/Prospecting';
 import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence';
 import { Inbox } from './pages/Inbox';
-import { ContactCenter } from './pages/ContactCenter';
+import { ContactCenterPage } from './pages/ContactCenterPage';
 import { Login } from './pages/Login';
 
 // Client Portal Pages
@@ -44,7 +44,7 @@ import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
 // Version Control Constant
-const APP_VERSION = "v4.0.6 - PATH FIX";
+const APP_VERSION = "v4.0.7 - CONTACT FIX";
 
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
@@ -240,7 +240,7 @@ const AppContent: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}
-            {activeModule === 'contact-center' && <ContactCenter />} 
+            {activeModule === 'contact-center' && <ContactCenterPage />} 
             {activeModule === 'commercial' && <Commercial />}
             {activeModule === 'inbox' && <Inbox />} 
             {activeModule === 'prospecting' && <Prospecting />} 
