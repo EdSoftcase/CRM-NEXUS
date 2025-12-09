@@ -65,7 +65,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     // Log de versão para confirmar deploy em produção
-    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.2");
+    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.3 (Correction Applied)");
     
     // Force Splash Screen to fade out
     const fadeTimer = setTimeout(() => setIsFadingOut(true), 2500);
@@ -230,7 +230,8 @@ const AppContent: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}
-            {activeModule === 'contact-center' && <Dashboard onNavigate={setActiveModule} />} {/* Reuses Dashboard but will focus on Widget */}
+            {/* HERE IS THE FIX: Pass viewMode="contact-center" */}
+            {activeModule === 'contact-center' && <Dashboard onNavigate={setActiveModule} viewMode="contact-center" />} 
             {activeModule === 'commercial' && <Commercial />}
             {activeModule === 'inbox' && <Inbox />} 
             {activeModule === 'prospecting' && <Prospecting />} 
