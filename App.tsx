@@ -64,6 +64,9 @@ const AppContent: React.FC = () => {
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
   useEffect(() => {
+    // Log de versão para confirmar deploy em produção
+    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.2");
+    
     // Force Splash Screen to fade out
     const fadeTimer = setTimeout(() => setIsFadingOut(true), 2500);
     const removeTimer = setTimeout(() => setShowSplash(false), 3500);
