@@ -41,7 +41,9 @@ import { ClientFinancial } from './pages/portal/ClientFinancial';
 import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
-// Version Control: v3.5.2 - Dependencies Fixed
+// Version Control Constant
+const APP_VERSION = "v3.5.3 - DEBUG FIX";
+
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
   const { togglePushNotifications, pushEnabled } = useData(); 
@@ -121,6 +123,10 @@ const AppContent: React.FC = () => {
         <>
           {showSplash && <SplashScreen isFadingOut={isFadingOut} />}
           <Login />
+          {/* Debug Badge on Login Screen */}
+          <div className="fixed bottom-2 right-2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-50 z-[9999] pointer-events-none font-mono">
+            {APP_VERSION}
+          </div>
         </>
       );
   }
@@ -171,6 +177,11 @@ const AppContent: React.FC = () => {
     <div className="flex h-[100dvh] bg-slate-50 dark:bg-slate-900 font-sans overflow-hidden relative z-0 animate-fade-in text-slate-900 dark:text-slate-100">
       {showSplash && <SplashScreen isFadingOut={isFadingOut} />}
       
+      {/* GLOBAL DEBUG VERSION BADGE */}
+      <div className="fixed bottom-1 right-1 bg-black text-white text-[9px] px-2 py-0.5 rounded opacity-40 z-[99999] pointer-events-none font-mono">
+        {APP_VERSION}
+      </div>
+
       <ToastContainer />
       <CommandPalette onNavigate={setActiveModule} />
       <OnboardingTour />
