@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
@@ -34,7 +33,7 @@ import { Operations } from './pages/Operations';
 import { Prospecting } from './pages/Prospecting';
 import { CompetitiveIntelligence } from './pages/CompetitiveIntelligence';
 import { Inbox } from './pages/Inbox';
-import { ContactCenter } from './pages/ContactCenter'; // NEW IMPORT
+import { ContactCenter } from './pages/ContactCenter';
 import { Login } from './pages/Login';
 
 // Client Portal Pages
@@ -44,7 +43,7 @@ import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
 // Version Control Constant
-const APP_VERSION = "v4.0.0 - CONTACT CENTER PAGE";
+const APP_VERSION = "v4.0.4 - CONTACT CENTER FINAL FIX";
 
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
