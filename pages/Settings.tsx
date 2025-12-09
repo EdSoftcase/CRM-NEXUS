@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -227,7 +228,8 @@ export const Settings: React.FC = () => {
           { name: 'competitors', local: competitors.length, label: 'Concorrentes (Spy)' },
           { name: 'market_trends', local: marketTrends.length, label: 'Tendências (Spy)' },
           { name: 'custom_fields', local: customFields.length, label: 'Campos Pers.' },
-          { name: 'webhooks', local: webhooks.length, label: 'Webhooks' }
+          { name: 'webhooks', local: webhooks.length, label: 'Webhooks' },
+          { name: 'prospecting_history', local: prospectingHistory.length, label: 'Histórico Prospecção' }
       ];
       const stats = [];
       for (const t of tables) {
@@ -1158,6 +1160,17 @@ create table if not exists public.proposals (
   organization_id text references public.organizations(id)
 );
 
+-- 17. Prospecting History
+create table if not exists public.prospecting_history (
+  id text primary key,
+  timestamp timestamp with time zone,
+  industry text,
+  location text,
+  keywords text,
+  results jsonb,
+  organization_id text references public.organizations(id)
+);
+
 -- MIGRATION: Rename legacy columns to snake_case standard AND Fix Types
 DO $$ 
 BEGIN
@@ -1266,6 +1279,7 @@ alter table public.audit_logs enable row level security;
 alter table public.custom_fields enable row level security;
 alter table public.webhooks enable row level security;
 alter table public.proposals enable row level security;
+alter table public.prospecting_history enable row level security;
 
 -- 2. Grant Access to Roles (Fix for 403 Errors)
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
@@ -1340,6 +1354,10 @@ create policy "Users can view webhooks in their org" on public.webhooks for all 
 -- Proposals
 DROP POLICY IF EXISTS "Users can view proposals in their org" ON public.proposals;
 create policy "Users can view proposals in their org" on public.proposals for all using (organization_id = get_auth_user_org_id());
+
+-- Prospecting History
+DROP POLICY IF EXISTS "Users can view prospecting history in their org" ON public.prospecting_history;
+create policy "Users can view prospecting history in their org" on public.prospecting_history for all using (organization_id = get_auth_user_org_id());
 `}
                       </pre>
                   </div>

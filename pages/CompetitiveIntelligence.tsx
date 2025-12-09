@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -81,7 +80,7 @@ export const CompetitiveIntelligence: React.FC = () => {
 
     const handleRefreshTrends = async () => {
         setIsRefreshingTrends(true);
-        // Clear trends to show loading effect clearly
+        // CLEAR TRENDS TO SHOW LOADING STATE
         setMarketTrends([]);
         
         // Use the sector from the first competitor, or a default

@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Client, Activity } from '../types';
-import { Phone, CheckCircle, Clock, AlertTriangle, TrendingUp, X, Save, MessageSquare, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy } from 'lucide-react';
+import { Phone, CheckCircle, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy, Save, X, Calendar } from 'lucide-react';
 
 interface DailyTarget {
     clientId: string;
@@ -46,14 +45,18 @@ export const ContactCenterWidget: React.FC = () => {
     }, [dailySelection]);
 
     // B. Annual Coverage (Percentage of Active Clients contacted this year)
+    // Starts at 0 and fills up as clients get a 'lastContact' date in the current year
     const annualProgress = useMemo(() => {
         const activeClients = clients.filter(c => c.status === 'Active');
         if (activeClients.length === 0) return { count: 0, total: 0, percent: 0 };
 
         const currentYear = new Date().getFullYear();
+        
+        // Count how many distinct active clients have been contacted in 2024 (or current year)
         const contactedThisYear = activeClients.filter(c => {
             if (!c.lastContact) return false;
-            return new Date(c.lastContact).getFullYear() === currentYear;
+            const contactDate = new Date(c.lastContact);
+            return contactDate.getFullYear() === currentYear;
         }).length;
 
         return {
@@ -152,7 +155,7 @@ export const ContactCenterWidget: React.FC = () => {
             }
         } 
         
-        // Fallback fill
+        // Fallback fill if tiers are empty
         if (targets.length < 3) {
              const remaining = activeClients.filter(c => !usedIds.has(c.id));
              for (const c of remaining) {
@@ -224,9 +227,10 @@ export const ContactCenterWidget: React.FC = () => {
             }
         };
         
+        // This updates the client's lastContact date, which will trigger the annual progress bar to update
         updateClientContact(selectedTarget, newActivity);
 
-        // Update Widget State
+        // Update Widget State (Daily Goal)
         const newTargets = dailySelection.targets.map(t => 
             t.clientId === selectedTarget.id ? { ...t, status: 'done' as const } : t
         );
@@ -278,7 +282,7 @@ export const ContactCenterWidget: React.FC = () => {
                     
                     <div className="flex flex-col gap-4 mt-4">
                         {/* Daily Progress */}
-                        <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-700">
+                        <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
                                 <span className="text-[10px] font-bold uppercase text-green-400 flex items-center gap-1"><Trophy size={10}/> Meta Diária</span>
                                 <span className="text-xs font-bold text-white">{dailyProgress.count}/{dailyProgress.total}</span>
@@ -289,15 +293,15 @@ export const ContactCenterWidget: React.FC = () => {
                         </div>
 
                         {/* Annual Progress */}
-                        <div>
+                        <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
-                                <span className="text-[10px] font-bold uppercase text-blue-400">Cobertura Anual</span>
+                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Anual</span>
                                 <span className="text-xs font-bold text-white">{annualProgress.percent}%</span>
                             </div>
                             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
                                 <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${annualProgress.percent}%`}}></div>
                             </div>
-                            <p className="text-[9px] text-slate-500 mt-1 text-right">{annualProgress.count}/{annualProgress.total} clientes</p>
+                            <p className="text-[9px] text-slate-500 mt-1 text-right">{annualProgress.count}/{annualProgress.total} clientes contatados</p>
                         </div>
                     </div>
                 </div>

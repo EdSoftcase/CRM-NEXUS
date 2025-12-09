@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext'; 
@@ -65,7 +64,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     // Log de versão para confirmar deploy em produção
-    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.4 (Final Fixes)");
+    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.5 (Full Fix)");
     
     // Force Splash Screen to fade out
     const fadeTimer = setTimeout(() => setIsFadingOut(true), 2500);
@@ -230,7 +229,7 @@ const AppContent: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}
-            {/* PASS viewMode="contact-center" explicitly here */}
+            {/* PASS viewMode="contact-center" explicitly here to focus the view */}
             {activeModule === 'contact-center' && <Dashboard onNavigate={setActiveModule} viewMode="contact-center" />} 
             {activeModule === 'commercial' && <Commercial />}
             {activeModule === 'inbox' && <Inbox />} 

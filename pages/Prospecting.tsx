@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -80,7 +79,8 @@ export const Prospecting: React.FC = () => {
                 industry,
                 location,
                 keywords: keywords,
-                results: safeData // Saving what was found in THIS run
+                results: safeData, // Saving what was found in THIS run (even if empty)
+                organizationId: currentUser?.organizationId
             };
             addProspectingHistory(historyItem);
 
@@ -203,7 +203,7 @@ export const Prospecting: React.FC = () => {
                         </form>
                     </div>
 
-                    {/* History List - Added h-full and overflow control */}
+                    {/* History List - Ensure height is constrained to allow scrolling */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-0 overflow-hidden transition-colors h-full">
                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 shrink-0">
                             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">

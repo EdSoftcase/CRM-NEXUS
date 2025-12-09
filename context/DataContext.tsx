@@ -396,7 +396,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 supabase.from('audit_logs').select('*').limit(100),
                 supabase.from('custom_fields').select('*'),
                 supabase.from('webhooks').select('*'),
-                supabase.from('proposals').select('*')
+                supabase.from('proposals').select('*'),
+                supabase.from('prospecting_history').select('*').order('timestamp', { ascending: false })
             ]);
 
             // Helper to extract data or log error
@@ -433,6 +434,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             processResult(results[10], setCustomFields, 'custom_fields');
             processResult(results[11], setWebhooks, 'webhooks');
             processResult(results[12], setProposals, 'proposals');
+            processResult(results[13], setProspectingHistory, 'prospecting_history');
 
             setLastSyncTime(new Date());
         } catch (error) {
@@ -717,6 +719,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const addProspectingHistory = (item: ProspectingHistoryItem) => {
         setProspectingHistory(prev => [item, ...prev].slice(0, 50));
+        dbUpsert('prospecting_history', item);
     };
 
     const clearProspectingHistory = () => setProspectingHistory([]);

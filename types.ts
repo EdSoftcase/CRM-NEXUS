@@ -1,4 +1,5 @@
 
+
 export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client';
 
 export enum LeadStatus {
@@ -159,6 +160,7 @@ export interface ProspectingHistoryItem {
     location: string;
     keywords?: string;
     results: PotentialLead[];
+    organizationId?: string;
 }
 
 export interface Competitor {

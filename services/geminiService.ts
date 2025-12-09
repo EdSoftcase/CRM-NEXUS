@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Ticket, Lead, PotentialLead, Competitor, MarketTrend } from '../types';
 
