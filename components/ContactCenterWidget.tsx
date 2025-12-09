@@ -17,7 +17,8 @@ interface DailySelection {
 }
 
 export const ContactCenterWidget: React.FC = () => {
-    const { clients, updateClientContact, products } = useData();
+    // DEPENDÊNCIA ADICIONADA: 'activities' para cálculo real de progresso
+    const { clients, updateClientContact, products, activities } = useData();
     const { currentUser } = useAuth();
 
     const [dailySelection, setDailySelection] = useState<DailySelection | null>(null);
@@ -25,7 +26,7 @@ export const ContactCenterWidget: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     
     // Animation State
-    const [animatedWidths, setAnimatedWidths] = useState({ daily: 0, period: 0 });
+    const [animatedWidths, setAnimatedWidths] = useState({ daily: 0, annual: 0 });
     
     // Form State
     const [interactionNote, setInteractionNote] = useState('');
@@ -48,40 +49,48 @@ export const ContactCenterWidget: React.FC = () => {
         };
     }, [dailySelection]);
 
-    // B. Monthly Coverage (Percentage of Active Clients contacted THIS MONTH)
-    // Starts at 0 if no contacts this month, and fills up as you work.
-    const periodProgress = useMemo(() => {
+    // B. Annual Coverage (Percentage of Active Clients ACTUALLY CONTACTED this year via Activities)
+    // LÓGICA CORRIGIDA: Não confia mais apenas na data do cliente, verifica se existe LOG de atividade.
+    const annualProgress = useMemo(() => {
         const activeClients = clients.filter(c => c.status === 'Active');
         if (activeClients.length === 0) return { count: 0, total: 0, percent: 0 };
 
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
+        const currentYear = new Date().getFullYear();
         
-        const contactedThisPeriod = activeClients.filter(c => {
-            if (!c.lastContact) return false;
-            const contactDate = new Date(c.lastContact);
-            return contactDate.getMonth() === currentMonth && contactDate.getFullYear() === currentYear;
-        }).length;
+        // Cria um Set de nomes de clientes ativos para busca rápida
+        const activeClientNames = new Set(activeClients.map(c => c.name));
+        
+        // Conta clientes únicos que possuem atividades CONCLUÍDAS neste ano
+        const contactedClientsSet = new Set<string>();
+        
+        activities.forEach(act => {
+            if (act.completed && new Date(act.dueDate).getFullYear() === currentYear) {
+                // Verifica se a atividade pertence a um cliente ativo da base
+                if (activeClientNames.has(act.relatedTo)) {
+                    contactedClientsSet.add(act.relatedTo);
+                }
+            }
+        });
 
+        const count = contactedClientsSet.size;
+        
         return {
-            count: contactedThisPeriod,
+            count: count,
             total: activeClients.length,
-            percent: Math.round((contactedThisPeriod / activeClients.length) * 100)
+            percent: Math.round((count / activeClients.length) * 100)
         };
-    }, [clients]);
+    }, [clients, activities]);
 
     // Trigger Animations
     useEffect(() => {
-        // Small delay to ensure DOM is ready for transition
         const timer = setTimeout(() => {
             setAnimatedWidths({
                 daily: dailyProgress.percent,
-                period: periodProgress.percent
+                annual: annualProgress.percent
             });
         }, 100);
         return () => clearTimeout(timer);
-    }, [dailyProgress.percent, periodProgress.percent]);
+    }, [dailyProgress.percent, annualProgress.percent]);
 
     // --- 2. SELECTION LOGIC (2 Top 30% + 1 Base) ---
     useEffect(() => {
@@ -103,11 +112,9 @@ export const ContactCenterWidget: React.FC = () => {
             }
         }
 
-        // Generate new if needed or date changed
         if (!selection || selection.date !== todayStr || selection.targets.length === 0) {
             selection = generateNewSelection(todayStr);
         } else {
-            // Validate IDs existence (in case a client was deleted)
             const validTargets = selection.targets.filter(t => clients.find(c => c.id === t.clientId));
             if (validTargets.length < selection.targets.length) {
                  selection = generateNewSelection(todayStr);
@@ -129,18 +136,14 @@ export const ContactCenterWidget: React.FC = () => {
             };
         }
 
-        // Sort by LTV (Highest to Lowest)
         const sortedByRevenue = [...activeClients].sort((a, b) => (b.ltv || 0) - (a.ltv || 0));
-        
-        // Define Top 30% Cutoff
         const splitIndex = Math.ceil(sortedByRevenue.length * 0.3);
-        const topTier = sortedByRevenue.slice(0, splitIndex); // The expensive ones
-        const baseTier = sortedByRevenue.slice(splitIndex);   // The cheaper ones
+        const topTier = sortedByRevenue.slice(0, splitIndex);
+        const baseTier = sortedByRevenue.slice(splitIndex);
 
         const targets: DailyTarget[] = [];
         const usedIds = new Set<string>();
 
-        // Pick 2 from Top Tier (High LTV)
         for (let i = 0; i < 2; i++) {
             if (topTier.length > 0) {
                 let attempts = 0;
@@ -157,7 +160,6 @@ export const ContactCenterWidget: React.FC = () => {
             }
         }
 
-        // Pick 1 from Base Tier (Lower LTV)
         if (baseTier.length > 0) {
             let attempts = 0;
             while(targets.length < 3 && attempts < 20) {
@@ -172,7 +174,6 @@ export const ContactCenterWidget: React.FC = () => {
             }
         } 
         
-        // Fallback fill if tiers are empty
         if (targets.length < 3) {
              const remaining = activeClients.filter(c => !usedIds.has(c.id));
              for (const c of remaining) {
@@ -214,7 +215,6 @@ export const ContactCenterWidget: React.FC = () => {
             return;
         }
 
-        // Build rich description
         let finalDescription = `📝 Resumo da Conversa:\n${interactionNote}`;
         
         if (problemsReported) {
@@ -225,7 +225,6 @@ export const ContactCenterWidget: React.FC = () => {
             finalDescription += `\n\n🚀 Oportunidades Identificadas:\n${selectedProductIds.join(', ')}`;
         }
 
-        // Create Activity Log
         const newActivity: Activity = {
             id: `ACT-DAILY-${Date.now()}`,
             title: `Contato Diário: ${selectedTarget.name}`,
@@ -244,10 +243,8 @@ export const ContactCenterWidget: React.FC = () => {
             }
         };
         
-        // This updates the client's lastContact date to NOW, which will trigger the monthly progress bar to update
         updateClientContact(selectedTarget, newActivity);
 
-        // Update Widget State (Daily Goal)
         const newTargets = dailySelection.targets.map(t => 
             t.clientId === selectedTarget.id ? { ...t, status: 'done' as const } : t
         );
@@ -258,7 +255,6 @@ export const ContactCenterWidget: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    // Render Empty State
     if (!dailySelection || dailySelection.targets.length === 0) {
         return (
             <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg border border-slate-700 relative overflow-hidden mb-6 animate-fade-in flex flex-col md:flex-row items-center justify-between gap-6">
@@ -288,7 +284,6 @@ export const ContactCenterWidget: React.FC = () => {
             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none"><Target size={140} /></div>
 
             <div className="flex flex-col md:flex-row gap-6 relative z-10">
-                {/* Header & Stats Column */}
                 <div className="md:w-1/4 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-700 pb-4 md:pb-0 md:pr-6">
                     <div>
                         <h3 className="font-bold text-lg flex items-center gap-2 text-indigo-300">
@@ -298,7 +293,7 @@ export const ContactCenterWidget: React.FC = () => {
                     </div>
                     
                     <div className="flex flex-col gap-4 mt-4">
-                        {/* Daily Progress */}
+                        {/* Meta Diária */}
                         <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
                                 <span className="text-[10px] font-bold uppercase text-green-400 flex items-center gap-1"><Trophy size={10}/> Meta Diária</span>
@@ -309,28 +304,27 @@ export const ContactCenterWidget: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Monthly Progress (Previously Annual) */}
+                        {/* Cobertura Anual */}
                         <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
-                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Mensal</span>
-                                <span className="text-xs font-bold text-white">{periodProgress.percent}%</span>
+                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Anual</span>
+                                <span className="text-xs font-bold text-white">{annualProgress.percent}%</span>
                             </div>
                             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.period}%`}}></div>
+                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.annual}%`}}></div>
                             </div>
-                            <p className="text-[9px] text-slate-500 mt-1 text-right">{periodProgress.count}/{periodProgress.total} clientes</p>
+                            <p className="text-[9px] text-slate-500 mt-1 text-right">{annualProgress.count}/{annualProgress.total} clientes</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Cards List */}
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
                     {dailySelection.targets.map((target, idx) => {
                         const client = clients.find(c => c.id === target.clientId);
                         if (!client) return null;
                         
                         const isDone = target.status === 'done';
-                        const isHighValue = idx < 2; // First 2 are top tier (VIP)
+                        const isHighValue = idx < 2;
 
                         return (
                             <div 
@@ -382,7 +376,6 @@ export const ContactCenterWidget: React.FC = () => {
                         </div>
                         
                         <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
-                            {/* 1. Resumo */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Resumo da Conversa <span className="text-red-500">*</span></label>
                                 <textarea 
@@ -394,7 +387,6 @@ export const ContactCenterWidget: React.FC = () => {
                                 />
                             </div>
 
-                            {/* 2. Problemas */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 flex items-center gap-1">
                                     <ThumbsDown size={14} className="text-red-500"/> Principais Problemas Relatados
@@ -407,7 +399,6 @@ export const ContactCenterWidget: React.FC = () => {
                                 />
                             </div>
 
-                            {/* 3. Oportunidades (Product Selector) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 flex items-center gap-1">
                                     <Package size={14} className="text-green-500"/> Potencial de Compra (Upsell)
