@@ -102,7 +102,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [usersList, setUsersList] = useState<User[]>(MOCK_USERS);
 
   useEffect(() => {
-    // Restore session from localStorage if offline/mock mode
     const initSession = async () => {
       const supabase = getSupabase();
       
@@ -138,7 +137,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else if (event === 'SIGNED_OUT') {
             setCurrentUser(null);
             setCurrentOrganization(null);
-            localStorage.removeItem('nexus_mock_user'); // Clear mock user too
+            localStorage.removeItem('nexus_mock_user'); 
             setLoading(false);
           }
         });
@@ -168,7 +167,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (profile) {
         await processProfileData(profile, supabase);
       } else {
-        // Fallback for first login in development
         console.warn("Profile not found in DB, using fallback user data");
         const fallbackUser: User = {
             id: userId,
@@ -204,7 +202,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         organizationId: profile.organization_id,
         relatedClientId: profile.related_client_id,
         xp: profile.xp || 0,
-        level: profile.level || 1
+        level: profile.level || 1,
+        active: profile.active !== false
       };
 
       setCurrentUser(mappedUser);
@@ -214,9 +213,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
     const supabase = getSupabase();
     
-    // 1. OFFLINE / MOCK LOGIN (Fallback or Primary if no DB)
     if (!supabase) {
-        // Simple mock check
         if (email === 'admin@nexus.com' || email === 'client@test.com') {
             const user = MOCK_USERS.find(u => u.email === email) || MOCK_USERS[0];
             setCurrentUser(user);
@@ -224,15 +221,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             localStorage.setItem('nexus_mock_user', JSON.stringify(user));
             return {};
         }
-        // Fallback: create a temp user
-        const tempUser: User = { id: 'temp-u', name: email.split('@')[0], email, role: 'admin', avatar: 'T', organizationId: 'org-1' };
+        const tempUser: User = { id: 'temp-u', name: email.split('@')[0], email, role: 'admin', avatar: 'T', organizationId: 'org-1', active: true };
         setCurrentUser(tempUser);
         setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active' });
         localStorage.setItem('nexus_mock_user', JSON.stringify(tempUser));
         return {};
     }
 
-    // 2. SUPABASE LOGIN
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error: error.message };
@@ -295,11 +290,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
   };
 
-  // Admin Stubs
   const updateUser = (data: Partial<User>) => setCurrentUser(prev => prev ? { ...prev, ...data } : null);
-  const adminUpdateUser = async (userId: string, data: Partial<User>) => { };
-  const adminDeleteUser = async (userId: string) => { };
-  const addTeamMember = async (name: string, email: string, role: Role) => { return {success: true} };
+  
+  const adminUpdateUser = async (userId: string, data: Partial<User>) => {
+      setUsersList(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
+      
+      const supabase = getSupabase();
+      if (supabase) {
+          try {
+              await supabase.from('profiles').update(data).eq('id', userId);
+          } catch(e) { console.error("Error updating user remotely", e); }
+      }
+  };
+
+  const adminDeleteUser = async (userId: string) => {
+      setUsersList(prev => prev.filter(u => u.id !== userId));
+      
+      const supabase = getSupabase();
+      if (supabase) {
+          try {
+              await supabase.from('profiles').delete().eq('id', userId);
+          } catch(e) { console.error("Error deleting user remotely", e); }
+      }
+  };
+
+  const addTeamMember = async (name: string, email: string, role: Role) => {
+      const newUser: User = {
+          id: `U-${Date.now()}`,
+          name,
+          email,
+          role,
+          avatar: name.charAt(0).toUpperCase(),
+          active: true,
+          organizationId: currentOrganization?.id
+      };
+      setUsersList(prev => [...prev, newUser]);
+      return {success: true};
+  };
+
   const createClientAccess = async (client: Client, email: string) => { return {success: true} };
   const sendRecoveryInvite = async (email: string) => { 
       const supabase = getSupabase();

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Users, LifeBuoy, Code, DollarSign, PieChart, Settings, LogOut, Briefcase, X, HeartPulse, FileText, ShieldAlert, RefreshCw, Calendar as CalendarIcon, Megaphone, Workflow, Map, Trello, Moon, Sun, Target, Sword, Wrench, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, LifeBuoy, Code, DollarSign, PieChart, Settings, LogOut, Briefcase, X, HeartPulse, FileText, ShieldAlert, RefreshCw, Calendar as CalendarIcon, Megaphone, Workflow, Map, Trello, Moon, Sun, Target, Sword, Wrench, MessageSquare, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { getSupabaseConfig } from '../services/supabaseClient';
@@ -15,7 +15,8 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-  { id: 'inbox', label: 'Inbox Unificado', icon: MessageSquare }, // NEW ITEM
+  { id: 'contact-center', label: 'Central de Contatos', icon: Phone },
+  { id: 'inbox', label: 'Inbox Unificado', icon: MessageSquare }, 
   { id: 'prospecting', label: 'Prospecção IA', icon: Target },
   { id: 'competitive-intelligence', label: 'Nexus Spy (CI)', icon: Sword },
   { id: 'calendar', label: 'Agenda', icon: CalendarIcon },
@@ -106,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
           <p className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Menu Principal</p>
           {navItems.map((item) => {
             // Permission check logic
-            if (item.id !== 'dashboard' && item.id !== 'calendar' && item.id !== 'inbox' && item.id !== 'prospecting' && item.id !== 'competitive-intelligence' && !hasPermission(item.id)) return null;
+            if (item.id !== 'dashboard' && item.id !== 'contact-center' && item.id !== 'calendar' && item.id !== 'inbox' && item.id !== 'prospecting' && item.id !== 'competitive-intelligence' && !hasPermission(item.id)) return null;
             
             const Icon = item.icon;
             const isActive = activeModule === item.id;
