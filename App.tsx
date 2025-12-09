@@ -227,6 +227,7 @@ const AppContent: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}
+            {activeModule === 'contact-center' && <Dashboard onNavigate={setActiveModule} />} {/* Reuses Dashboard but will focus on Widget */}
             {activeModule === 'commercial' && <Commercial />}
             {activeModule === 'inbox' && <Inbox />} 
             {activeModule === 'prospecting' && <Prospecting />} 
