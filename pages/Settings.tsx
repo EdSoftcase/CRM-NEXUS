@@ -27,7 +27,7 @@ export const Settings: React.FC = () => {
   
   const { leads, clients, tickets, invoices, issues, syncLocalToCloud, isSyncing, refreshData, products, addProduct, updateProduct, removeProduct, activities, portalSettings, updatePortalSettings, campaigns, workflows, marketingContents, projects, notifications, pushEnabled, togglePushNotifications, competitors, marketTrends, prospectingHistory, disqualifiedProspects, customFields, addCustomField, deleteCustomField, webhooks, addWebhook, deleteWebhook, updateWebhook, restoreDefaults } = useData();
   
-  const { data: logs, isLoading: isLogsLoading, isError: isLogsError } = useAuditLogs();
+  const { data: logs } = useAuditLogs();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'permissions' | 'audit' | 'integrations' | 'products' | 'saas_admin' | 'portal_config' | 'bridge' | 'custom_fields' | 'webhooks'>(() => {
       return (sessionStorage.getItem('nexus_settings_tab') as any) || 'profile';
@@ -487,6 +487,7 @@ create table if not exists public.organizations (
   plan text default 'Standard',
   subscription_status text default 'active',
   status text default 'pending', -- Workflow Approval
+  created_by uuid references auth.users, -- Creator tracking
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -536,6 +537,11 @@ BEGIN
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name = 'organizations' AND column_name = 'status') THEN
     ALTER TABLE public.organizations ADD COLUMN status text default 'active'; 
   END IF;
+
+  -- Organizations Created By
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name = 'organizations' AND column_name = 'created_by') THEN
+    ALTER TABLE public.organizations ADD COLUMN created_by uuid references auth.users;
+  END IF;
 END $$;
 
 -- --- SECURITY & PERMISSIONS (RLS) ---
@@ -545,8 +551,9 @@ alter table public.profiles enable row level security;
 alter table public.leads enable row level security;
 
 -- 1. ORGANIZATION POLICIES
+drop policy if exists "Users can view own organization" on public.organizations;
 create policy "Users can view own organization" on public.organizations for select using (
-  id = get_auth_user_org_id()
+  id = get_auth_user_org_id() OR created_by = auth.uid()
 );
 create policy "Users can insert organization" on public.organizations for insert with check (true);
 

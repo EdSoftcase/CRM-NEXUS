@@ -11,6 +11,7 @@ interface AuthContextType {
   usersList: User[];
   login: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, fullName: string, companyName: string) => Promise<{ error?: string, success?: boolean }>;
+  joinOrganization: (email: string, password: string, fullName: string, orgSlug: string) => Promise<{ error?: string, success?: boolean }>;
   logout: () => Promise<void>;
   switchOrganization: (orgId: string) => void;
   hasPermission: (module: string, action?: PermissionAction) => boolean;
@@ -222,9 +223,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error: error.message };
       
-      // Check org status logic happens in fetchProfileAndOrg/useEffect loop, 
-      // but we can pre-check or handle it there.
-      // Wait for session to settle
       return {}; 
     } catch (err: any) { 
         return { error: err.message }; 
@@ -249,19 +247,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!authData.user) return { error: "Erro ao criar usuário" };
 
       const userId = authData.user.id;
+      
+      // Generate ID client-side to avoid RLS 'Select' block during creation
+      // This ensures we can link the profile immediately without needing to read the org back
+      const orgId = crypto.randomUUID();
 
       // 2. Create Organization (Pending Approval)
-      // Note: RLS must allow insert for authenticated users
-      const { data: orgData, error: orgError } = await supabase.from('organizations').insert({
+      const { error: orgError } = await supabase.from('organizations').insert({
+          id: orgId,
           name: companyName,
           slug: companyName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
           status: 'pending', // PENDING APPROVAL
           plan: 'Standard'
-      }).select().single();
+      });
 
       if (orgError) {
-          console.error("Org Creation Error:", orgError);
-          // If org fails, user exists but has no org. 
+          console.error("Org Creation Error:", JSON.stringify(orgError));
           return { error: "Erro ao criar organização: " + orgError.message };
       }
 
@@ -271,16 +272,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           full_name: fullName,
           email: email,
           role: 'admin',
-          organization_id: orgData.id
+          organization_id: orgId,
+          active: true // Creator is active, Org is pending
       });
 
       if (profileError) {
-          console.error("Profile Creation Error:", profileError);
+          console.error("Profile Creation Error:", JSON.stringify(profileError));
           return { error: "Erro ao criar perfil." };
       }
 
       return { success: true };
     } catch (err: any) { return { error: err.message }; }
+  };
+
+  // --- NEW: Join Existing Organization ---
+  const joinOrganization = async (email: string, password: string, fullName: string, orgSlug: string): Promise<{ error?: string, success?: boolean }> => {
+      const supabase = getSupabase();
+      if (!supabase) return { error: "Modo Offline: Recurso indisponível." };
+
+      try {
+          // 1. Find Organization
+          const { data: org, error: orgError } = await supabase
+              .from('organizations')
+              .select('id')
+              .eq('slug', orgSlug)
+              .single();
+
+          if (orgError || !org) {
+              return { error: "Organização não encontrada com este identificador." };
+          }
+
+          // 2. Create Auth User
+          const { data: authData, error: authError } = await supabase.auth.signUp({ 
+              email, 
+              password,
+              options: { data: { full_name: fullName } }
+          });
+
+          if (authError) return { error: authError.message };
+          if (!authData.user) return { error: "Erro ao criar usuário" };
+
+          // 3. Create Profile linked to Org (Role: Sales default, Active: FALSE)
+          const { error: profileError } = await supabase.from('profiles').insert({
+              id: authData.user.id,
+              full_name: fullName,
+              email: email,
+              role: 'sales', // Default role
+              organization_id: org.id,
+              active: false // REQUIRES APPROVAL
+          });
+
+          if (profileError) {
+              return { error: "Erro ao criar perfil." };
+          }
+
+          return { success: true };
+
+      } catch (err: any) {
+          return { error: err.message };
+      }
   };
 
   const logout = async () => {
@@ -298,8 +348,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     window.location.reload();
   };
 
-  // ... (switchOrganization, hasPermission, updatePermission, updateUser... existing code) ...
   const switchOrganization = (orgId: string) => {};
+  
   const hasPermission = (module: string, action: PermissionAction = 'view'): boolean => {
     if (!currentUser) return false;
     const role = currentUser.role;
@@ -310,6 +360,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return permissionMatrix[role][module][action];
   };
+
   const updatePermission = (role: Role, module: string, action: PermissionAction, value: boolean) => {
       setPermissionMatrix(prev => {
           const newMatrix = { ...prev, [role]: { ...prev[role], [module]: { ...prev[role][module] || {view: false, create: false, edit: false, delete: false}, [action]: value } } };
@@ -317,23 +368,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return newMatrix;
       });
   };
+
   const updateUser = (data: Partial<User>) => setCurrentUser(prev => prev ? { ...prev, ...data } : null);
+  
   const adminUpdateUser = async (userId: string, data: Partial<User>) => {
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
       const supabase = getSupabase();
       if (supabase) await supabase.from('profiles').update(data).eq('id', userId);
   };
+  
   const adminDeleteUser = async (userId: string) => {
       setUsersList(prev => prev.filter(u => u.id !== userId));
       const supabase = getSupabase();
       if (supabase) await supabase.from('profiles').delete().eq('id', userId);
   };
+  
   const addTeamMember = async (name: string, email: string, role: Role) => {
       const newUser: User = { id: `U-${Date.now()}`, name, email, role, avatar: name.charAt(0).toUpperCase(), active: true, organizationId: currentOrganization?.id };
       setUsersList(prev => [...prev, newUser]);
       return {success: true};
   };
+  
   const createClientAccess = async (client: Client, email: string) => { return {success: true} };
+  
   const sendRecoveryInvite = async (email: string) => { 
       const supabase = getSupabase();
       if(supabase) await supabase.auth.resetPasswordForEmail(email);
@@ -349,7 +406,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <AuthContext.Provider value={{ 
         currentUser, currentOrganization, permissionMatrix, usersList, loading,
-        login, signUp, logout, switchOrganization, hasPermission, updatePermission, updateUser, 
+        login, signUp, joinOrganization, logout, switchOrganization, hasPermission, updatePermission, updateUser, 
         adminUpdateUser, adminDeleteUser, addTeamMember, createClientAccess, sendRecoveryInvite,
         approveOrganization
     }}>

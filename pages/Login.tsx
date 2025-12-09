@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection } from '../services/supabaseClient';
-import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, AlertTriangle, User, Building2, Database, Save, Loader2, Info, ArrowLeft, KeyRound, CloudOff, Clock } from 'lucide-react';
+import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, AlertTriangle, User, Building2, Database, Save, Loader2, Info, ArrowLeft, KeyRound, CloudOff, Clock, UserPlus } from 'lucide-react';
 import { PrivacyPolicy } from '../components/PrivacyPolicy';
 
 export const Login: React.FC = () => {
-  const { login, signUp, sendRecoveryInvite, currentUser, currentOrganization, logout } = useAuth();
+  const { login, signUp, joinOrganization, sendRecoveryInvite, currentUser, currentOrganization, logout } = useAuth();
   
   // Setup State
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -14,11 +14,12 @@ export const Login: React.FC = () => {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   
   // Login State
-  const [mode, setMode] = useState<'login' | 'signup' | 'recovery'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'join' | 'recovery'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   
   const [showPassword, setShowPassword] = useState(false);
@@ -49,7 +50,7 @@ export const Login: React.FC = () => {
       }
   }, []);
 
-  // Check for Pending Status
+  // Check for Pending Status (Organization Pending)
   if (currentUser && currentOrganization?.status === 'pending') {
       return (
           <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
@@ -57,26 +58,41 @@ export const Login: React.FC = () => {
                   <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
                       <Clock size={32} className="text-yellow-600"/>
                   </div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Aguardando Aprovação</h2>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Empresa em Análise</h2>
                   <p className="text-slate-500 mb-6">
-                      Sua organização <strong>{currentOrganization.name}</strong> foi criada com sucesso, mas precisa ser aprovada por um administrador do sistema antes que você possa acessar.
+                      Sua organização <strong>{currentOrganization.name}</strong> foi criada e aguarda aprovação de um administrador do sistema Nexus.
                   </p>
                   <p className="text-sm text-slate-400 mb-6 bg-slate-50 p-3 rounded">
-                      Por favor, aguarde a liberação ou entre em contato com o suporte.
+                      ID: <span className="font-mono text-slate-600">{currentOrganization.id}</span>
                   </p>
                   <div className="flex gap-3 justify-center">
-                      <button 
-                          onClick={() => window.location.reload()} 
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                      >
-                          Verificar Novamente
-                      </button>
-                      <button 
-                          onClick={logout}
-                          className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition"
-                      >
-                          Sair
-                      </button>
+                      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Verificar</button>
+                      <button onClick={logout} className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition">Sair</button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // Check for Inactive User Status (Join Request Pending)
+  if (currentUser && currentUser.active === false) {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center animate-scale-in">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <User size={32} className="text-blue-600"/>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Cadastro Pendente</h2>
+                  <p className="text-slate-500 mb-6">
+                      Sua solicitação para entrar na organização foi enviada com sucesso.
+                  </p>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 text-left">
+                      <p className="text-sm text-slate-600 mb-1"><strong>Status:</strong> <span className="text-orange-500 font-bold">Aguardando Aprovação</span></p>
+                      <p className="text-xs text-slate-400">Um administrador da sua empresa precisa ativar sua conta no painel de equipe.</p>
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Verificar</button>
+                      <button onClick={logout} className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition">Sair</button>
                   </div>
               </div>
           </div>
@@ -167,8 +183,6 @@ export const Login: React.FC = () => {
                   setError(result.error);
                   setLoading(false);
               } else {
-                  // If signup successful, we can try to login immediately to trigger the "Waiting" screen
-                  // or show a success message.
                   const loginResult = await login(email, password);
                   if (loginResult.error) {
                       setMode('login');
@@ -176,21 +190,43 @@ export const Login: React.FC = () => {
                       setLoading(false);
                   }
               }
+              return;
+          }
 
-          } else {
-              // LOGIN MODE
-              const result = await login(email, password);
+          if (mode === 'join') {
+              if (password.length < 6) {
+                  setError("A senha deve ter no mínimo 6 caracteres.");
+                  setLoading(false);
+                  return;
+              }
+              if (!orgSlug) {
+                  setError("Identificador da empresa é obrigatório.");
+                  setLoading(false);
+                  return;
+              }
+              
+              const result = await joinOrganization(email, password, fullName, orgSlug);
               
               if (result.error) {
-                  if (result.error.includes("Invalid login credentials")) {
-                      setError("Email ou senha incorretos.");
-                  } else {
-                      setError(result.error);
-                  }
+                  setError(result.error);
                   setLoading(false);
               } else {
-                  // Success - App.tsx will redirect based on org status
+                  // Auto-login to show pending screen immediately
+                  await login(email, password);
               }
+              return;
+          }
+
+          // LOGIN MODE
+          const result = await login(email, password);
+          
+          if (result.error) {
+              if (result.error.includes("Invalid login credentials")) {
+                  setError("Email ou senha incorretos.");
+              } else {
+                  setError(result.error);
+              }
+              setLoading(false);
           }
       } catch (err: any) {
           setError(err.message || "Ocorreu um erro inesperado.");
@@ -310,31 +346,48 @@ export const Login: React.FC = () => {
                                 <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 md:justify-start justify-center"><KeyRound className="text-amber-500"/> Recuperar Senha</h2>
                                 <p className="text-slate-500 text-sm mt-1">Informe seu e-mail para receber um link de acesso.</p>
                               </>
+                          ) : mode === 'join' ? (
+                              <>
+                                <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 md:justify-start justify-center"><UserPlus className="text-blue-600"/> Entrar na Equipe</h2>
+                                <p className="text-slate-500 text-sm mt-1">Solicite acesso a uma organização existente.</p>
+                              </>
                           ) : (
                               <>
-                                <h2 className="text-2xl font-bold text-slate-900">{mode === 'signup' ? 'Crie sua conta SaaS' : 'Acesse sua conta'}</h2>
-                                <p className="text-slate-500 text-sm mt-1">{mode === 'signup' ? 'Cadastre sua empresa e aguarde aprovação.' : 'Entre com suas credenciais corporativas.'}</p>
+                                <h2 className="text-2xl font-bold text-slate-900">{mode === 'signup' ? 'Nova Organização' : 'Acesse sua conta'}</h2>
+                                <p className="text-slate-500 text-sm mt-1">{mode === 'signup' ? 'Crie uma nova empresa no Nexus CRM.' : 'Entre com suas credenciais corporativas.'}</p>
                               </>
                           )}
                       </div>
 
                       <form onSubmit={handleSubmit} className="space-y-4">
-                          {mode === 'signup' && (
+                          {(mode === 'signup' || mode === 'join') && (
                               <div className="animate-fade-in space-y-4">
                                   <div>
                                       <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Seu Nome</label>
                                       <div className="relative">
                                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User size={18} className="text-slate-400" /></div>
-                                          <input required={mode === 'signup'} type="text" className="pl-10 w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="João Silva" value={fullName} onChange={(e) => setFullName(e.target.value)}/>
+                                          <input required type="text" className="pl-10 w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="João Silva" value={fullName} onChange={(e) => setFullName(e.target.value)}/>
                                       </div>
                                   </div>
-                                  <div>
-                                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nome da Empresa</label>
-                                      <div className="relative">
-                                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Building2 size={18} className="text-slate-400" /></div>
-                                          <input required={mode === 'signup'} type="text" className="pl-10 w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Minha Empresa Ltda" value={companyName} onChange={(e) => setCompanyName(e.target.value)}/>
+                                  {mode === 'signup' && (
+                                      <div>
+                                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nome da Nova Empresa</label>
+                                          <div className="relative">
+                                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Building2 size={18} className="text-slate-400" /></div>
+                                              <input required type="text" className="pl-10 w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Minha Empresa Ltda" value={companyName} onChange={(e) => setCompanyName(e.target.value)}/>
+                                          </div>
                                       </div>
-                                  </div>
+                                  )}
+                                  {mode === 'join' && (
+                                      <div>
+                                          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Identificador da Empresa (Slug)</label>
+                                          <div className="relative">
+                                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Building2 size={18} className="text-slate-400" /></div>
+                                              <input required type="text" className="pl-10 w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ex: softcase-tecnologia" value={orgSlug} onChange={(e) => setOrgSlug(e.target.value)}/>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">Solicite o identificador ao administrador da sua empresa.</p>
+                                      </div>
+                                  )}
                               </div>
                           )}
 
@@ -357,68 +410,46 @@ export const Login: React.FC = () => {
                                       </button>
                                   </div>
                                   
-                                  {/* Remember Me & Forgot Password Row */}
                                   {mode === 'login' && (
                                       <div className="flex justify-between items-center mt-2">
                                           <label className="flex items-center gap-2 cursor-pointer select-none">
-                                              <input 
-                                                  type="checkbox" 
-                                                  checked={rememberMe}
-                                                  onChange={(e) => setRememberMe(e.target.checked)}
-                                                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                              />
+                                              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"/>
                                               <span className="text-xs text-slate-600">Lembrar de mim</span>
                                           </label>
-                                          
-                                          <button type="button" onClick={() => {setMode('recovery'); setError(''); setSuccessMsg('');}} className="text-xs text-blue-600 hover:underline">
-                                              Esqueci minha senha
-                                          </button>
+                                          <button type="button" onClick={() => {setMode('recovery'); setError(''); setSuccessMsg('');}} className="text-xs text-blue-600 hover:underline">Esqueci minha senha</button>
                                       </div>
                                   )}
                               </div>
                           )}
 
-                          {error && (
-                              <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg border border-red-100 flex items-start gap-2 animate-fade-in">
-                                  <AlertTriangle size={14} className="shrink-0 mt-0.5"/> <span>{error}</span>
-                              </div>
-                          )}
-
-                          {successMsg && (
-                              <div className="bg-green-50 text-green-700 text-xs p-3 rounded-lg border border-green-200 flex items-start gap-2 animate-fade-in">
-                                  <ShieldCheck size={14} className="shrink-0 mt-0.5"/> <span>{successMsg}</span>
-                              </div>
-                          )}
+                          {error && <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg border border-red-100 flex items-start gap-2 animate-fade-in"><AlertTriangle size={14} className="shrink-0 mt-0.5"/> <span>{error}</span></div>}
+                          {successMsg && <div className="bg-green-50 text-green-700 text-xs p-3 rounded-lg border border-green-200 flex items-start gap-2 animate-fade-in"><ShieldCheck size={14} className="shrink-0 mt-0.5"/> <span>{successMsg}</span></div>}
 
                           <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-lg shadow-slate-900/20 disabled:opacity-70 disabled:cursor-not-allowed">
-                              {loading ? <Loader2 className="animate-spin" size={20}/> : mode === 'recovery' ? 'Enviar Instruções' : <>{mode === 'signup' ? 'Criar Conta' : 'Entrar'} <ArrowRight size={18}/></>}
+                              {loading ? <Loader2 className="animate-spin" size={20}/> : mode === 'recovery' ? 'Enviar Instruções' : mode === 'join' ? 'Solicitar Acesso' : <>{mode === 'signup' ? 'Criar Conta' : 'Entrar'} <ArrowRight size={18}/></>}
                           </button>
 
                           {mode === 'login' && (
                               <div className="text-center pt-2 space-y-2">
-                                  <button 
-                                      type="button"
-                                      onClick={() => setShowPrivacyPolicy(true)}
-                                      className="text-slate-400 hover:text-blue-600 text-xs font-medium flex items-center justify-center gap-1.5 transition py-1 rounded hover:bg-slate-50 w-full"
-                                  >
-                                      <ShieldCheck size={14} /> Política de Privacidade & LGPD
-                                  </button>
+                                  <button type="button" onClick={() => setShowPrivacyPolicy(true)} className="text-slate-400 hover:text-blue-600 text-xs font-medium flex items-center justify-center gap-1.5 transition py-1 rounded hover:bg-slate-50 w-full"><ShieldCheck size={14} /> Política de Privacidade & LGPD</button>
                               </div>
                           )}
                       </form>
                       
                       <div className="text-center mt-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
-                          {mode === 'recovery' ? (
+                          {mode === 'login' ? (
+                              <div className="space-y-2">
+                                  <p className="text-sm text-slate-500">Não tem conta?</p>
+                                  <div className="flex gap-2 justify-center">
+                                      <button type="button" onClick={() => { setMode('join'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-bold hover:underline text-sm">Entrar em equipe existente</button>
+                                      <span className="text-slate-300">|</span>
+                                      <button type="button" onClick={() => { setMode('signup'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-bold hover:underline text-sm">Criar nova empresa</button>
+                                  </div>
+                              </div>
+                          ) : (
                               <button type="button" onClick={() => { setMode('login'); setError(''); setSuccessMsg(''); }} className="text-slate-600 font-bold hover:text-slate-900 text-sm flex items-center justify-center gap-2">
                                   <ArrowLeft size={16}/> Voltar para o Login
                               </button>
-                          ) : (
-                              <div>
-                                <p className="text-sm text-slate-500">{mode === 'signup' ? 'Já tem uma conta?' : 'Ainda não tem conta?'}</p>
-                                <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1">
-                                    {mode === 'signup' ? 'Fazer Login' : 'Criar nova empresa'}
-                                </button>
-                              </div>
                           )}
                       </div>
                   </div>
@@ -427,7 +458,7 @@ export const Login: React.FC = () => {
       </div>
       
       <div className="mt-6 text-center">
-        <p className="text-slate-600 text-xs opacity-30 font-mono">Nexus CRM Enterprise • v3.0.0</p>
+        <p className="text-slate-600 text-xs opacity-30 font-mono">Nexus CRM Enterprise • v3.1.0</p>
       </div>
 
       {showPrivacyPolicy && <PrivacyPolicy onClose={() => setShowPrivacyPolicy(false)} />}
