@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection } from '../services/supabaseClient';
-import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, AlertTriangle, User, Building2, Database, Save, Loader2, Info, ArrowLeft, KeyRound, CloudOff } from 'lucide-react';
+import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, AlertTriangle, User, Building2, Database, Save, Loader2, Info, ArrowLeft, KeyRound, CloudOff, Clock } from 'lucide-react';
 import { PrivacyPolicy } from '../components/PrivacyPolicy';
 
 export const Login: React.FC = () => {
-  const { login, signUp, sendRecoveryInvite } = useAuth();
+  const { login, signUp, sendRecoveryInvite, currentUser, currentOrganization, logout } = useAuth();
   
   // Setup State
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -49,7 +49,41 @@ export const Login: React.FC = () => {
       }
   }, []);
 
-  // Timeout de Segurança para o botão de Login (15s max)
+  // Check for Pending Status
+  if (currentUser && currentOrganization?.status === 'pending') {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center animate-scale-in">
+                  <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                      <Clock size={32} className="text-yellow-600"/>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Aguardando Aprovação</h2>
+                  <p className="text-slate-500 mb-6">
+                      Sua organização <strong>{currentOrganization.name}</strong> foi criada com sucesso, mas precisa ser aprovada por um administrador do sistema antes que você possa acessar.
+                  </p>
+                  <p className="text-sm text-slate-400 mb-6 bg-slate-50 p-3 rounded">
+                      Por favor, aguarde a liberação ou entre em contato com o suporte.
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                      <button 
+                          onClick={() => window.location.reload()} 
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                      >
+                          Verificar Novamente
+                      </button>
+                      <button 
+                          onClick={logout}
+                          className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition"
+                      >
+                          Sair
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // Timeout de Segurança
   useEffect(() => {
       if (loading) {
           const timer = setTimeout(() => {
@@ -99,7 +133,6 @@ export const Login: React.FC = () => {
       setSuccessMsg('');
       setLoading(true);
 
-      // Handle Remember Me Logic
       if (mode === 'login') {
           if (rememberMe) {
               localStorage.setItem('nexus_remember_email', email);
@@ -131,26 +164,16 @@ export const Login: React.FC = () => {
               const result = await signUp(email, password, fullName, companyName);
               
               if (result.error && !result.success) {
-                  if (result.error.includes("already registered")) {
-                      setError("Este e-mail já está cadastrado. Tente fazer login.");
-                  } else if (result.error.includes("Offline")) {
-                       setError("Modo Offline: Registro desabilitado. Entre como admin@nexus.com.");
-                  } else {
-                      setError(result.error);
-                  }
+                  setError(result.error);
                   setLoading(false);
               } else {
-                  if (result.error) { 
+                  // If signup successful, we can try to login immediately to trigger the "Waiting" screen
+                  // or show a success message.
+                  const loginResult = await login(email, password);
+                  if (loginResult.error) {
                       setMode('login');
-                      setSuccessMsg(result.error); 
+                      setSuccessMsg("Conta criada! Faça login para continuar.");
                       setLoading(false);
-                  } else {
-                      const loginResult = await login(email, password);
-                      if (loginResult.error) {
-                          setMode('login');
-                          setError("Conta criada com sucesso! Por favor, faça login abaixo.");
-                          setLoading(false);
-                      }
                   }
               }
 
@@ -166,7 +189,7 @@ export const Login: React.FC = () => {
                   }
                   setLoading(false);
               } else {
-                  // Success
+                  // Success - App.tsx will redirect based on org status
               }
           }
       } catch (err: any) {
@@ -290,7 +313,7 @@ export const Login: React.FC = () => {
                           ) : (
                               <>
                                 <h2 className="text-2xl font-bold text-slate-900">{mode === 'signup' ? 'Crie sua conta SaaS' : 'Acesse sua conta'}</h2>
-                                <p className="text-slate-500 text-sm mt-1">{mode === 'signup' ? 'Comece sua jornada Enterprise.' : 'Entre com suas credenciais corporativas.'}</p>
+                                <p className="text-slate-500 text-sm mt-1">{mode === 'signup' ? 'Cadastre sua empresa e aguarde aprovação.' : 'Entre com suas credenciais corporativas.'}</p>
                               </>
                           )}
                       </div>

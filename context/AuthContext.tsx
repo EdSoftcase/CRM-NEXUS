@@ -21,6 +21,7 @@ interface AuthContextType {
   addTeamMember: (name: string, email: string, role: Role) => Promise<{success: boolean, error?: string}>;
   createClientAccess: (client: Client, email: string) => Promise<{ success: boolean, password?: string, error?: string }>;
   sendRecoveryInvite: (email: string) => Promise<void>;
+  approveOrganization: (orgId: string) => Promise<boolean>;
   loading: boolean;
 }
 
@@ -112,7 +113,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
                 const user = JSON.parse(storedUser);
                 setCurrentUser(user);
-                setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active' });
+                setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active', status: 'active' });
             } catch (e) {
                 console.error("Error parsing stored user", e);
             }
@@ -168,20 +169,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await processProfileData(profile, supabase);
       } else {
         console.warn("Profile not found in DB, using fallback user data");
-        const fallbackUser: User = {
-            id: userId,
-            name: userEmail?.split('@')[0] || 'User',
-            email: userEmail || '',
-            role: 'admin',
-            avatar: 'U',
-            organizationId: 'org-1'
-        };
-        setCurrentUser(fallbackUser);
-        setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active' });
+        // Fallback or retry
+        setLoading(false);
       }
     } catch (error) {
       console.error("Auth Fetch Error:", error);
-    } finally {
       setLoading(false);
     }
   };
@@ -208,29 +200,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       setCurrentUser(mappedUser);
       setCurrentOrganization(orgData);
+      setLoading(false);
   };
 
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
     const supabase = getSupabase();
     
     if (!supabase) {
+        // Offline logic (omitted for brevity, keep existing)
         if (email === 'admin@nexus.com' || email === 'client@test.com') {
             const user = MOCK_USERS.find(u => u.email === email) || MOCK_USERS[0];
             setCurrentUser(user);
-            setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active' });
+            setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active', status: 'active' });
             localStorage.setItem('nexus_mock_user', JSON.stringify(user));
             return {};
         }
-        const tempUser: User = { id: 'temp-u', name: email.split('@')[0], email, role: 'admin', avatar: 'T', organizationId: 'org-1', active: true };
-        setCurrentUser(tempUser);
-        setCurrentOrganization({ id: 'org-1', name: 'Minha Empresa', slug: 'minha-empresa', plan: 'Standard', subscription_status: 'active' });
-        localStorage.setItem('nexus_mock_user', JSON.stringify(tempUser));
-        return {};
+        return { error: "Usuário offline inválido" };
     }
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error: error.message };
+      
+      // Check org status logic happens in fetchProfileAndOrg/useEffect loop, 
+      // but we can pre-check or handle it there.
+      // Wait for session to settle
       return {}; 
     } catch (err: any) { 
         return { error: err.message }; 
@@ -239,17 +233,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signUp = async (email: string, password: string, fullName: string, companyName: string): Promise<{ error?: string, success?: boolean }> => {
     const supabase = getSupabase();
-    if (!supabase) return { error: "Modo Offline: Registro desabilitado. Use admin@nexus.com para entrar." };
+    if (!supabase) return { error: "Modo Offline: Registro desabilitado." };
+    
     try {
-      const { data, error } = await supabase.auth.signUp({ 
+      // 1. Create Auth User
+      const { data: authData, error: authError } = await supabase.auth.signUp({ 
           email, 
-          password, 
-          options: { 
-              data: { full_name: fullName, company_name: companyName } 
-          } 
+          password,
+          options: {
+              data: { full_name: fullName } // Minimal meta
+          }
       });
-      if (error) return { error: error.message };
-      if (data.user && !data.session) return { success: true, error: "Verifique seu e-mail para confirmar." };
+
+      if (authError) return { error: authError.message };
+      if (!authData.user) return { error: "Erro ao criar usuário" };
+
+      const userId = authData.user.id;
+
+      // 2. Create Organization (Pending Approval)
+      // Note: RLS must allow insert for authenticated users
+      const { data: orgData, error: orgError } = await supabase.from('organizations').insert({
+          name: companyName,
+          slug: companyName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          status: 'pending', // PENDING APPROVAL
+          plan: 'Standard'
+      }).select().single();
+
+      if (orgError) {
+          console.error("Org Creation Error:", orgError);
+          // If org fails, user exists but has no org. 
+          return { error: "Erro ao criar organização: " + orgError.message };
+      }
+
+      // 3. Create Profile linked to Org
+      const { error: profileError } = await supabase.from('profiles').insert({
+          id: userId,
+          full_name: fullName,
+          email: email,
+          role: 'admin',
+          organization_id: orgData.id
+      });
+
+      if (profileError) {
+          console.error("Profile Creation Error:", profileError);
+          return { error: "Erro ao criar perfil." };
+      }
+
       return { success: true };
     } catch (err: any) { return { error: err.message }; }
   };
@@ -269,8 +298,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     window.location.reload();
   };
 
+  // ... (switchOrganization, hasPermission, updatePermission, updateUser... existing code) ...
   const switchOrganization = (orgId: string) => {};
-  
   const hasPermission = (module: string, action: PermissionAction = 'view'): boolean => {
     if (!currentUser) return false;
     const role = currentUser.role;
@@ -281,7 +310,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return permissionMatrix[role][module][action];
   };
-
   const updatePermission = (role: Role, module: string, action: PermissionAction, value: boolean) => {
       setPermissionMatrix(prev => {
           const newMatrix = { ...prev, [role]: { ...prev[role], [module]: { ...prev[role][module] || {view: false, create: false, edit: false, delete: false}, [action]: value } } };
@@ -289,56 +317,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return newMatrix;
       });
   };
-
   const updateUser = (data: Partial<User>) => setCurrentUser(prev => prev ? { ...prev, ...data } : null);
-  
   const adminUpdateUser = async (userId: string, data: Partial<User>) => {
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
-      
       const supabase = getSupabase();
-      if (supabase) {
-          try {
-              await supabase.from('profiles').update(data).eq('id', userId);
-          } catch(e) { console.error("Error updating user remotely", e); }
-      }
+      if (supabase) await supabase.from('profiles').update(data).eq('id', userId);
   };
-
   const adminDeleteUser = async (userId: string) => {
       setUsersList(prev => prev.filter(u => u.id !== userId));
-      
       const supabase = getSupabase();
-      if (supabase) {
-          try {
-              await supabase.from('profiles').delete().eq('id', userId);
-          } catch(e) { console.error("Error deleting user remotely", e); }
-      }
+      if (supabase) await supabase.from('profiles').delete().eq('id', userId);
   };
-
   const addTeamMember = async (name: string, email: string, role: Role) => {
-      const newUser: User = {
-          id: `U-${Date.now()}`,
-          name,
-          email,
-          role,
-          avatar: name.charAt(0).toUpperCase(),
-          active: true,
-          organizationId: currentOrganization?.id
-      };
+      const newUser: User = { id: `U-${Date.now()}`, name, email, role, avatar: name.charAt(0).toUpperCase(), active: true, organizationId: currentOrganization?.id };
       setUsersList(prev => [...prev, newUser]);
       return {success: true};
   };
-
   const createClientAccess = async (client: Client, email: string) => { return {success: true} };
   const sendRecoveryInvite = async (email: string) => { 
       const supabase = getSupabase();
       if(supabase) await supabase.auth.resetPasswordForEmail(email);
   };
 
+  const approveOrganization = async (orgId: string): Promise<boolean> => {
+      const supabase = getSupabase();
+      if (!supabase) return false;
+      const { error } = await supabase.from('organizations').update({ status: 'active' }).eq('id', orgId);
+      return !error;
+  };
+
   return (
     <AuthContext.Provider value={{ 
         currentUser, currentOrganization, permissionMatrix, usersList, loading,
         login, signUp, logout, switchOrganization, hasPermission, updatePermission, updateUser, 
-        adminUpdateUser, adminDeleteUser, addTeamMember, createClientAccess, sendRecoveryInvite
+        adminUpdateUser, adminDeleteUser, addTeamMember, createClientAccess, sendRecoveryInvite,
+        approveOrganization
     }}>
       {children}
     </AuthContext.Provider>

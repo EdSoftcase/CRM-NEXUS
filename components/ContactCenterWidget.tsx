@@ -17,7 +17,6 @@ interface DailySelection {
 }
 
 export const ContactCenterWidget: React.FC = () => {
-    // DEPENDÊNCIA ADICIONADA: 'activities' para cálculo real de progresso
     const { clients, updateClientContact, products, activities } = useData();
     const { currentUser } = useAuth();
 
@@ -26,7 +25,7 @@ export const ContactCenterWidget: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     
     // Animation State
-    const [animatedWidths, setAnimatedWidths] = useState({ daily: 0, annual: 0 });
+    const [animatedWidths, setAnimatedWidths] = useState({ daily: 0, period: 0 });
     
     // Form State
     const [interactionNote, setInteractionNote] = useState('');
@@ -49,25 +48,28 @@ export const ContactCenterWidget: React.FC = () => {
         };
     }, [dailySelection]);
 
-    // B. Annual Coverage (Percentage of Active Clients ACTUALLY CONTACTED this year via Activities)
-    // LÓGICA CORRIGIDA: Não confia mais apenas na data do cliente, verifica se existe LOG de atividade.
-    const annualProgress = useMemo(() => {
+    // B. Monthly Coverage (Percentage of Active Clients CONTACTED THIS MONTH via Activities)
+    // Ensures bar starts at 0% and fills up as you work in the current month.
+    const periodProgress = useMemo(() => {
         const activeClients = clients.filter(c => c.status === 'Active');
         if (activeClients.length === 0) return { count: 0, total: 0, percent: 0 };
 
-        const currentYear = new Date().getFullYear();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
         
-        // Cria um Set de nomes de clientes ativos para busca rápida
+        // Optimize lookup
         const activeClientNames = new Set(activeClients.map(c => c.name));
-        
-        // Conta clientes únicos que possuem atividades CONCLUÍDAS neste ano
         const contactedClientsSet = new Set<string>();
         
         activities.forEach(act => {
-            if (act.completed && new Date(act.dueDate).getFullYear() === currentYear) {
-                // Verifica se a atividade pertence a um cliente ativo da base
-                if (activeClientNames.has(act.relatedTo)) {
-                    contactedClientsSet.add(act.relatedTo);
+            if (act.completed) {
+                const actDate = new Date(act.dueDate);
+                // Check if activity is in current month AND belongs to an active client
+                if (actDate.getMonth() === currentMonth && actDate.getFullYear() === currentYear) {
+                    if (activeClientNames.has(act.relatedTo)) {
+                        contactedClientsSet.add(act.relatedTo);
+                    }
                 }
             }
         });
@@ -86,11 +88,11 @@ export const ContactCenterWidget: React.FC = () => {
         const timer = setTimeout(() => {
             setAnimatedWidths({
                 daily: dailyProgress.percent,
-                annual: annualProgress.percent
+                period: periodProgress.percent
             });
         }, 100);
         return () => clearTimeout(timer);
-    }, [dailyProgress.percent, annualProgress.percent]);
+    }, [dailyProgress.percent, periodProgress.percent]);
 
     // --- 2. SELECTION LOGIC (2 Top 30% + 1 Base) ---
     useEffect(() => {
@@ -293,7 +295,7 @@ export const ContactCenterWidget: React.FC = () => {
                     </div>
                     
                     <div className="flex flex-col gap-4 mt-4">
-                        {/* Meta Diária */}
+                        {/* Daily Progress */}
                         <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
                                 <span className="text-[10px] font-bold uppercase text-green-400 flex items-center gap-1"><Trophy size={10}/> Meta Diária</span>
@@ -304,16 +306,16 @@ export const ContactCenterWidget: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Cobertura Anual */}
+                        {/* Monthly Progress (Previously Annual) */}
                         <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
-                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Anual</span>
-                                <span className="text-xs font-bold text-white">{annualProgress.percent}%</span>
+                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Mensal</span>
+                                <span className="text-xs font-bold text-white">{periodProgress.percent}%</span>
                             </div>
                             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.annual}%`}}></div>
+                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.period}%`}}></div>
                             </div>
-                            <p className="text-[9px] text-slate-500 mt-1 text-right">{annualProgress.count}/{annualProgress.total} clientes</p>
+                            <p className="text-[9px] text-slate-500 mt-1 text-right">{periodProgress.count}/{periodProgress.total} clientes</p>
                         </div>
                     </div>
                 </div>

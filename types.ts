@@ -1,5 +1,4 @@
 
-
 export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client';
 
 export enum LeadStatus {
@@ -43,6 +42,7 @@ export interface Organization {
   plan: 'Trial' | 'Standard' | 'Enterprise';
   licenseExpiresAt?: string;
   subscription_status?: 'active' | 'blocked' | 'trial' | 'expired';
+  status?: 'pending' | 'active' | 'suspended'; // New field for approval workflow
 }
 
 export interface PortalSettings {
@@ -68,7 +68,7 @@ export interface User {
   relatedClientId?: string;
   xp?: number;
   level?: number;
-  active?: boolean; // New field for user status
+  active?: boolean; 
 }
 
 export interface Note {
