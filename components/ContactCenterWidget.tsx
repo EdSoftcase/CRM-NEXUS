@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
@@ -23,6 +24,9 @@ export const ContactCenterWidget: React.FC = () => {
     const [selectedTarget, setSelectedTarget] = useState<Client | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     
+    // Animation State
+    const [animatedWidths, setAnimatedWidths] = useState({ daily: 0, period: 0 });
+    
     // Form State
     const [interactionNote, setInteractionNote] = useState('');
     const [problemsReported, setProblemsReported] = useState('');
@@ -44,27 +48,40 @@ export const ContactCenterWidget: React.FC = () => {
         };
     }, [dailySelection]);
 
-    // B. Annual Coverage (Percentage of Active Clients contacted this year)
-    // Starts at 0 and fills up as clients get a 'lastContact' date in the current year
-    const annualProgress = useMemo(() => {
+    // B. Monthly Coverage (Percentage of Active Clients contacted THIS MONTH)
+    // Starts at 0 if no contacts this month, and fills up as you work.
+    const periodProgress = useMemo(() => {
         const activeClients = clients.filter(c => c.status === 'Active');
         if (activeClients.length === 0) return { count: 0, total: 0, percent: 0 };
 
-        const currentYear = new Date().getFullYear();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
         
-        // Count how many distinct active clients have been contacted in 2024 (or current year)
-        const contactedThisYear = activeClients.filter(c => {
+        const contactedThisPeriod = activeClients.filter(c => {
             if (!c.lastContact) return false;
             const contactDate = new Date(c.lastContact);
-            return contactDate.getFullYear() === currentYear;
+            return contactDate.getMonth() === currentMonth && contactDate.getFullYear() === currentYear;
         }).length;
 
         return {
-            count: contactedThisYear,
+            count: contactedThisPeriod,
             total: activeClients.length,
-            percent: Math.round((contactedThisYear / activeClients.length) * 100)
+            percent: Math.round((contactedThisPeriod / activeClients.length) * 100)
         };
     }, [clients]);
+
+    // Trigger Animations
+    useEffect(() => {
+        // Small delay to ensure DOM is ready for transition
+        const timer = setTimeout(() => {
+            setAnimatedWidths({
+                daily: dailyProgress.percent,
+                period: periodProgress.percent
+            });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [dailyProgress.percent, periodProgress.percent]);
 
     // --- 2. SELECTION LOGIC (2 Top 30% + 1 Base) ---
     useEffect(() => {
@@ -227,7 +244,7 @@ export const ContactCenterWidget: React.FC = () => {
             }
         };
         
-        // This updates the client's lastContact date, which will trigger the annual progress bar to update
+        // This updates the client's lastContact date to NOW, which will trigger the monthly progress bar to update
         updateClientContact(selectedTarget, newActivity);
 
         // Update Widget State (Daily Goal)
@@ -288,20 +305,20 @@ export const ContactCenterWidget: React.FC = () => {
                                 <span className="text-xs font-bold text-white">{dailyProgress.count}/{dailyProgress.total}</span>
                             </div>
                             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                <div className="bg-green-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${dailyProgress.percent}%`}}></div>
+                                <div className="bg-green-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.daily}%`}}></div>
                             </div>
                         </div>
 
-                        {/* Annual Progress */}
+                        {/* Monthly Progress (Previously Annual) */}
                         <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                             <div className="flex justify-between items-end mb-1">
-                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Anual</span>
-                                <span className="text-xs font-bold text-white">{annualProgress.percent}%</span>
+                                <span className="text-[10px] font-bold uppercase text-blue-400 flex items-center gap-1"><Calendar size={10}/> Cobertura Mensal</span>
+                                <span className="text-xs font-bold text-white">{periodProgress.percent}%</span>
                             </div>
                             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${annualProgress.percent}%`}}></div>
+                                <div className="bg-blue-500 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.period}%`}}></div>
                             </div>
-                            <p className="text-[9px] text-slate-500 mt-1 text-right">{annualProgress.count}/{annualProgress.total} clientes contatados</p>
+                            <p className="text-[9px] text-slate-500 mt-1 text-right">{periodProgress.count}/{periodProgress.total} clientes</p>
                         </div>
                     </div>
                 </div>
