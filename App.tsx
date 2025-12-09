@@ -42,6 +42,7 @@ import { ClientFinancial } from './pages/portal/ClientFinancial';
 import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
+// Version Control: Force Update v3.0.4
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
   const { togglePushNotifications, pushEnabled } = useData(); 
@@ -281,3 +282,4 @@ function App() {
 }
 
 export default App;
+    
