@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext'; 
@@ -42,7 +41,7 @@ import { ClientFinancial } from './pages/portal/ClientFinancial';
 import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
 
-// Version Control: Force Update v3.0.4
+// Version Control: v3.5.2 - Dependencies Fixed
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
   const { togglePushNotifications, pushEnabled } = useData(); 
@@ -282,4 +281,3 @@ function App() {
 }
 
 export default App;
-    
