@@ -11,7 +11,7 @@ import { ContactCenterWidget } from '../components/ContactCenterWidget';
 
 interface DashboardProps {
     onNavigate: (module: string) => void;
-    viewMode?: 'general' | 'contact-center'; // NEW PROP
+    viewMode?: 'general' | 'contact-center';
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'general' }) => {
@@ -32,6 +32,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   const [stagnantLeads, setStagnantLeads] = useState<Lead[]>([]);
   const [showStagnantModal, setShowStagnantModal] = useState(false);
   
+  // Use prop to determine mode
   const isContactCenterMode = viewMode === 'contact-center';
 
   const maskValue = (value: string | number, type: 'currency' | 'number' | 'percent' = 'number') => {
@@ -103,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   }, [usersList]);
 
   useEffect(() => {
-    // Skip AI summary in contact center mode to save tokens/rendering time
+    // Disable AI Summary for contact center mode to keep it clean
     if (isContactCenterMode) return;
 
     const fetchSummary = async () => {
@@ -137,14 +138,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 bg-slate-50 dark:bg-slate-900 min-h-full transition-colors duration-300">
-      {/* Header Section - Dynamically changes based on viewMode */}
+      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 mb-2">
         <div className="flex items-center gap-4">
             <div>
                 <h1 className="font-bold text-slate-900 dark:text-white flex items-center gap-3 text-2xl md:text-3xl">
                     {isContactCenterMode ? (
                         <>
-                            <Phone className="text-indigo-500" /> Central de Contatos
+                            <Phone className="text-indigo-500" /> Central de Contatos Ativa
                         </>
                     ) : (
                         "Visão Executiva"
@@ -181,10 +182,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
         )}
       </div>
 
-      {/* CONTACT CENTER WIDGET - Always shown, prominent in contact mode */}
+      {/* CONTACT CENTER WIDGET (Always shown, especially prominent in Contact Mode) */}
       <ContactCenterWidget />
 
-      {/* KPI Grid - HIDE in Contact Mode to reduce noise */}
+      {/* KPI Grid - Hidden in Contact Center Mode to focus operator */}
       {!isContactCenterMode && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
             <KPICard title="MRR (Mensal)" value={maskValue(currentMRR, 'currency')} trend="Calculado sobre ativos" trendUp={true} icon={DollarSign} color="bg-blue-500" tooltip="Receita Mensal Recorrente calculada pela soma dos valores mensais de todos os clientes ativos." />
@@ -197,7 +198,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
       {/* Main Content Grid */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* HIDE Charts in Contact Mode */}
+        {/* Charts Column (Hidden in Contact Mode) */}
         {!isContactCenterMode ? (
             <div className="lg:col-span-2 flex flex-col gap-6">
               <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
@@ -236,22 +237,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
               </div>
             </div>
         ) : (
-            // In Contact Mode, fill space with a placeholder or expanded lists later
-            // For now, we span columns if needed or just let the tasks list take over
+            // Contact Center Mode View - Minimalist
             <div className="lg:col-span-2 flex flex-col gap-6">
-                 {/* Can add more specific contact center widgets here later */}
-                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-center py-20">
-                    <Phone size={48} className="mx-auto text-indigo-200 mb-4" />
-                    <h3 className="text-lg font-bold text-slate-700 dark:text-white">Modo Foco Ativado</h3>
-                    <p className="text-slate-500">Concentre-se em completar as metas de contato diárias acima.</p>
+                 <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center h-full min-h-[300px]">
+                    <Phone size={48} className="text-indigo-200 dark:text-indigo-900 mb-4 animate-pulse-slow" />
+                    <h3 className="text-xl font-bold text-slate-700 dark:text-white">Modo Foco Ativado</h3>
+                    <p className="text-slate-500 dark:text-slate-400 max-w-md mt-2">
+                        Concentre-se em completar as metas de contato diárias exibidas acima. 
+                        As métricas financeiras foram ocultadas para evitar distrações.
+                    </p>
                  </div>
             </div>
         )}
 
-        {/* Column C: Tables & Alerts - Always Show Tasks/Alerts */}
+        {/* Column C: Tables & Alerts */}
         <div className="flex flex-col gap-6">
             
-            {/* GAMIFICATION RANKING - Only in General Mode */}
+            {/* Gamification - Only in General Mode */}
             {!isContactCenterMode && (
                 <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-6 rounded-xl shadow-lg border border-indigo-800 text-white flex flex-col min-h-[250px] relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
@@ -278,7 +280,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                 </div>
             )}
             
-            {/* NOTIFICATIONS - Keep in both modes but simplified if needed */}
+            {/* Notifications */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
                 <div className="flex items-center justify-between mb-4 shrink-0">
                     <SectionTitle title="Alertas do Sistema" />
@@ -327,7 +329,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                 </div>
             </div>
 
-            {/* Activities - Highly Relevant for Contact Center */}
+            {/* Activities - Keep for both modes as tasks are relevant */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
                 <div className="shrink-0 mb-2">
                     <SectionTitle title="Minhas Tarefas" />

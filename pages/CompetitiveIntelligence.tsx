@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -80,9 +81,15 @@ export const CompetitiveIntelligence: React.FC = () => {
 
     const handleRefreshTrends = async () => {
         setIsRefreshingTrends(true);
+        // Clear trends to show loading effect clearly
+        setMarketTrends([]);
+        
         // Use the sector from the first competitor, or a default
         const sector = competitors.length > 0 ? competitors[0].sector : "Tecnologia B2B";
+        
         try {
+            // Small delay to ensure the clear state is visible even if API is super fast (or mocked)
+            await new Promise(resolve => setTimeout(resolve, 800)); 
             const trends = await fetchMarketTrends(sector);
             setMarketTrends(trends);
         } catch (error) {
@@ -122,10 +129,11 @@ export const CompetitiveIntelligence: React.FC = () => {
                 <div className="flex gap-3">
                     <button 
                         onClick={handleRefreshTrends}
-                        className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition"
+                        disabled={isRefreshingTrends}
+                        className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition disabled:opacity-70"
                     >
                         <RefreshCw size={18} className={isRefreshingTrends ? "animate-spin" : ""}/> 
-                        {isRefreshingTrends ? 'Atualizando Radar...' : 'Atualizar Radar'}
+                        {isRefreshingTrends ? 'Buscando...' : 'Atualizar Radar'}
                     </button>
                     <button 
                         onClick={() => setIsAddModalOpen(true)}
@@ -139,18 +147,26 @@ export const CompetitiveIntelligence: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
                 {/* LEFT: Market Radar (Trends) */}
                 <div className="lg:col-span-1 flex flex-col gap-6">
-                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-xl shadow-lg text-white relative overflow-hidden">
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-xl shadow-lg text-white relative overflow-hidden min-h-[300px]">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-red-500 opacity-10 rounded-full -mr-10 -mt-10 blur-2xl animate-pulse-slow"></div>
                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                             <BrainCircuit className="text-red-400"/> Radar de Mercado
                         </h3>
                         
                         <div className="space-y-4">
-                            {marketTrends.length === 0 ? (
-                                <p className="text-slate-400 text-sm italic">Nenhuma tendência detectada ainda.</p>
+                            {isRefreshingTrends ? (
+                                <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+                                    <RefreshCw size={32} className="animate-spin mb-2"/>
+                                    <p className="text-xs">Sintonizando frequências...</p>
+                                </div>
+                            ) : marketTrends.length === 0 ? (
+                                <div className="text-center py-10">
+                                    <p className="text-slate-400 text-sm italic">Nenhuma tendência detectada.</p>
+                                    <button onClick={handleRefreshTrends} className="text-red-400 text-xs font-bold hover:underline mt-2">Tentar novamente</button>
+                                </div>
                             ) : (
                                 marketTrends.map(trend => (
-                                    <div key={trend.id} className="bg-white/5 p-3 rounded-lg border border-white/10 hover:bg-white/10 transition relative">
+                                    <div key={trend.id} className="bg-white/5 p-3 rounded-lg border border-white/10 hover:bg-white/10 transition relative animate-fade-in">
                                         <div className="flex justify-center mb-4 mt-1">
                                             <h4 className="font-bold text-sm text-red-200 text-center px-4">{trend.title}</h4>
                                             <span className={`absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${trend.sentiment === 'Positive' ? 'bg-green-500/20 text-green-300' : trend.sentiment === 'Negative' ? 'bg-red-500/20 text-red-300' : 'bg-slate-500/20 text-slate-300'}`}>

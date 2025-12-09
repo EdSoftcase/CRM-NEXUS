@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/Widgets';
 import { PipelineFunnel } from '../components/Charts';
 import { Mail, Phone, Calendar, MapPin, Globe, Car, Box, X, AlertCircle, Clock, Flame, ThermometerSnowflake, Activity, MessageCircle, Send, BarChart2, ChevronDown, ChevronUp, Mic, Square, Loader2, PlayCircle, GraduationCap, Sparkles, Copy, GripVertical, Filter, Radar, UserPlus, List, Layout, Download, Calculator, DollarSign, MonitorPlay, Minimize, Search, CheckCircle, Server, User, Building, Trash2, Edit } from 'lucide-react';
-import { generateLeadEmail, processAudioNote, generateSalesObjectionResponse, enrichCompanyData } from '../services/geminiService';
+import { generateLeadEmail, generateSalesObjectionResponse, enrichCompanyData } from '../services/geminiService';
 import { fetchAddressByCEP, fetchCoordinates } from '../services/geoService';
 import { sendBridgeWhatsApp } from '../services/bridgeService'; // Import Bridge
 import { Lead, LeadStatus, Note, Activity as ActivityType } from '../types';

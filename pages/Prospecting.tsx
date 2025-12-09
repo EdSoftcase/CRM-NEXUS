@@ -1,14 +1,8 @@
 
-
-
-
-
-
-
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Target, Search, MapPin, Briefcase, Plus, UserPlus, Sparkles, Building2, Loader2, CheckCircle, ArrowRight, History, Trash2, X } from 'lucide-react';
+import { Target, Search, MapPin, Briefcase, Plus, UserPlus, Sparkles, Building2, Loader2, CheckCircle, ArrowRight, History, Trash2, X, AlertCircle } from 'lucide-react';
 import { findPotentialLeads } from '../services/geminiService';
 import { PotentialLead, Lead, LeadStatus, ProspectingHistoryItem } from '../types';
 
@@ -38,7 +32,6 @@ export const Prospecting: React.FC = () => {
         ]);
 
         // 2. Prospecting History (Avoid showing the same "new lead" twice if user ignored it before)
-        // Only apply this filter if we are doing a NEW search, not loading history
         const historicalNames = new Set(
             prospectingHistory.flatMap(h => h.results.map(r => normalize(r.companyName)))
         );
@@ -80,22 +73,16 @@ export const Prospecting: React.FC = () => {
             setResults(safeData);
             setConvertedIds(new Set()); // Reset converted state for new search
             
-            // Save to History (Even if empty, to record the attempt)
-            if (safeData.length > 0) {
-                const historyItem: ProspectingHistoryItem = {
-                    id: `HIST-${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                    industry,
-                    location,
-                    keywords: keywords, // Save keywords
-                    results: safeData
-                };
-                addProspectingHistory(historyItem);
-            }
-            
-            if (safeData.length === 0) {
-                alert("A IA buscou empresas, mas todas já constam na sua base de clientes, pipeline, histórico ou lista de desqualificados.");
-            }
+            // ALWAYS Save to History (Even if 0 results, to record effort)
+            const historyItem: ProspectingHistoryItem = {
+                id: `HIST-${Date.now()}`,
+                timestamp: new Date().toISOString(),
+                industry,
+                location,
+                keywords: keywords,
+                results: safeData // Saving what was found in THIS run
+            };
+            addProspectingHistory(historyItem);
 
         } catch (error) {
             console.error(error);
@@ -144,7 +131,6 @@ export const Prospecting: React.FC = () => {
         setKeywords(item.keywords || ''); // Restore keywords
         
         // Re-filter results but IGNORE history check (since we are loading history)
-        // Only filter out things that are already in DB or Disqualified
         const filteredHistoricalResults = filterNewResults(item.results, true);
         
         setResults(filteredHistoricalResults);
@@ -152,9 +138,9 @@ export const Prospecting: React.FC = () => {
     };
 
     return (
-        <div className="p-4 md:p-8 min-h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
+        <div className="p-4 md:p-8 flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors h-full overflow-hidden">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Target className="text-red-600 dark:text-red-500" /> Nexus Prospect
@@ -163,11 +149,11 @@ export const Prospecting: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1 min-h-0">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
                 {/* Left Column: Search & History */}
-                <div className="lg:col-span-1 flex flex-col gap-6 overflow-hidden">
+                <div className="lg:col-span-1 flex flex-col gap-6 h-full min-h-0">
                     {/* Search Box */}
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors shrink-0">
                         <h3 className="font-bold text-slate-900 dark:text-white mb-4">Nova Busca</h3>
                         <form onSubmit={handleSearch} className="space-y-4">
                             <div>
@@ -217,9 +203,9 @@ export const Prospecting: React.FC = () => {
                         </form>
                     </div>
 
-                    {/* History List */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 overflow-hidden transition-colors">
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                    {/* History List - Added h-full and overflow control */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-0 overflow-hidden transition-colors h-full">
+                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 shrink-0">
                             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                                 <History size={16}/> Histórico Recente
                             </h3>
@@ -235,20 +221,24 @@ export const Prospecting: React.FC = () => {
                                     Nenhuma busca recente.
                                 </div>
                             ) : (
-                                prospectingHistory.slice(0, 10).map((item) => (
+                                prospectingHistory.slice(0, 20).map((item) => (
                                     <div 
                                         key={item.id}
                                         onClick={() => loadHistoryItem(item)}
                                         className="p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition group"
                                     >
                                         <div className="flex justify-between items-start mb-1">
-                                            <p className="font-bold text-slate-800 dark:text-white text-xs truncate">{item.industry}</p>
+                                            <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[70%]">{item.industry}</p>
                                             <span className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.location}</p>
-                                        {item.keywords && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate italic mt-0.5">Key: {item.keywords}</p>}
-                                        <div className="mt-2 flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded w-fit">
-                                            <CheckCircle size={10}/> {item.results.length} resultados
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">{item.location}</p>
+                                        
+                                        <div className="flex justify-between items-center">
+                                            <div className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded w-fit font-medium ${item.results.length > 0 ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20' : 'text-slate-500 bg-slate-100 dark:bg-slate-700'}`}>
+                                                {item.results.length > 0 ? <CheckCircle size={10}/> : <AlertCircle size={10}/>} 
+                                                {item.results.length > 0 ? `${item.results.length} novos` : '0 novos'}
+                                            </div>
+                                            {item.keywords && <span className="text-[9px] text-slate-400 italic truncate max-w-[80px]">{item.keywords}</span>}
                                         </div>
                                     </div>
                                 ))
@@ -258,12 +248,19 @@ export const Prospecting: React.FC = () => {
                 </div>
 
                 {/* Right Column: Results Grid */}
-                <div className="lg:col-span-3 flex flex-col overflow-hidden h-full">
+                <div className="lg:col-span-3 flex flex-col overflow-hidden h-full min-h-0">
                     {results.length > 0 ? (
-                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                            <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                                Resultados da Busca <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-2 py-1 rounded-full">{results.length}</span>
-                            </h2>
+                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-6">
+                            <div className="flex items-center justify-between mb-4 shrink-0">
+                                <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                    Resultados <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-2 py-1 rounded-full">{results.length}</span>
+                                </h2>
+                                {results.length < 5 && results.length > 0 && (
+                                    <p className="text-xs text-slate-500 italic">
+                                        Filtramos leads que já estão no seu CRM.
+                                    </p>
+                                )}
+                            </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {results.map((prospect) => {
@@ -343,7 +340,7 @@ export const Prospecting: React.FC = () => {
                     ) : !isSearching ? (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 opacity-60">
                             <Target size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
-                            <p className="text-center max-w-md">Utilize os filtros à esquerda para iniciar a prospecção inteligente. A IA irá ignorar empresas que já constam na sua base, histórico ou lista de exclusão.</p>
+                            <p className="text-center max-w-md">Utilize os filtros à esquerda para iniciar a prospecção inteligente. A IA irá ignorar empresas que já constam na sua base.</p>
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center">
