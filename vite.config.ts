@@ -7,6 +7,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [react()],
+    resolve: {
+        extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
+    },
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
       'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
@@ -17,7 +20,6 @@ export default defineConfig(({ mode }) => {
       host: true,
       proxy: {
         // Redireciona chamadas do frontend (/api-bridge) para o backend (port 3001)
-        // Isso faz o navegador pensar que está falando com o mesmo servidor, evitando bloqueios.
         '/api-bridge': {
           target: 'http://127.0.0.1:3001',
           changeOrigin: true,
@@ -27,12 +29,9 @@ export default defineConfig(({ mode }) => {
       }
     },
     build: {
-      // Aumenta o limite do aviso para 1600kb para evitar alertas desnecessários em apps grandes
       chunkSizeWarningLimit: 1600,
       rollupOptions: {
         output: {
-          // Estratégia manual de divisão de código (Code Splitting)
-          // Separa bibliotecas grandes em arquivos individuais para melhor cache e carregamento
           manualChunks(id) {
             if (id.includes('node_modules')) {
               if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
@@ -53,7 +52,6 @@ export default defineConfig(({ mode }) => {
               if (id.includes('lucide-react')) {
                 return 'icons';
               }
-              // Qualquer outra dependência vai para o chunk 'vendor' genérico
               return 'vendor';
             }
           }
