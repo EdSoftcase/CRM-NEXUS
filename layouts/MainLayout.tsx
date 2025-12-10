@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { CommandPalette } from '../components/CommandPalette';
 import { OnboardingTour } from '../components/OnboardingTour';
@@ -12,6 +13,15 @@ export const MainLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { currentUser, currentOrganization, logout, loading } = useAuth();
   
+  // Navigation
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeModule = location.pathname === '/' ? 'dashboard' : location.pathname.substring(1);
+
+  const handleNavigate = (module: string) => {
+      navigate(module === 'dashboard' ? '/' : `/${module}`);
+  };
+
   // License Warning Logic
   const [showLicenseWarning, setShowLicenseWarning] = useState(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
@@ -59,12 +69,12 @@ export const MainLayout: React.FC = () => {
 
   return (
     <div className="flex h-[100dvh] bg-slate-50 dark:bg-slate-900 font-sans overflow-hidden relative z-0 animate-fade-in text-slate-900 dark:text-slate-100">
-      <CommandPalette />
+      <CommandPalette onNavigate={handleNavigate} />
       <OnboardingTour />
       <AIAssistant />
       <NexusVoice />
       
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} activeModule={activeModule} onNavigate={handleNavigate} />
       
       <main className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden relative w-full transition-colors duration-300">
         <div className="md:hidden bg-slate-900 text-white p-4 flex items-center justify-between shrink-0 z-10">

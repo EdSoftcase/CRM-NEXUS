@@ -175,7 +175,7 @@ export const Support: React.FC = () => {
 
         addTicket(currentUser, newTicket);
         handleCloseNewTicket();
-        setNewTicketForm({ customer: '', subject: '', description: '', priority: 'Média', channel: 'Phone' });
+        setNewTicketForm({ customer: '', subject: '', description: '', priority: TicketPriority.MEDIUM, channel: 'Phone' });
         addSystemNotification('Novo Chamado', `Chamado criado para ${newTicket.customer}`, 'success');
     };
 

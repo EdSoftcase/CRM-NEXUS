@@ -5,7 +5,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/Widgets';
 import { PipelineFunnel } from '../components/Charts';
-import { Mail, Phone, Calendar, MapPin, Globe, Car, Box, X, AlertCircle, Clock, Flame, ThermometerSnowflake, Activity, MessageCircle, Send, BarChart2, ChevronDown, ChevronUp, Mic, Square, Loader2, PlayCircle, GraduationCap, Sparkles, Copy, GripVertical, Filter, Radar, UserPlus, List, Layout, Download, Calculator, DollarSign, MonitorPlay, Minimize, Search, CheckCircle, Server, User, Building, Trash2, Edit } from 'lucide-react';
+import { Mail, Phone, Calendar, MapPin, Globe, Car, Box, X, AlertCircle, Clock, Flame, ThermometerSnowflake, Activity, MessageCircle, Send, BarChart2, ChevronDown, ChevronUp, Mic, Square, Loader2, PlayCircle, GraduationCap, Sparkles, Copy, GripVertical, Filter, Radar, UserPlus, List, Layout, Download, Calculator, DollarSign, MonitorPlay, Minimize, Search, CheckCircle, Server, User, Building, Trash2, Edit, Archive } from 'lucide-react';
 import { generateLeadEmail, generateSalesObjectionResponse, enrichCompanyData } from '../services/geminiService';
 import { fetchAddressByCEP, fetchCoordinates } from '../services/geoService';
 import { sendBridgeWhatsApp } from '../services/bridgeService'; // Import Bridge
@@ -98,6 +98,10 @@ export const Commercial: React.FC = () => {
   const [showStagnantOnly, setShowStagnantOnly] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
 
+  // Cancel Modal State
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
   // View Mode
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
@@ -158,14 +162,14 @@ export const Commercial: React.FC = () => {
   const handleOpenEmailModal = (e: React.MouseEvent, lead: Lead) => { e.stopPropagation(); setEmailLead(lead); setIsEmailModalOpen(true); };
   const handleEmailSuccess = (message: string) => { if (emailLead) { addSystemNotification('E-mail Enviado', message, 'success', emailLead.company); const newActivity: ActivityType = { id: `ACT-EMAIL-${Date.now()}`, title: `Email Enviado: ${message.split(':')[1] || 'Contato'}`, type: 'Email', dueDate: new Date().toISOString(), completed: true, relatedTo: emailLead.name, assignee: currentUser?.id || 'admin', description: message, organizationId: currentUser?.organizationId }; addActivity(currentUser, newActivity); } };
   const handleExportLeads = () => { /* ... */ };
-  const pipelineTotal = useMemo(() => { return leads.filter(l => l.status !== LeadStatus.CLOSED_LOST && l.status !== LeadStatus.CLOSED_WON).reduce((acc, curr) => acc + curr.value, 0); }, [leads]);
+  const pipelineTotal = useMemo(() => { return leads.filter(l => l.status !== LeadStatus.CLOSED_LOST && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CANCELLED).reduce((acc, curr) => acc + curr.value, 0); }, [leads]);
   const wonTotal = useMemo(() => { return leads.filter(l => l.status === LeadStatus.CLOSED_WON).reduce((acc, curr) => acc + curr.value, 0); }, [leads]);
   const estimatedCommission = (pipelineTotal * (commissionRate / 100));
   const realizedCommission = (wonTotal * (commissionRate / 100));
   const whatsappTemplates = [ { label: 'Primeiro Contato', text: 'Olá [Nome], tudo bem? Sou da Nexus CRM. Vi que você demonstrou interesse em nossa solução e gostaria de entender melhor seu cenário.' }, { label: 'Follow-up Proposta', text: 'Olá [Nome], como vai? Conseguiu avaliar a proposta que enviei? Estou à disposição para tirar dúvidas.' }, { label: 'Agendar Reunião', text: 'Oi [Nome], gostaria de agendar uma breve conversa para te apresentar como podemos ajudar a [Empresa]. Qual sua disponibilidade?' }, { label: 'Confirmação', text: 'Olá [Nome], confirmando nossa reunião para amanhã. Tudo certo?' } ];
-  const stages: LeadStatus[] = [LeadStatus.NEW, LeadStatus.QUALIFIED, LeadStatus.PROPOSAL, LeadStatus.NEGOTIATION, LeadStatus.CLOSED_WON];
+  const stages: LeadStatus[] = [LeadStatus.NEW, LeadStatus.QUALIFIED, LeadStatus.PROPOSAL, LeadStatus.NEGOTIATION, LeadStatus.CLOSED_WON, LeadStatus.CANCELLED];
   const getDaysInactive = (dateStr: string) => { const diff = new Date().getTime() - new Date(dateStr).getTime(); return Math.floor(diff / (1000 * 3600 * 24)); };
-  const filteredLeads = useMemo(() => { if (showStagnantOnly) { return leads.filter(l => { const days = getDaysInactive(l.lastContact); return days > 7 && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CLOSED_LOST; }); } return leads; }, [leads, showStagnantOnly]);
+  const filteredLeads = useMemo(() => { if (showStagnantOnly) { return leads.filter(l => { const days = getDaysInactive(l.lastContact); return days > 7 && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CLOSED_LOST && l.status !== LeadStatus.CANCELLED; }); } return leads; }, [leads, showStagnantOnly]);
   const calculateLeadScore = (lead: Lead) => { /* ... */ return { score: 50, term: 'Morno', color: 'text-yellow-500', icon: Activity, bg: '', reasons: [] }; };
   const handleGenerateEmail = async (lead: Lead) => { setLoadingEmail(true); setGeneratedEmail(''); const email = await generateLeadEmail(lead); setGeneratedEmail(email); setLoadingEmail(false); };
   const handleGenerateObjection = async (objectionType: string) => { if (!selectedLead) return; setIsCoachLoading(true); setCoachScript(''); const script = await generateSalesObjectionResponse(selectedLead, objectionType); setCoachScript(script); setIsCoachLoading(false); };
@@ -215,6 +219,44 @@ export const Commercial: React.FC = () => {
   const handleDragLeave = (e: React.DragEvent) => { };
   const handleDrop = (e: React.DragEvent, targetStatus: LeadStatus) => { e.preventDefault(); setDragOverColumn(null); if (draggedLeadId) { const lead = leads.find(l => l.id === draggedLeadId); if (lead && lead.status !== targetStatus) { updateLeadStatus(currentUser, draggedLeadId, targetStatus); } setDraggedLeadId(null); } };
   const containerClass = tvMode ? "fixed inset-0 z-[100] bg-slate-900 p-4 overflow-hidden flex flex-col" : "p-4 md:p-8 flex flex-col h-full bg-slate-50 dark:bg-slate-900 transition-colors";
+
+  const handleOpenCancelModal = () => {
+      setIsCancelModalOpen(true);
+      setCancelReason('');
+  };
+
+  const handleConfirmCancel = () => {
+      if (!selectedLead || !cancelReason.trim()) {
+          alert("Por favor, informe o motivo do cancelamento.");
+          return;
+      }
+
+      const updatedLead = {
+          ...selectedLead,
+          status: LeadStatus.CANCELLED,
+          lostReason: cancelReason
+      };
+
+      updateLead(currentUser, updatedLead);
+      
+      // Log activity
+      const activity: ActivityType = {
+          id: `ACT-CANCEL-${Date.now()}`,
+          title: `Lead Cancelado: ${selectedLead.name}`,
+          type: 'Task',
+          dueDate: new Date().toISOString(),
+          completed: true,
+          relatedTo: selectedLead.name,
+          assignee: currentUser?.id || 'system',
+          description: `Motivo do cancelamento: ${cancelReason}`
+      };
+      addActivity(currentUser, activity);
+
+      addSystemNotification('Lead Cancelado', `O lead ${selectedLead.company} foi movido para cancelados.`, 'warning');
+      
+      setSelectedLead(updatedLead); // Update local state to reflect changes
+      setIsCancelModalOpen(false);
+  };
 
   return (
     <div className={containerClass}>
@@ -390,6 +432,25 @@ export const Commercial: React.FC = () => {
                                       </div>
                                   </div>
                               )}
+
+                              {selectedLead.lostReason && (
+                                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 p-4 rounded-lg">
+                                      <h4 className="text-xs font-bold text-red-700 dark:text-red-400 uppercase mb-1">Motivo do Cancelamento</h4>
+                                      <p className="text-sm text-red-900 dark:text-red-200">{selectedLead.lostReason}</p>
+                                  </div>
+                              )}
+
+                              {/* Cancel/Archive Button */}
+                              {selectedLead.status !== LeadStatus.CANCELLED && (
+                                  <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                                      <button 
+                                          onClick={handleOpenCancelModal}
+                                          className="flex items-center justify-center gap-2 w-full py-3 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition text-sm font-bold"
+                                      >
+                                          <Archive size={16}/> Cancelar Lead (Arquivar para Futuro)
+                                      </button>
+                                  </div>
+                              )}
                           </div>
                       )}
 
@@ -427,6 +488,38 @@ export const Commercial: React.FC = () => {
               </div>
           </div>,
           document.body
+      )}
+
+      {/* CANCEL MODAL */}
+      {isCancelModalOpen && selectedLead && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-4 border-amber-500">
+                  <div className="p-6">
+                      <div className="flex items-start gap-4 mb-4">
+                          <div className="bg-amber-100 dark:bg-amber-900/50 p-3 rounded-full text-amber-600 dark:text-amber-400 shrink-0"><Archive size={28} /></div>
+                          <div>
+                              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Cancelar Lead</h2>
+                              <p className="text-slate-600 dark:text-slate-300 mt-1 text-sm">O lead será arquivado para contato futuro.</p>
+                          </div>
+                      </div>
+                      
+                      <div className="mb-4">
+                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Justificativa <span className="text-red-500">*</span></label>
+                          <textarea 
+                              className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                              placeholder="Por que este lead está sendo cancelado agora? (ex: Sem budget no momento, projeto adiado)"
+                              value={cancelReason}
+                              onChange={(e) => setCancelReason(e.target.value)}
+                          />
+                      </div>
+
+                      <div className="flex gap-3 justify-end">
+                          <button onClick={() => setIsCancelModalOpen(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
+                          <button onClick={handleConfirmCancel} className="px-6 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition shadow-sm">Confirmar Cancelamento</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
       {showWhatsAppModal && selectedLead && (

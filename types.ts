@@ -7,7 +7,8 @@ export enum LeadStatus {
   PROPOSAL = 'Proposta',
   NEGOTIATION = 'Negociação',
   CLOSED_WON = 'Ganho',
-  CLOSED_LOST = 'Perdido'
+  CLOSED_LOST = 'Perdido',
+  CANCELLED = 'Cancelado' // Added
 }
 
 export enum TicketPriority {
@@ -42,7 +43,7 @@ export interface Organization {
   plan: 'Trial' | 'Standard' | 'Enterprise';
   licenseExpiresAt?: string;
   subscription_status?: 'active' | 'blocked' | 'trial' | 'expired';
-  status?: 'pending' | 'active' | 'suspended'; // New field for approval workflow
+  status?: 'pending' | 'active' | 'suspended'; 
 }
 
 export interface PortalSettings {
@@ -137,6 +138,7 @@ export interface Lead {
   estimatedRevenue?: string;
   competitors?: string[];
   description?: string;
+  lostReason?: string; // Added field for cancellation justification
   metadata?: Record<string, any>;
 }
 
@@ -451,7 +453,7 @@ export interface Project {
     id: string;
     title: string;
     clientName: string;
-    status: 'Planning' | 'Execution' | 'Review' | 'Completed';
+    status: 'Planning' | 'Kitting' | 'Assembly' | 'Execution' | 'Review' | 'Completed';
     progress: number;
     startDate: string;
     deadline: string;
@@ -462,8 +464,10 @@ export interface Project {
     installAddress?: string;
     photos?: string[];
     notes?: ProjectNote[];
-    archived?: boolean; // New: Archived status
-    completedAt?: string; // New: Completion date
+    archived?: boolean; 
+    completedAt?: string; 
+    products?: string[]; 
+    installationNotes?: string; 
 }
 
 export interface KPIMetric {

@@ -242,7 +242,9 @@ export const GeoIntelligence: React.FC = () => {
                         <div className="p-5 space-y-4">
                             <div>
                                 <p className="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">Empresa</p>
-                                <p className="text-slate-800 dark:text-white font-medium">{selectedItem.data.company || (selectedItem.data as any).name}</p>
+                                <p className="text-slate-800 dark:text-white font-medium">
+                                    {selectedItem.type === 'lead' ? (selectedItem.data as Lead).company : (selectedItem.data as Client).name}
+                                </p>
                             </div>
                             
                             <div>
