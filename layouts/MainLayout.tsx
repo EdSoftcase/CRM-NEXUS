@@ -84,7 +84,7 @@ export const MainLayout: React.FC = () => {
         </div>
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
-            <Outlet />
+            <Outlet context={{ onNavigate: handleNavigate, activeModule }} />
         </div>
       </main>
 

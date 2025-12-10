@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Proposal } from '../types';
 
@@ -53,7 +54,7 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                     <p className="text-slate-600">{data.companyName || 'Empresa'}</p>
                 </div>
                 <div className="text-right">
-                    <p className="text-slate-400 uppercase text-xs font-bold">Data:</p>
+                    <p className="text-slate-400 uppercase text-xs font-bold">Data de Emissão:</p>
                     <p className="font-medium">{new Date(data.createdDate).toLocaleDateString()}</p>
                     <p className="text-slate-400 uppercase text-xs font-bold mt-2">Validade:</p>
                     <p className="font-medium">{new Date(data.validUntil).toLocaleDateString()}</p>
@@ -62,46 +63,104 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
         </div>
 
         {/* Body */}
-        <div className="space-y-8 flex-1">
+        <div className="space-y-6 flex-1 text-sm leading-relaxed text-slate-700 text-justify">
+            
             <section>
-                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">Introdução</h3>
-                <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-wrap text-justify">
-                    {data.introduction || 'Texto de introdução...'}
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">1. Restrições de Uso e Confidencialidade</h3>
+                <p>
+                    As informações contidas nesta proposta são confidenciais e de uso exclusivo da CONTRATADA. É vedada sua divulgação, reprodução, distribuição ou utilização por terceiros sem autorização formal. Em caso de celebração de contrato, as informações poderão ser utilizadas nos limites contratuais estabelecidos.
                 </p>
             </section>
 
             <section>
-                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">Escopo do Projeto</h3>
-                {data.scope.length > 0 ? (
-                    <ul className="list-disc pl-5 space-y-2 text-sm text-slate-700">
-                        {data.scope.map((item, i) => (
-                            <li key={i}>{item}</li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-sm text-slate-400 italic">Itens do escopo aparecerão aqui.</p>
-                )}
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">2. Objeto da Proposta</h3>
+                <p className="mb-2">
+                    A presente proposta tem por objeto o fornecimento (venda ou locação) de equipamentos, softwares, serviços de instalação, treinamento e suporte técnico para soluções de automação, controle de acesso, monitoramento ou demais tecnologias oferecidas pela CONTRATADA.
+                </p>
+                <p className="mb-2">
+                    A infraestrutura elétrica, lógica, civil e de conectividade necessária ao funcionamento da solução será de responsabilidade da CONTRATANTE.
+                </p>
+                
+                {/* Dynamic Content: Introduction/Scope */}
+                <div className="bg-slate-50 p-4 rounded border border-slate-100 my-4">
+                    <p className="font-bold mb-2">Escopo Específico deste Projeto:</p>
+                    <p className="whitespace-pre-wrap mb-2">{data.introduction}</p>
+                    {data.scope.length > 0 && (
+                        <ul className="list-disc pl-5 space-y-1">
+                            {data.scope.map((item, i) => (
+                                <li key={i}>{item}</li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
             </section>
 
-            <section className="bg-slate-50 p-6 rounded-lg border border-slate-100">
-                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">Investimento & Prazo</h3>
+            <div className="html2pdf__page-break"></div>
+
+            <section>
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">2.1 Opções Técnicas (Ilustrativo)</h3>
+                <p>A solução poderá ser composta pelos seguintes itens, variando conforme necessidade:</p>
+                <ul className="list-disc pl-5 mt-2 space-y-1 text-xs">
+                    <li><strong>Opção 01 (Padrão):</strong> Equipamentos de captura, controladoras, cancelas/leitores, servidor, nobreak, instalação e treinamento.</li>
+                    <li><strong>Opção 02 (Avançada):</strong> Equipamentos redundantes, captura frontal/traseira, sensores extras, controladoras adicionais.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">Condições Gerais</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                    <li><strong>Validade:</strong> {data.validUntil ? `Válida até ${new Date(data.validUntil).toLocaleDateString()}` : '20 dias corridos'}. O aceite será formalizado mediante assinatura.</li>
+                    <li><strong>Entrega e Instalação:</strong> Ocorrerão conforme cronograma (Estimado: {data.timeline}), após o aceite formal e confirmação do pagamento inicial.</li>
+                    <li><strong>Garantia:</strong> 12 meses contra defeitos de fabricação (exceto mau uso, intempéries, descargas elétricas).</li>
+                    <li><strong>Licenciamento:</strong> Licenças de software são individuais, intransferíveis e inalteráveis.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-2 border-b border-blue-100 pb-1">2.7 SLA – Acordo de Nível de Serviço</h3>
+                <p className="mb-2 text-xs">Atendimento em dias úteis, das 08h às 18h. Plantão remoto aos sábados para ocorrências críticas.</p>
+                <table className="w-full text-xs border border-slate-200">
+                    <thead className="bg-slate-100 font-bold">
+                        <tr><td className="p-2 border">Nível</td><td className="p-2 border">Tipo</td><td className="p-2 border">Prazo Máximo</td></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td className="p-2 border">1</td><td className="p-2 border">Remoto</td><td className="p-2 border">Até 2 horas</td></tr>
+                        <tr><td className="p-2 border">2</td><td className="p-2 border">Presencial (Inoperante)</td><td className="p-2 border">Até 36 horas</td></tr>
+                        <tr><td className="p-2 border">3</td><td className="p-2 border">Presencial (Média)</td><td className="p-2 border">Até 72 horas</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section className="bg-slate-50 p-6 rounded-lg border border-slate-100 mt-4">
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">3. Quadro de Investimento</h3>
                 <div className="flex justify-between items-center mb-4">
                     <span className="text-slate-600 font-medium">Investimento Total</span>
                     <span className="text-2xl font-bold text-slate-900">{formatCurrency(data.price)}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-medium">Prazo Estimado</span>
-                    <span className="font-bold text-slate-700">{data.timeline}</span>
+                <div className="text-xs text-slate-500">
+                    * Valores referentes à aquisição/setup. Mensalidades ou locação (se aplicável) serão detalhadas em contrato específico.
                 </div>
             </section>
 
-            {/* Força uma quebra de página antes das cláusulas se houver muito conteúdo, ou deixa fluir */}
             <div className="html2pdf__page-break"></div>
 
             <section className="mt-8 pt-4">
-                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">Termos e Condições</h3>
-                <div className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed text-justify">
-                    {data.terms}
+                <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">Termos Jurídicos e Condições</h3>
+                <div className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed text-justify space-y-3">
+                    <p><strong>4. Responsabilidades:</strong> A CONTRATADA fornece equipamentos, instalação e suporte. A CONTRATANTE provê infraestrutura elétrica/lógica, conectividade e acesso.</p>
+                    <p><strong>5. Pagamento:</strong> Definido em contrato. Atrasos > 10 dias sujeitos a multa de 2%, juros de 1% a.m. e suspensão do suporte.</p>
+                    <p><strong>6. Reajuste:</strong> Anual pelo IGPM ou índice substituto.</p>
+                    <p><strong>7. Rescisão:</strong> Aviso prévio de 30 dias. Multa por quebra de fidelidade conforme contrato.</p>
+                    <p><strong>8. Propriedade Intelectual:</strong> Softwares e metodologias são exclusivos da CONTRATADA. Vedada engenharia reversa.</p>
+                    <p><strong>9. LGPD:</strong> A CONTRATADA atua em conformidade com a legislação de proteção de dados.</p>
+                    <p><strong>11. Renovação:</strong> Automática por iguais períodos, salvo manifestação contrária (30 dias).</p>
+                    
+                    {data.terms && (
+                        <div className="mt-4 pt-4 border-t border-slate-200">
+                            <p className="font-bold mb-1">Condições Específicas desta Proposta:</p>
+                            <p>{data.terms}</p>
+                        </div>
+                    )}
                 </div>
             </section>
         </div>
@@ -110,7 +169,6 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
         <div className="mt-12 pt-8 border-t border-slate-200">
             <div className="flex justify-between items-end">
                 <div className="text-center w-1/3">
-                    {/* Placeholder para assinatura da empresa */}
                     <div className="mb-2 h-12 flex items-end justify-center">
                         <span className="font-dancing text-xl text-slate-800">Soft Case</span>
                     </div>

@@ -33,7 +33,7 @@ export const Support: React.FC = () => {
         customer: '',
         subject: '',
         description: '',
-        priority: 'Média' as TicketPriority,
+        priority: TicketPriority.MEDIUM, // FIXED: Use Enum
         channel: 'Phone' as 'Email' | 'Chat' | 'Phone'
     });
 
