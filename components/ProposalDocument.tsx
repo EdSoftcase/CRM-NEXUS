@@ -148,7 +148,7 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                 <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">Termos Jurídicos e Condições</h3>
                 <div className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed text-justify space-y-3">
                     <p><strong>4. Responsabilidades:</strong> A CONTRATADA fornece equipamentos, instalação e suporte. A CONTRATANTE provê infraestrutura elétrica/lógica, conectividade e acesso.</p>
-                    <p><strong>5. Pagamento:</strong> Definido em contrato. Atrasos > 10 dias sujeitos a multa de 2%, juros de 1% a.m. e suspensão do suporte.</p>
+                    <p><strong>5. Pagamento:</strong> Definido em contrato. Atrasos &gt; 10 dias sujeitos a multa de 2%, juros de 1% a.m. e suspensão do suporte.</p>
                     <p><strong>6. Reajuste:</strong> Anual pelo IGPM ou índice substituto.</p>
                     <p><strong>7. Rescisão:</strong> Aviso prévio de 30 dias. Multa por quebra de fidelidade conforme contrato.</p>
                     <p><strong>8. Propriedade Intelectual:</strong> Softwares e metodologias são exclusivos da CONTRATADA. Vedada engenharia reversa.</p>

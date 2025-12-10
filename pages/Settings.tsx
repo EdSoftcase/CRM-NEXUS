@@ -216,6 +216,7 @@ export const Settings: React.FC = () => {
       if (!supabase) { setIsCheckingSync(false); return; }
       
       const tables = [
+          { name: 'profiles', local: usersList.length, label: 'Equipe (Perfis)' },
           { name: 'leads', local: leads.length, label: 'Leads (Comercial)' },
           { name: 'clients', local: clients.length, label: 'Clientes' },
           { name: 'tickets', local: tickets.length, label: 'Chamados' },
@@ -1024,7 +1025,7 @@ export const Settings: React.FC = () => {
                 </div>
             )}
 
-            {/* TAB: DATABASE / AUDIT (KEPT FROM PREV, JUST ENSURING RENDER) */}
+            {/* TAB: DATABASE / AUDIT */}
             {activeTab === 'integrations' && (
                 <div>
                     <SectionTitle title="Conexão com Banco de Dados" subtitle="Configure a conexão com seu projeto Supabase." />
