@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection } from '../services/supabaseClient';
@@ -50,6 +49,17 @@ export const Login: React.FC = () => {
       }
   }, []);
 
+  // CORREÇÃO: Loading intermediário para evitar "piscada" do form
+  // Se temos usuário mas não organização, ainda estamos buscando dados
+  if (currentUser && !currentOrganization) {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+              <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-4" />
+              <p className="text-slate-400 text-sm">Carregando dados da organização...</p>
+          </div>
+      );
+  }
+
   // Check for Pending Status (Organization Pending)
   if (currentUser && currentOrganization?.status === 'pending') {
       return (
@@ -60,7 +70,7 @@ export const Login: React.FC = () => {
                   </div>
                   <h2 className="text-2xl font-bold text-slate-900 mb-2">Empresa em Análise</h2>
                   <p className="text-slate-500 mb-6">
-                      Sua organização <strong>{currentOrganization.name}</strong> foi criada e aguarda aprovação de um administrador do sistema Nexus.
+                      Sua organização <strong>{currentOrganization.name}</strong> foi criada e aguarda aprovação de um administrador do sistema.
                   </p>
                   <p className="text-sm text-slate-400 mb-6 bg-slate-50 p-3 rounded">
                       ID: <span className="font-mono text-slate-600">{currentOrganization.id}</span>
@@ -246,9 +256,9 @@ export const Login: React.FC = () => {
           <div className="hidden md:flex w-1/2 bg-blue-600 p-12 flex-col justify-between text-white relative overflow-hidden">
               <div className="relative z-10">
                   <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center mb-6 shadow-lg">
-                      <span className="text-blue-600 font-bold text-2xl">N</span>
+                      <span className="text-blue-600 font-bold text-2xl">S</span>
                   </div>
-                  <h1 className="text-3xl font-bold mb-2">Nexus CRM</h1>
+                  <h1 className="text-3xl font-bold mb-2">SOFT-CRM</h1>
                   <p className="text-blue-100">Gestão corporativa inteligente e integrada.</p>
               </div>
               <div className="relative z-10 space-y-4">
@@ -458,7 +468,7 @@ export const Login: React.FC = () => {
       </div>
       
       <div className="mt-6 text-center">
-        <p className="text-slate-600 text-xs opacity-30 font-mono">Nexus CRM Enterprise • v3.1.0</p>
+        <p className="text-slate-600 text-xs opacity-30 font-mono">SOFT-CRM Enterprise • v3.1.0</p>
       </div>
 
       {showPrivacyPolicy && <PrivacyPolicy onClose={() => setShowPrivacyPolicy(false)} />}

@@ -64,7 +64,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     // Log de versão para confirmar deploy em produção
-    console.log("Nexus CRM - Versão: Central de Contatos Ativa v1.5 (Full Fix)");
+    console.log("SOFT-CRM Enterprise - Versão: Central de Contatos Ativa v1.7");
     
     // Force Splash Screen to fade out
     const fadeTimer = setTimeout(() => setIsFadingOut(true), 2500);
@@ -117,8 +117,15 @@ const AppContent: React.FC = () => {
       return null; 
   }
 
-  // --- UNAUTHENTICATED STATE ---
-  if (!currentUser) {
+  // --- UNAUTHENTICATED OR PENDING STATE ---
+  // CORREÇÃO: Mantém o usuário na tela de Login (que gerencia estados de pendência)
+  // se ele não estiver logado OU se a organização estiver pendente OU se o usuário estiver inativo.
+  const isPendingAccess = currentUser && (
+      (currentOrganization && currentOrganization.status === 'pending') || 
+      currentUser.active === false
+  );
+
+  if (!currentUser || isPendingAccess) {
       return (
         <>
           {showSplash && <SplashScreen isFadingOut={isFadingOut} />}
@@ -198,7 +205,7 @@ const AppContent: React.FC = () => {
         {/* Mobile Header */}
         <div className="md:hidden bg-slate-900 text-white p-4 flex items-center justify-between shrink-0 z-10 shadow-md">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-slate-800 rounded"><Menu size={24} /></button>
-            <span className="font-bold text-lg">Nexus CRM</span>
+            <span className="font-bold text-lg">SOFT-CRM Enterprise</span>
             
             {/* User Avatar - Mobile Right */}
             <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold overflow-hidden border border-slate-600 shadow-sm">

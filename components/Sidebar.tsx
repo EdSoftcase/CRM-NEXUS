@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { LayoutDashboard, Users, LifeBuoy, Code, DollarSign, PieChart, Settings, LogOut, Briefcase, X, HeartPulse, FileText, ShieldAlert, RefreshCw, Calendar as CalendarIcon, Megaphone, Workflow, Map, Trello, Moon, Sun, Target, Sword, Wrench, MessageSquare, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -73,9 +72,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
         <div className="h-16 px-6 flex items-center justify-between shrink-0 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20 text-white">
-              <span className="font-black text-lg">N</span>
+              <span className="font-black text-lg">S</span>
             </div>
-            <span className="text-lg font-bold text-white tracking-tight">Nexus CRM</span>
+            <span className="text-lg font-bold text-white tracking-tight">SOFT-CRM</span>
           </div>
           <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition">
             <X size={20} />

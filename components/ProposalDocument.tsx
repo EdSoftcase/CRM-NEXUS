@@ -12,9 +12,18 @@ const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
-export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) => (
+export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) => {
+    
+    // Fallback constants if consultant info is missing on old records
+    const companyInfo = {
+        name: data.consultantName || 'Soft Case Tecnologia',
+        email: data.consultantEmail || 'contato@softcase.com.br',
+        phone: data.consultantPhone || '(11) 99999-0000'
+    };
+
+    return (
     <div id={id} className="bg-white w-[210mm] min-h-[297mm] p-[20mm] shadow-2xl text-slate-800 flex flex-col relative printable-area mx-auto">
-        {/* Paper Header - SOFT CASE BRANDING */}
+        {/* Paper Header - BRANDING & CONSULTANT INFO */}
         <div className="flex justify-between items-center mb-12 border-b-2 border-slate-100 pb-6">
             {/* LOGO RECREATION */}
             <div className="flex items-center gap-3">
@@ -33,13 +42,13 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                 </div>
             </div>
 
-            {/* Company Info */}
+            {/* Consultant Info (Dynamic) */}
             <div className="text-right">
                 <h1 className="text-xl font-bold text-slate-900 tracking-tight uppercase mb-1">Proposta Comercial</h1>
                 <div className="text-xs text-slate-500 space-y-0.5">
-                    <p className="font-bold text-slate-700">Soft Case Tecnologia</p>
-                    <p>contato@softcase.com.br</p>
-                    <p>(11) 99999-0000</p>
+                    <p className="font-bold text-slate-700">{companyInfo.name}</p>
+                    <p>{companyInfo.email}</p>
+                    <p>{companyInfo.phone}</p>
                 </div>
             </div>
         </div>
@@ -131,14 +140,39 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                 </table>
             </section>
 
+            {/* QUADRO DE INVESTIMENTO - UPDATED */}
             <section className="bg-slate-50 p-6 rounded-lg border border-slate-100 mt-4">
                 <h3 className="text-sm font-bold text-[#0ea5e9] uppercase tracking-wider mb-4 border-b border-blue-100 pb-1">3. Quadro de Investimento</h3>
-                <div className="flex justify-between items-center mb-4">
-                    <span className="text-slate-600 font-medium">Investimento Total</span>
-                    <span className="text-2xl font-bold text-slate-900">{formatCurrency(data.price)}</span>
-                </div>
-                <div className="text-xs text-slate-500">
-                    * Valores referentes à aquisição/setup. Mensalidades ou locação (se aplicável) serão detalhadas em contrato específico.
+                
+                <table className="w-full mb-4">
+                    <tbody>
+                        {/* Setup Row */}
+                        <tr className="border-b border-slate-200">
+                            <td className="py-2 text-slate-600 font-medium w-2/3">Investimento Único (Instalação / Setup / Equipamentos)</td>
+                            <td className="py-2 text-right font-bold text-slate-800">
+                                {data.setupCost ? formatCurrency(data.setupCost) : 'R$ 0,00'}
+                            </td>
+                        </tr>
+                        {/* Monthly Row */}
+                        <tr>
+                            <td className="py-2 text-slate-600 font-medium">Investimento Recorrente Mensal (Locação / Suporte / Licenças)</td>
+                            <td className="py-2 text-right font-bold text-slate-800">
+                                {data.monthlyCost ? formatCurrency(data.monthlyCost) : 'R$ 0,00'}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {/* Legacy or Total Display */}
+                {(!data.setupCost && !data.monthlyCost && data.price > 0) && (
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-300">
+                        <span className="text-slate-600 font-bold">Investimento Total Estimado</span>
+                        <span className="text-xl font-bold text-slate-900">{formatCurrency(data.price)}</span>
+                    </div>
+                )}
+
+                <div className="text-xs text-slate-500 mt-4">
+                    * Os valores acima podem sofrer reajuste anual conforme índice IGPM ou IPCA.
                 </div>
             </section>
 
@@ -196,4 +230,4 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
             )}
         </div>
     </div>
-);
+)};

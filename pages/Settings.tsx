@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -433,6 +432,12 @@ export const Settings: React.FC = () => {
       setNewFieldForm({ label: '', type: 'text', module: 'leads', required: false });
       setFieldOptionsInput('');
   };
+  
+  const handleDeleteField = (id: string) => {
+      if(confirm("Excluir campo personalizado? Dados existentes podem ser perdidos.")) {
+          deleteCustomField(id);
+      }
+  };
 
   // --- WEBHOOKS ACTIONS ---
   const handleSaveWebhook = (e: React.FormEvent) => {
@@ -452,6 +457,12 @@ export const Settings: React.FC = () => {
       addWebhook(webhookData);
       setNewWebhookForm({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
   };
+  
+  const handleDeleteWebhook = (id: string) => {
+      if(confirm("Excluir webhook?")) {
+          deleteWebhook(id);
+      }
+  };
 
   // --- PORTAL CONFIG SAVE ---
   const handleSavePortal = () => {
@@ -459,6 +470,7 @@ export const Settings: React.FC = () => {
       alert('Configurações do portal salvas!');
   };
 
+  // --- RENDER ---
   return (
     <div className="p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
       <div className="flex justify-between items-center mb-8">
@@ -521,11 +533,11 @@ export const Settings: React.FC = () => {
 
         {/* Content Area */}
         <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar">
-            
             {activeTab === 'profile' && (
                 <div className="max-w-2xl">
                     <SectionTitle title="Meu Perfil" subtitle="Gerencie suas informações pessoais." />
                     <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
+                        {/* Profile content */}
                         <div className="flex items-center gap-6 mb-6">
                             <div className="relative group cursor-pointer">
                                 <div className="w-20 h-20 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-500 dark:text-slate-300 overflow-hidden border-2 border-slate-300 dark:border-slate-600 group-hover:border-blue-500 transition">
@@ -634,7 +646,7 @@ export const Settings: React.FC = () => {
                     </div>
                 </div>
             )}
-
+            
             {activeTab === 'team' && (
                 <div>
                     <div className="flex justify-between items-center mb-6">
@@ -676,36 +688,65 @@ export const Settings: React.FC = () => {
                     </div>
                 </div>
             )}
-
-            {/* TAB: PERMISSIONS */}
-            {activeTab === 'permissions' && (
+            
+            {/* --- RESTORED PERMISSIONS TAB --- */}
+            {activeTab === 'permissions' && hasPermission('settings', 'view') && (
                 <div>
-                    <SectionTitle title="Matriz de Permissões" subtitle="Controle o que cada cargo pode fazer." />
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 uppercase font-bold text-xs">
+                    <SectionTitle title="Matriz de Permissões (RBAC)" subtitle="Defina o que cada cargo pode acessar no sistema." />
+                    
+                    <div className="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
                                 <tr>
-                                    <th className="p-4 bg-slate-50 dark:bg-slate-900 sticky left-0 z-10">Módulo</th>
-                                    {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => (
-                                        <th key={role} className="p-4 text-center min-w-[100px]">{ROLE_NAMES[role].split(' ')[0]}</th>
+                                    <th className="p-4 min-w-[200px]">Módulo</th>
+                                    {Object.keys(permissionMatrix).filter(r => r !== 'admin' && r !== 'client').map(role => (
+                                        <th key={role} className="p-4 text-center min-w-[120px]">{ROLE_NAMES[role] || role}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {Object.keys(permissionMatrix.admin || {}).map(module => (
-                                    <tr key={module} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                                        <td className="p-4 font-bold text-slate-800 dark:text-white capitalize bg-white dark:bg-slate-800 sticky left-0 z-10 border-r border-slate-100 dark:border-slate-700 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
+                                {Object.keys(permissionMatrix['sales']).map(module => (
+                                    <tr key={module} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                        <td className="p-4 font-bold text-slate-700 dark:text-slate-300 capitalize">
                                             {module.replace('-', ' ')}
                                         </td>
-                                        {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => {
-                                            const perms = permissionMatrix[role as Role]?.[module] || { view: false, create: false, edit: false, delete: false };
+                                        {Object.keys(permissionMatrix).filter(r => r !== 'admin' && r !== 'client').map(role => {
+                                            const perms = permissionMatrix[role][module] || { view: false, create: false, edit: false, delete: false };
                                             return (
-                                                <td key={role} className="p-4">
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={perms.view} onChange={(e) => updatePermission(role as Role, module, 'view', e.target.checked)} disabled={role === 'admin'} className="accent-blue-600"/> Ver</label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={perms.create} onChange={(e) => updatePermission(role as Role, module, 'create', e.target.checked)} disabled={role === 'admin'} className="accent-green-600"/> Criar</label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={perms.edit} onChange={(e) => updatePermission(role as Role, module, 'edit', e.target.checked)} disabled={role === 'admin'} className="accent-orange-500"/> Editar</label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={perms.delete} onChange={(e) => updatePermission(role as Role, module, 'delete', e.target.checked)} disabled={role === 'admin'} className="accent-red-600"/> Excluir</label>
+                                                <td key={`${role}-${module}`} className="p-4">
+                                                    <div className="flex flex-col gap-2">
+                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={perms.view} 
+                                                                onChange={(e) => updatePermission(role as Role, module, 'view', e.target.checked)}
+                                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                            /> Visualizar
+                                                        </label>
+                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={perms.create} 
+                                                                onChange={(e) => updatePermission(role as Role, module, 'create', e.target.checked)}
+                                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                            /> Criar
+                                                        </label>
+                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={perms.edit} 
+                                                                onChange={(e) => updatePermission(role as Role, module, 'edit', e.target.checked)}
+                                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                            /> Editar
+                                                        </label>
+                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={perms.delete} 
+                                                                onChange={(e) => updatePermission(role as Role, module, 'delete', e.target.checked)}
+                                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                            /> Excluir
+                                                        </label>
                                                     </div>
                                                 </td>
                                             );
@@ -718,314 +759,55 @@ export const Settings: React.FC = () => {
                 </div>
             )}
 
-            {/* TAB: PRODUCTS */}
-            {activeTab === 'products' && (
+            {/* --- RESTORED SAAS ADMIN TAB --- */}
+            {activeTab === 'saas_admin' && isSuperAdmin && (
                 <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionTitle title="Catálogo de Produtos" subtitle="Gerencie seus serviços e planos." />
-                        <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
-                            <Plus size={18}/> Novo Produto
-                        </button>
-                    </div>
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
-                                <tr>
-                                    <th className="p-4">Produto</th>
-                                    <th className="p-4">Categoria</th>
-                                    <th className="p-4">Preço</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4 text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {products.map(prod => (
-                                    <tr key={prod.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                                        <td className="p-4">
-                                            <div className="font-bold text-slate-900 dark:text-white">{prod.name}</div>
-                                            <div className="text-xs text-slate-500 dark:text-slate-400">{prod.description}</div>
-                                        </td>
-                                        <td className="p-4"><Badge>{prod.category}</Badge></td>
-                                        <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">R$ {prod.price.toLocaleString()}</td>
-                                        <td className="p-4"><Badge color={prod.active ? 'green' : 'red'}>{prod.active ? 'Ativo' : 'Inativo'}</Badge></td>
-                                        <td className="p-4 text-center flex justify-center gap-2">
-                                            <button onClick={() => handleEditProduct(prod)} className="p-2 text-slate-400 hover:text-blue-600 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30"><Edit2 size={16}/></button>
-                                            <button onClick={() => handleDeleteProduct(prod)} className="p-2 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/30"><Trash2 size={16}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB: CUSTOM FIELDS */}
-            {activeTab === 'custom_fields' && (
-                <div>
-                    <SectionTitle title="Campos Personalizados" subtitle="Adicione campos extras aos formulários de Lead e Cliente." />
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
-                        <form onSubmit={handleSaveField} className="flex gap-4 items-end flex-wrap">
-                            <div className="flex-1 min-w-[200px]">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Rótulo (Label)</label>
-                                <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" placeholder="Ex: Data de Aniversário" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value})}/>
-                            </div>
-                            <div className="w-32">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Tipo</label>
-                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
-                                    <option value="text">Texto</option>
-                                    <option value="number">Número</option>
-                                    <option value="date">Data</option>
-                                    <option value="boolean">Sim/Não</option>
-                                    <option value="select">Lista (Select)</option>
-                                </select>
-                            </div>
-                            <div className="w-32">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Módulo</label>
-                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
-                                    <option value="leads">Leads</option>
-                                    <option value="clients">Clientes</option>
-                                </select>
-                            </div>
-                            {newFieldForm.type === 'select' && (
-                                <div className="flex-1 min-w-[200px]">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Opções (sep. vírgula)</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" placeholder="Opção A, Opção B" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)}/>
-                                </div>
-                            )}
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition shadow-sm"><Plus size={18}/></button>
-                        </form>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                            <h4 className="font-bold text-slate-700 dark:text-white mb-4 border-b pb-2 dark:border-slate-700">Campos de Lead</h4>
-                            <div className="space-y-2">
-                                {customFields.filter(f => f.module === 'leads').map(field => (
-                                    <div key={field.id} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-700">
-                                        <div>
-                                            <p className="font-bold text-sm text-slate-800 dark:text-white">{field.label}</p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{field.type}</p>
-                                        </div>
-                                        <button onClick={() => deleteCustomField(field.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                                {customFields.filter(f => f.module === 'leads').length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum campo personalizado.</p>}
-                            </div>
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                            <h4 className="font-bold text-slate-700 dark:text-white mb-4 border-b pb-2 dark:border-slate-700">Campos de Cliente</h4>
-                            <div className="space-y-2">
-                                {customFields.filter(f => f.module === 'clients').map(field => (
-                                    <div key={field.id} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-700">
-                                        <div>
-                                            <p className="font-bold text-sm text-slate-800 dark:text-white">{field.label}</p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{field.type}</p>
-                                        </div>
-                                        <button onClick={() => deleteCustomField(field.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                                {customFields.filter(f => f.module === 'clients').length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum campo personalizado.</p>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB: PORTAL CONFIG */}
-            {activeTab === 'portal_config' && (
-                <div>
-                    <SectionTitle title="Configuração do Portal" subtitle="Personalize a experiência dos seus clientes." />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 space-y-6">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Nome do Portal</label>
-                                <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={portalForm.portalName} onChange={e => setPortalForm({...portalForm, portalName: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Cor Primária</label>
-                                <div className="flex gap-2">
-                                    <input type="color" className="h-10 w-10 p-0 border-0 rounded cursor-pointer" value={portalForm.primaryColor} onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})} />
-                                    <input type="text" className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg p-2 uppercase font-mono text-sm bg-white dark:bg-slate-900 dark:text-white" value={portalForm.primaryColor} onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Mensagem de Boas-Vindas</label>
-                                <textarea className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 h-24 bg-white dark:bg-slate-900 text-slate-900 dark:text-white resize-none outline-none focus:ring-2 focus:ring-blue-500" value={portalForm.welcomeMessage || ''} onChange={e => setPortalForm({...portalForm, welcomeMessage: e.target.value})} />
-                            </div>
-                            <div className="space-y-2 pt-2">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" checked={portalForm.allowInvoiceDownload} onChange={e => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})} className="accent-blue-600 w-4 h-4"/>
-                                    <span className="text-sm text-slate-700 dark:text-slate-300">Permitir download de faturas</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" checked={portalForm.allowTicketCreation} onChange={e => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})} className="accent-blue-600 w-4 h-4"/>
-                                    <span className="text-sm text-slate-700 dark:text-slate-300">Permitir abertura de chamados</span>
-                                </label>
-                            </div>
-                            <button onClick={handleSavePortal} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md">Salvar Configurações</button>
-                        </div>
-
-                        {/* Preview Area */}
-                        <div className="bg-slate-100 dark:bg-slate-900 p-8 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-center items-center">
-                            <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl overflow-hidden transform scale-90 sm:scale-100 transition-transform">
-                                {/* Fake Portal Header */}
-                                <div className="h-16 px-4 flex items-center justify-between" style={{ borderTop: `4px solid ${portalForm.primaryColor}` }}>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold" style={{ backgroundColor: portalForm.primaryColor }}>N</div>
-                                        <span className="font-bold text-slate-800 text-sm">{portalForm.portalName}</span>
-                                    </div>
-                                    <div className="w-8 h-8 bg-slate-100 rounded-full"></div>
-                                </div>
-                                {/* Fake Portal Body */}
-                                <div className="p-6 bg-slate-50 min-h-[300px]">
-                                    <div className="p-6 rounded-xl text-white mb-4" style={{ background: `linear-gradient(to right, ${portalForm.primaryColor}, #1e293b)` }}>
-                                        <h3 className="font-bold text-lg mb-1">Olá, Cliente!</h3>
-                                        <p className="text-xs opacity-90 line-clamp-2">{portalForm.welcomeMessage || 'Bem-vindo ao seu portal.'}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-white p-3 rounded-lg shadow-sm h-24"></div>
-                                        <div className="bg-white p-3 rounded-lg shadow-sm h-24"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB: BRIDGE (INTEGRATIONS) */}
-            {activeTab === 'bridge' && (
-                <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionTitle title="Nexus Bridge" subtitle="Conecte WhatsApp e E-mail via servidor local." />
-                        <button onClick={handleManualBridgeCheck} disabled={loadingBridge} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-2">
-                            <RefreshCw size={16} className={loadingBridge ? "animate-spin" : ""}/> Verificar Status
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* WhatsApp Card */}
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-full text-green-600 dark:text-green-400"><MessageCircle size={24}/></div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">WhatsApp Server</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Envio de mensagens automáticas.</p>
-                                </div>
-                                <div className={`ml-auto px-3 py-1 rounded-full text-xs font-bold border ${bridgeStatus.whatsapp === 'READY' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                                    {bridgeStatus.whatsapp === 'READY' ? 'CONECTADO' : bridgeStatus.whatsapp === 'QR_READY' ? 'AGUARDANDO LEITURA' : 'DESCONECTADO'}
-                                </div>
-                            </div>
-
-                            <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 min-h-[300px]">
-                                {bridgeStatus.whatsapp === 'READY' ? (
-                                    <div className="text-center">
-                                        <CheckCircle size={64} className="text-green-500 mx-auto mb-4"/>
-                                        <p className="text-green-600 font-bold">WhatsApp Sincronizado!</p>
-                                        <p className="text-xs text-slate-500 mt-2">O Nexus Bridge está pronto para enviar mensagens.</p>
-                                    </div>
-                                ) : bridgeQr ? (
-                                    <div className="text-center">
-                                        <img src={bridgeQr} alt="QR Code WhatsApp" className="w-48 h-48 mx-auto mb-4 border-4 border-white rounded-lg shadow-sm"/>
-                                        <p className="text-sm font-medium text-slate-700 dark:text-white">Escaneie com o WhatsApp</p>
-                                    </div>
-                                ) : (
-                                    <div className="text-center text-slate-400">
-                                        <WifiOff size={48} className="mx-auto mb-2 opacity-50"/>
-                                        <p>Servidor Bridge não detectado.</p>
-                                        <p className="text-xs mt-2">Certifique-se que o backend local (porta 3001) está rodando.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* SMTP Card */}
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full text-blue-600 dark:text-blue-400"><Mail size={24}/></div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">SMTP Relay</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Servidor de e-mail próprio.</p>
-                                </div>
-                                <div className={`ml-auto px-3 py-1 rounded-full text-xs font-bold border ${bridgeStatus.smtp === 'CONFIGURED' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-yellow-50 text-yellow-600 border-yellow-200'}`}>
-                                    {bridgeStatus.smtp === 'CONFIGURED' ? 'CONFIGURADO' : 'PENDENTE'}
-                                </div>
-                            </div>
-
-                            <form onSubmit={handleSaveSmtp} className="space-y-4 flex-1">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Host SMTP</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Porta</label>
-                                    <input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: Number(e.target.value)})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Usuário / Email</label>
-                                    <input type="email" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Senha de App</label>
-                                    <input type="password" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})}/>
-                                </div>
-                                <button type="submit" disabled={loadingBridge} className="w-full bg-slate-900 dark:bg-slate-700 text-white font-bold py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600 transition mt-auto">Salvar Configuração SMTP</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB: WEBHOOKS */}
-            {activeTab === 'webhooks' && (
-                <div>
-                    <SectionTitle title="Webhooks" subtitle="Integre o Nexus com sistemas externos via HTTP." />
+                    <SectionTitle title="Administração SaaS (Multi-tenant)" subtitle="Gerencie as organizações cadastradas na plataforma." />
                     
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
-                        <form onSubmit={handleSaveWebhook} className="flex gap-4 items-end flex-wrap">
-                            <div className="flex-1 min-w-[200px]">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
-                                <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" placeholder="Ex: Zapier Lead" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})}/>
-                            </div>
-                            <div className="flex-[2] min-w-[300px]">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">URL de Destino</label>
-                                <input type="url" required className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" placeholder="https://api.seusistema.com/hook" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})}/>
-                            </div>
-                            <div className="w-40">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Gatilho</label>
-                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-900 text-sm dark:text-white" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as any})}>
-                                    <option value="lead_created">Lead Criado</option>
-                                    <option value="deal_won">Venda Ganha</option>
-                                    <option value="ticket_created">Ticket Criado</option>
-                                </select>
-                            </div>
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition shadow-sm"><Plus size={18}/></button>
-                        </form>
-                    </div>
-
-                    <div className="space-y-3">
-                        {webhooks.length === 0 ? <div className="text-center py-10 text-slate-400 dark:text-slate-500">Nenhum webhook configurado.</div> : webhooks.map(wh => (
-                            <div key={wh.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm">
-                                <div>
-                                    <div className="flex items-center gap-3">
-                                        <h4 className="font-bold text-slate-800 dark:text-white">{wh.name}</h4>
-                                        <Badge color={wh.active ? 'green' : 'gray'}>{wh.active ? 'Ativo' : 'Inativo'}</Badge>
-                                    </div>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">{wh.method} • {wh.url}</p>
-                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-bold">Gatilho: {wh.triggerEvent}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => updateWebhook({...wh, active: !wh.active})} className="p-2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition"><Power size={18}/></button>
-                                    <button onClick={() => deleteWebhook(wh.id)} className="p-2 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition"><Trash2 size={18}/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    {loadingSaas ? (
+                        <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-blue-500" size={32}/><p className="mt-2 text-sm text-slate-500">Carregando organizações...</p></div>
+                    ) : (
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
+                                    <tr>
+                                        <th className="p-4">Organização</th>
+                                        <th className="p-4">Slug (ID)</th>
+                                        <th className="p-4">Plano</th>
+                                        <th className="p-4">Status</th>
+                                        <th className="p-4 text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {saasOrgs.map(org => (
+                                        <tr key={org.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="p-4 font-bold text-slate-900 dark:text-white">{org.name}</td>
+                                            <td className="p-4 font-mono text-xs text-slate-500">{org.slug}</td>
+                                            <td className="p-4"><Badge color="purple">{org.plan}</Badge></td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                    {org.status === 'active' ? 'Ativo' : 'Pendente'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                {org.status === 'pending' && (
+                                                    <button 
+                                                        onClick={() => handleApproveOrg(org.id)}
+                                                        className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 mx-auto"
+                                                    >
+                                                        <CheckCircle size={12}/> Aprovar
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
-
-            {/* TAB: DATABASE / AUDIT */}
+            
             {activeTab === 'integrations' && (
                 <div>
                     <SectionTitle title="Conexão com Banco de Dados" subtitle="Configure a conexão com seu projeto Supabase." />
@@ -1073,152 +855,239 @@ export const Settings: React.FC = () => {
                 </div>
             )}
 
-            {activeTab === 'audit' && (
+            {activeTab === 'products' && (
+                 <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <SectionTitle title="Catálogo de Produtos" subtitle="Gerencie seus produtos e serviços." />
+                        <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
+                            <Plus size={18}/> Novo Produto
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {products.map(product => (
+                            <div key={product.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition group">
+                                <div className="flex justify-between items-start mb-2">
+                                    <h4 className="font-bold text-slate-900 dark:text-white">{product.name}</h4>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${product.category === 'Service' ? 'bg-blue-100 text-blue-700' : product.category === 'Subscription' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>{product.category}</span>
+                                </div>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">{product.description}</p>
+                                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+                                    <span className="font-bold text-slate-800 dark:text-white">R$ {product.price.toLocaleString()}</span>
+                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                        <button onClick={() => handleEditProduct(product)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"><Edit2 size={16}/></button>
+                                        <button onClick={() => handleDeleteProduct(product)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-red-500"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                 </div>
+            )}
+            
+            {activeTab === 'custom_fields' && (
                 <div>
-                    <SectionTitle title="Logs de Auditoria" subtitle="Rastreamento completo de atividades." />
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700"><tr><th className="p-3">Data/Hora</th><th className="p-3">Usuário</th><th className="p-3">Ação</th><th className="p-3">Módulo</th><th className="p-3">Detalhes</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {logs?.map(log => (
-                                    <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="p-3 text-slate-500 font-mono">{new Date(log.timestamp).toLocaleString()}</td>
-                                        <td className="p-3 font-bold text-slate-700 dark:text-slate-300">{log.userName}</td>
-                                        <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 border text-slate-600 dark:text-slate-300 font-bold">{log.action}</span></td>
-                                        <td className="p-3 text-slate-500">{log.module}</td>
-                                        <td className="p-3 text-slate-600 dark:text-slate-400 truncate max-w-xs" title={log.details}>{log.details}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODALS SECTION --- */}
-
-            {/* TEAM MODAL (NEW) */}
-            {isTeamModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Adicionar Membro</h2>
-                            <button onClick={() => setIsTeamModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={20}/></button>
-                        </div>
-                        <form onSubmit={handleAddMember} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label><input required type="text" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})}/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label><input required type="email" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})}/></div>
+                    <SectionTitle title="Campos Personalizados" subtitle="Adicione campos extras aos formulários de Leads e Clientes." />
+                    
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Adicionar Novo Campo</h3>
+                        <form onSubmit={handleSaveField} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
-                                <select className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as any})}>
-                                    {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Rótulo (Label)</label>
+                                <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value})} placeholder="Ex: Data de Nascimento"/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Módulo</label>
+                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
+                                    <option value="leads">Leads</option>
+                                    <option value="clients">Clientes</option>
                                 </select>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Adicionar</button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* EDIT MEMBER MODAL */}
-            {isEditMemberModalOpen && memberToEdit && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Editar Membro</h2>
-                            <button onClick={() => setIsEditMemberModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={20}/></button>
-                        </div>
-                        <form onSubmit={handleUpdateMember} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label><input required type="text" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={editMemberForm.name} onChange={e => setEditMemberForm({...editMemberForm, name: e.target.value})}/></div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
-                                <select className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={editMemberForm.role} onChange={e => setEditMemberForm({...editMemberForm, role: e.target.value as any})}>
-                                    {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Tipo</label>
+                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
+                                    <option value="text">Texto</option>
+                                    <option value="number">Número</option>
+                                    <option value="date">Data</option>
+                                    <option value="boolean">Sim/Não</option>
+                                    <option value="select">Seleção (Lista)</option>
                                 </select>
                             </div>
-                            <div className="flex items-center gap-2 mt-2">
-                                <input type="checkbox" checked={editMemberForm.active} onChange={e => setEditMemberForm({...editMemberForm, active: e.target.checked})} className="w-4 h-4 accent-blue-600"/>
-                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usuário Ativo</span>
+                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition">Adicionar</button>
+                        </form>
+                        {newFieldForm.type === 'select' && (
+                             <div className="mt-4">
+                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Opções (separadas por vírgula)</label>
+                                 <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)} placeholder="Opção 1, Opção 2, Opção 3"/>
+                             </div>
+                        )}
+                    </div>
+
+                    <div className="space-y-2">
+                        {customFields.map(field => (
+                            <div key={field.id} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                <div>
+                                    <span className="font-bold text-slate-800 dark:text-white text-sm">{field.label}</span>
+                                    <span className="text-xs text-slate-500 ml-2">({field.module} - {field.type})</span>
+                                </div>
+                                <button onClick={() => deleteCustomField(field.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded"><Trash2 size={16}/></button>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Salvar Alterações</button>
+                        ))}
+                        {customFields.length === 0 && <p className="text-slate-400 text-sm italic">Nenhum campo personalizado criado.</p>}
+                    </div>
+                </div>
+            )}
+            
+            {activeTab === 'webhooks' && (
+                <div>
+                    <SectionTitle title="Webhooks (Integrações)" subtitle="Dispare eventos para sistemas externos (Zapier, n8n, etc)." />
+                    
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Novo Webhook</h3>
+                        <form onSubmit={handleSaveWebhook} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" required className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" placeholder="Nome (Ex: Integração Slack)" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})}/>
+                            <input type="url" required className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" placeholder="URL de Destino (https://...)" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})}/>
+                            <select className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as any})}>
+                                <option value="lead_created">Lead Criado</option>
+                                <option value="deal_won">Venda Ganha</option>
+                                <option value="deal_lost">Venda Perdida</option>
+                                <option value="ticket_created">Ticket Criado</option>
+                            </select>
+                            <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded font-bold hover:bg-purple-700 transition">Salvar Webhook</button>
                         </form>
                     </div>
+
+                    <div className="space-y-2">
+                        {webhooks.map(wh => (
+                            <div key={wh.id} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                <div>
+                                    <p className="font-bold text-slate-800 dark:text-white text-sm">{wh.name}</p>
+                                    <p className="text-xs text-slate-500">{wh.url} • {wh.triggerEvent}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${wh.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{wh.active ? 'Ativo' : 'Inativo'}</span>
+                                    <button onClick={() => deleteWebhook(wh.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1 rounded"><Trash2 size={14}/></button>
+                                </div>
+                            </div>
+                        ))}
+                         {webhooks.length === 0 && <p className="text-slate-400 text-sm italic">Nenhum webhook configurado.</p>}
+                    </div>
                 </div>
             )}
-
-            {/* INVITE MODAL */}
-            {isInviteModalOpen && inviteData && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in text-center p-6">
-                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32}/></div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Membro Adicionado!</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">O usuário foi adicionado à lista. Envie os dados de acesso abaixo para que ele possa entrar.</p>
-                        
-                        <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-lg text-left text-sm mb-6 border border-slate-200 dark:border-slate-700">
-                            <p className="mb-2"><span className="font-bold text-slate-700 dark:text-slate-300">Link:</span> {window.location.origin}</p>
-                            <p className="mb-2"><span className="font-bold text-slate-700 dark:text-slate-300">Identificador da Empresa:</span> <span className="font-mono bg-white dark:bg-slate-800 px-1 rounded border">{currentOrganization?.slug}</span></p>
-                            <p><span className="font-bold text-slate-700 dark:text-slate-300">Email:</span> {inviteData.email}</p>
+            
+            {activeTab === 'portal_config' && (
+                <div>
+                     <SectionTitle title="Personalização do Portal" subtitle="Ajuste a aparência e recursos do portal do cliente." />
+                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 space-y-6">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Portal</label>
+                            <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={portalForm.portalName} onChange={e => setPortalForm({...portalForm, portalName: e.target.value})}/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Cor Primária</label>
+                            <div className="flex items-center gap-3">
+                                <input type="color" className="h-10 w-10 border-0 rounded cursor-pointer" value={portalForm.primaryColor} onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})}/>
+                                <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{portalForm.primaryColor}</span>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                             <label className="flex items-center gap-2 cursor-pointer">
+                                 <input type="checkbox" checked={portalForm.allowInvoiceDownload} onChange={e => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
+                                 <span className="text-sm text-slate-700 dark:text-slate-300">Permitir Download de Faturas</span>
+                             </label>
+                             <label className="flex items-center gap-2 cursor-pointer">
+                                 <input type="checkbox" checked={portalForm.allowTicketCreation} onChange={e => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
+                                 <span className="text-sm text-slate-700 dark:text-slate-300">Permitir Abertura de Chamados</span>
+                             </label>
+                        </div>
+                        <button onClick={handleSavePortal} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition">Salvar Configurações</button>
+                     </div>
+                </div>
+            )}
+            
+            {activeTab === 'bridge' && (
+                <div>
+                    <SectionTitle title="Nexus Bridge (Integração Local)" subtitle="Conecte seu WhatsApp e SMTP localmente para envios ilimitados." />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                             <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4"><MessageCircle className="text-green-500"/> WhatsApp</h3>
+                             <div className="flex flex-col items-center justify-center min-h-[200px] bg-slate-50 dark:bg-slate-900 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700">
+                                 {loadingBridge ? <Loader2 className="animate-spin text-slate-400" size={32}/> : bridgeStatus.whatsapp === 'READY' ? (
+                                     <div className="text-center text-green-600">
+                                         <CheckCircle size={48} className="mx-auto mb-2"/>
+                                         <p className="font-bold">Conectado!</p>
+                                     </div>
+                                 ) : bridgeQr ? (
+                                     <div className="text-center">
+                                         <img src={bridgeQr} alt="QR Code" className="w-48 h-48 mx-auto"/>
+                                         <p className="text-xs text-slate-500 mt-2">Escaneie com seu WhatsApp</p>
+                                     </div>
+                                 ) : (
+                                     <div className="text-center text-slate-400">
+                                         <Smartphone size={48} className="mx-auto mb-2 opacity-50"/>
+                                         <p className="text-sm">Bridge desconectado.</p>
+                                         {bridgeError && <p className="text-xs text-red-500 mt-1">{bridgeError}</p>}
+                                     </div>
+                                 )}
+                             </div>
+                             <button onClick={handleManualBridgeCheck} className="w-full mt-4 bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition">Verificar Conexão</button>
                         </div>
 
-                        <div className="flex gap-3">
-                            <button onClick={() => setIsInviteModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Fechar</button>
-                            <button onClick={handleCopyInvite} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2"><Copy size={16}/> Copiar Convite</button>
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4"><Mail className="text-blue-500"/> Servidor SMTP</h3>
+                            <form onSubmit={handleSaveSmtp} className="space-y-3">
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Host</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})}/></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Porta</label><input type="number" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}/></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Usuário</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})}/></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Senha</label><input type="password" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})}/></div>
+                                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">Salvar SMTP</button>
+                            </form>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* DELETE MEMBER MODAL */}
-            {isDeleteMemberModalOpen && memberToDelete && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in p-6 text-center">
-                        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32}/></div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Remover Membro?</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">Tem certeza que deseja remover <strong>{memberToDelete.name}</strong> da equipe? Esta ação não pode ser desfeita.</p>
-                        <div className="flex gap-3">
-                            <button onClick={() => setIsDeleteMemberModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Cancelar</button>
-                            <button onClick={confirmDeleteMember} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">Remover</button>
-                        </div>
-                    </div>
-                </div>
+            
+            {activeTab === 'audit' && (
+                 <div>
+                     <SectionTitle title="Logs de Auditoria" subtitle="Rastreamento de atividades do sistema." />
+                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                         <div className="max-h-[500px] overflow-y-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium sticky top-0"><tr><th className="p-3">Data</th><th className="p-3">Usuário</th><th className="p-3">Ação</th><th className="p-3">Detalhes</th></tr></thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {logs?.map(log => (
+                                        <tr key={log.id}>
+                                            <td className="p-3 text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs">{new Date(log.timestamp).toLocaleString()}</td>
+                                            <td className="p-3 font-bold text-slate-700 dark:text-slate-300">{log.userName}</td>
+                                            <td className="p-3"><span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs font-bold text-slate-600 dark:text-slate-400">{log.action}</span></td>
+                                            <td className="p-3 text-slate-600 dark:text-slate-400 text-xs">{log.details}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                         </div>
+                     </div>
+                 </div>
             )}
 
-            {/* PRODUCT MODAL */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{editingProductId ? 'Editar Produto' : 'Novo Produto'}</h2>
-                            <button onClick={() => setIsProductModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={20}/></button>
-                        </div>
-                        <form onSubmit={handleSaveProduct} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label><input required type="text" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})}/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Preço</label><input required type="number" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})}/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Categoria</label><select className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}><option value="Service">Serviço</option><option value="Product">Produto Físico</option><option value="Subscription">Assinatura</option></select></div>
-                            <div className="flex items-center gap-2"><input type="checkbox" checked={newProduct.active} onChange={e => setNewProduct({...newProduct, active: e.target.checked})} className="w-4 h-4 accent-blue-600"/><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Produto Ativo</span></div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Salvar Produto</button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* SQL Modal */}
+            {/* SQL Modal (Updated with ALTER TABLE commands for safe migration) */}
             {showSqlModal && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm">
                     <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl border border-slate-700 flex flex-col max-h-[80vh]">
                         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                            <h3 className="text-white font-bold flex items-center gap-2"><Code size={18} className="text-emerald-400"/> Schema SQL</h3>
+                            <h3 className="text-white font-bold flex items-center gap-2"><Code size={18} className="text-emerald-400"/> Schema SQL (Full Update)</h3>
                             <button onClick={() => setShowSqlModal(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
                         </div>
                         <div className="p-4 flex-1 overflow-auto bg-black">
                             <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">
-{`-- Execute este script no SQL Editor do Supabase para criar as tabelas
+{`-- Execute este script no SQL Editor do Supabase para corrigir e atualizar a estrutura do banco.
+-- Ele cria tabelas se não existirem e adiciona colunas novas se estiverem faltando.
 
--- Habilita extensão UUID
+-- 1. Habilita extensão UUID
 create extension if not exists "uuid-ossp";
 
--- 1. ORGANIZATIONS (Multi-tenant Root)
-create table organizations (
+-- 2. Organizations
+create table if not exists organizations (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   slug text unique not null,
@@ -1226,18 +1095,18 @@ create table organizations (
   license_expires_at timestamp with time zone,
   subscription_status text default 'active',
   portal_settings jsonb default '{}',
-  status text default 'active', -- 'pending', 'active', 'suspended'
+  status text default 'active',
   created_at timestamp with time zone default now()
 );
 
--- 2. PROFILES (Users linked to Auth)
-create table profiles (
+-- 3. Profiles
+create table if not exists profiles (
   id uuid references auth.users on delete cascade primary key,
   full_name text,
   email text,
   role text default 'sales',
   organization_id uuid references organizations(id),
-  related_client_id text, -- Link to client table for portal access
+  related_client_id text,
   xp integer default 0,
   level integer default 1,
   active boolean default true,
@@ -1245,8 +1114,8 @@ create table profiles (
   created_at timestamp with time zone default now()
 );
 
--- 3. LEADS
-create table leads (
+-- 4. Leads (com ALTER TABLE para novos campos)
+create table if not exists leads (
   id text primary key,
   name text,
   company text,
@@ -1261,9 +1130,14 @@ create table leads (
   last_contact timestamp with time zone,
   metadata jsonb default '{}'
 );
+alter table leads add column if not exists address text;
+alter table leads add column if not exists cep text;
+alter table leads add column if not exists website text;
+alter table leads add column if not exists product_interest text;
+alter table leads add column if not exists parking_spots integer;
 
--- 4. CLIENTS
-create table clients (
+-- 5. Clients
+create table if not exists clients (
   id text primary key,
   name text not null,
   contact_person text,
@@ -1277,160 +1151,18 @@ create table clients (
   health_score integer,
   organization_id uuid references organizations(id),
   contracted_products text[],
-  address text,
-  cep text,
-  latitude numeric,
-  longitude numeric,
-  website text,
   since timestamp with time zone,
   last_contact timestamp with time zone,
   metadata jsonb default '{}'
 );
+alter table clients add column if not exists address text;
+alter table clients add column if not exists cep text;
+alter table clients add column if not exists latitude numeric;
+alter table clients add column if not exists longitude numeric;
+alter table clients add column if not exists website text;
 
--- 5. ACTIVITIES (Calendar/Tasks)
-create table activities (
-  id text primary key,
-  title text,
-  type text,
-  due_date timestamp with time zone,
-  completed boolean default false,
-  related_to text,
-  assignee uuid references profiles(id),
-  description text,
-  organization_id uuid references organizations(id),
-  metadata jsonb default '{}'
-);
-
--- 6. TICKETS (Support)
-create table tickets (
-  id text primary key,
-  subject text,
-  description text,
-  priority text,
-  status text,
-  customer text,
-  channel text,
-  organization_id uuid references organizations(id),
-  created_at timestamp with time zone default now(),
-  resolved_at timestamp with time zone,
-  responses jsonb default '[]'
-);
-
--- 7. INVOICES (Finance)
-create table invoices (
-  id text primary key,
-  customer text,
-  amount numeric,
-  due_date timestamp with time zone,
-  status text,
-  description text,
-  organization_id uuid references organizations(id),
-  created_at timestamp with time zone default now()
-);
-
--- 8. PROJECTS (Operations)
-create table projects (
-  id text primary key,
-  title text,
-  client_name text,
-  status text,
-  progress integer default 0,
-  start_date timestamp with time zone,
-  deadline timestamp with time zone,
-  manager text,
-  description text,
-  organization_id uuid references organizations(id),
-  tasks jsonb default '[]',
-  notes jsonb default '[]',
-  photos text[],
-  archived boolean default false,
-  completed_at timestamp with time zone
-);
-
--- 9. PRODUCTS
-create table products (
-  id text primary key,
-  name text,
-  description text,
-  price numeric,
-  sku text,
-  category text,
-  active boolean default true,
-  organization_id uuid references organizations(id)
-);
-
--- 10. COMPETITORS (Spy)
-create table competitors (
-  id text primary key,
-  name text,
-  website text,
-  sector text,
-  last_analysis timestamp with time zone,
-  swot jsonb,
-  battlecard jsonb,
-  organization_id uuid references organizations(id)
-);
-
--- 11. MARKET_TRENDS
-create table market_trends (
-  id text primary key,
-  title text,
-  description text,
-  impact text,
-  sentiment text,
-  date timestamp with time zone
-);
-
--- 12. AUDIT_LOGS
-create table audit_logs (
-  id text primary key,
-  timestamp timestamp with time zone default now(),
-  user_id uuid,
-  user_name text,
-  action text,
-  details text,
-  module text,
-  organization_id uuid references organizations(id)
-);
-
--- 13. CLIENT_DOCUMENTS
-create table client_documents (
-  id text primary key,
-  client_id text references clients(id) on delete cascade,
-  title text,
-  type text,
-  url text,
-  uploaded_by text,
-  upload_date timestamp with time zone,
-  size text
-);
-
--- 14. CUSTOM_FIELDS
-create table custom_fields (
-  id text primary key,
-  label text,
-  key text,
-  type text,
-  module text,
-  options text[],
-  required boolean,
-  organization_id uuid references organizations(id)
-);
-
--- 15. WEBHOOKS
-create table webhooks (
-  id text primary key,
-  name text,
-  url text,
-  trigger_event text,
-  method text,
-  active boolean,
-  headers jsonb,
-  organization_id uuid references organizations(id)
-);
-
--- 16. PROPOSALS
-create table proposals (
+-- 6. Proposals (CORREÇÃO CRÍTICA DE CAMPOS)
+create table if not exists proposals (
   id text primary key,
   title text,
   lead_id text,
@@ -1449,29 +1181,200 @@ create table proposals (
   signed_at timestamp with time zone,
   signed_by_ip text
 );
+-- Adiciona colunas que podem estar faltando
+alter table proposals add column if not exists setup_cost numeric;
+alter table proposals add column if not exists monthly_cost numeric;
+alter table proposals add column if not exists consultant_name text;
+alter table proposals add column if not exists consultant_email text;
+alter table proposals add column if not exists consultant_phone text;
 
--- 17. PROSPECTING_HISTORY
-create table prospecting_history (
+-- 7. Products
+create table if not exists products (
   id text primary key,
-  timestamp timestamp with time zone,
-  industry text,
-  location text,
-  keywords text,
-  results jsonb,
+  name text,
+  description text,
+  price numeric,
+  sku text,
+  category text,
+  active boolean default true,
   organization_id uuid references organizations(id)
 );
 
--- Enable RLS (Row Level Security) on all tables
+-- 8. Activities
+create table if not exists activities (
+  id text primary key,
+  title text,
+  type text,
+  due_date timestamp with time zone,
+  completed boolean default false,
+  related_to text,
+  assignee uuid references profiles(id),
+  description text,
+  organization_id uuid references organizations(id),
+  metadata jsonb default '{}'
+);
+
+-- 9. Outras Tabelas (Tickets, Invoices, Projects)
+create table if not exists tickets (
+  id text primary key,
+  subject text,
+  description text,
+  priority text,
+  status text,
+  customer text,
+  channel text,
+  organization_id uuid references organizations(id),
+  created_at timestamp with time zone default now(),
+  resolved_at timestamp with time zone,
+  responses jsonb default '[]'
+);
+
+create table if not exists invoices (
+  id text primary key,
+  customer text,
+  amount numeric,
+  due_date timestamp with time zone,
+  status text,
+  description text,
+  organization_id uuid references organizations(id),
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists audit_logs (
+  id text primary key,
+  timestamp timestamp with time zone default now(),
+  user_id uuid,
+  user_name text,
+  action text,
+  details text,
+  module text,
+  organization_id uuid references organizations(id)
+);
+
+-- 10. SPY (INTELIGÊNCIA COMPETITIVA)
+create table if not exists competitors (
+  id text primary key,
+  name text,
+  website text,
+  sector text,
+  last_analysis timestamp with time zone,
+  swot jsonb,
+  battlecard jsonb,
+  organization_id uuid references organizations(id)
+);
+
+-- 11. PROSPECÇÃO
+create table if not exists prospecting_history (
+  id text primary key,
+  timestamp timestamp with time zone default now(),
+  industry text,
+  location text,
+  keywords text,
+  results jsonb default '[]',
+  organization_id text references organizations(id) -- Changed to text
+);
+alter table prospecting_history add column if not exists organization_id text references organizations(id); -- Changed to text
+
+-- 12. CONFIGURAÇÕES & MARKETING
+create table if not exists custom_fields (
+  id text primary key,
+  label text,
+  key text,
+  type text,
+  module text,
+  options text[],
+  required boolean default false,
+  organization_id uuid references organizations(id)
+);
+
+create table if not exists webhooks (
+  id text primary key,
+  name text,
+  url text,
+  trigger_event text,
+  method text,
+  active boolean default true,
+  headers jsonb default '{}',
+  organization_id uuid references organizations(id)
+);
+
+create table if not exists workflows (
+  id text primary key,
+  name text,
+  active boolean default true,
+  trigger text,
+  actions jsonb default '[]',
+  runs integer default 0,
+  last_run timestamp with time zone,
+  organization_id uuid references organizations(id)
+);
+
+-- HABILITAR RLS (Segurança)
 alter table profiles enable row level security;
 alter table leads enable row level security;
 alter table clients enable row level security;
--- ... repeat for all tables
+alter table proposals enable row level security;
+alter table products enable row level security;
+alter table activities enable row level security;
+alter table competitors enable row level security;
+alter table prospecting_history enable row level security;
+alter table custom_fields enable row level security;
+alter table webhooks enable row level security;
+alter table workflows enable row level security;
+alter table organizations enable row level security;
 
--- Example Policy (Access only own org data)
-create policy "Users can view own org data" on leads
-  for select using (auth.uid() in (
-    select id from profiles where organization_id = leads.organization_id
-  ));
+-- POLÍTICAS DE ACESSO (PERMISSIVAS PARA CORREÇÃO)
+-- 1. Remove ALL existing policies to avoid conflicts (42710)
+drop policy if exists "Enable all access for authenticated users based on org" on leads;
+drop policy if exists "Enable insert for authenticated users" on leads;
+
+drop policy if exists "Enable all access for authenticated users based on org" on clients;
+
+drop policy if exists "Enable all access for authenticated users based on org" on proposals;
+drop policy if exists "Enable insert for authenticated users" on proposals;
+
+drop policy if exists "Enable all access for authenticated users based on org" on products;
+
+drop policy if exists "Enable all access for authenticated users based on org" on competitors;
+
+drop policy if exists "Enable all access for authenticated users based on org" on prospecting_history;
+
+drop policy if exists "Enable insert for organizations" on organizations;
+drop policy if exists "Enable select for organizations" on organizations;
+drop policy if exists "Enable update for organizations" on organizations;
+
+-- Cria políticas que permitem acesso total para usuários autenticados da mesma organização
+create policy "Enable all access for authenticated users based on org" on leads
+  for all using ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on clients
+  for all using ( auth.uid() in (select id from profiles where organization_id = clients.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on proposals
+  for all using ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on products
+  for all using ( auth.uid() in (select id from profiles where organization_id = products.organization_id) );
+  
+create policy "Enable all access for authenticated users based on org" on competitors
+  for all using ( auth.uid() in (select id from profiles where organization_id = competitors.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on prospecting_history
+  for all using ( auth.uid() in (select id from profiles where organization_id = prospecting_history.organization_id) );
+
+-- Importante: Política para Inserção (Insert)
+-- Permite que usuários autenticados insiram dados se a organization_id bater com a deles
+create policy "Enable insert for authenticated users" on leads
+  for insert with check ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+
+create policy "Enable insert for authenticated users" on proposals
+  for insert with check ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+
+-- CORREÇÃO PARA CRIAÇÃO DE ORGANIZAÇÕES
+-- Permite que usuários anon/autenticados criem organizações (necessário para o fluxo de SignUp)
+create policy "Enable insert for organizations" on organizations for insert with check (true);
+create policy "Enable select for organizations" on organizations for select using (true);
+create policy "Enable update for organizations" on organizations for update using (true);
 `}
                             </pre>
                         </div>
@@ -1481,6 +1384,151 @@ create policy "Users can view own org data" on leads
                     </div>
                 </div>
             )}
+            
+            {/* ... rest of the component ... */}
+            {isTeamModalOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-800 dark:text-white">Adicionar Membro</h3>
+                            <button onClick={() => setIsTeamModalOpen(false)}><X size={20} className="text-slate-400"/></button>
+                        </div>
+                        <form onSubmit={handleAddMember} className="p-6 space-y-4">
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
+                                <input required type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})}/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
+                                <input required type="email" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})}/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
+                                <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as Role})}>
+                                    <option value="admin">Administrador</option>
+                                    <option value="sales">Comercial</option>
+                                    <option value="support">Suporte</option>
+                                    <option value="finance">Financeiro</option>
+                                </select>
+                             </div>
+                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Adicionar</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+            
+            {/* Invite Modal */}
+            {isInviteModalOpen && inviteData && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in text-center p-6">
+                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
+                            <CheckCircle size={32}/>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Membro Adicionado!</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+                            Envie o link de convite abaixo para <strong>{inviteData.name}</strong> se cadastrar na organização.
+                        </p>
+                        
+                        <div className="bg-slate-100 dark:bg-slate-700 p-4 rounded-lg text-left mb-6 border border-slate-200 dark:border-slate-600">
+                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Link de Acesso:</p>
+                            <code className="text-sm font-mono text-blue-600 dark:text-blue-400 break-all">{window.location.origin}</code>
+                            <p className="text-xs text-slate-400 uppercase font-bold mt-3 mb-1">Identificador da Empresa:</p>
+                            <code className="text-sm font-mono text-slate-800 dark:text-white font-bold">{currentOrganization?.slug}</code>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsInviteModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Fechar</button>
+                            <button onClick={handleCopyInvite} className="flex-1 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 flex items-center justify-center gap-2"><Copy size={16}/> Copiar Convite</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isEditMemberModalOpen && memberToEdit && (
+                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-800 dark:text-white">Editar Membro</h3>
+                            <button onClick={() => setIsEditMemberModalOpen(false)}><X size={20} className="text-slate-400"/></button>
+                        </div>
+                        <form onSubmit={handleUpdateMember} className="p-6 space-y-4">
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
+                                <input type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editMemberForm.name} onChange={e => setEditMemberForm({...editMemberForm, name: e.target.value})}/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
+                                <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editMemberForm.role} onChange={e => setEditMemberForm({...editMemberForm, role: e.target.value as Role})}>
+                                    <option value="admin">Administrador</option>
+                                    <option value="sales">Comercial</option>
+                                    <option value="support">Suporte</option>
+                                    <option value="finance">Financeiro</option>
+                                </select>
+                             </div>
+                             <label className="flex items-center gap-2 cursor-pointer">
+                                 <input type="checkbox" checked={editMemberForm.active} onChange={e => setEditMemberForm({...editMemberForm, active: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
+                                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usuário Ativo</span>
+                             </label>
+                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Salvar Alterações</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+            
+            {isDeleteMemberModalOpen && memberToDelete && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in p-6 text-center">
+                         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
+                            <Trash2 size={32}/>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Excluir Usuário?</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+                            Tem certeza que deseja remover <strong>{memberToDelete.name}</strong>? Esta ação não pode ser desfeita.
+                        </p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsDeleteMemberModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Cancelar</button>
+                            <button onClick={confirmDeleteMember} className="flex-1 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isProductModalOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-800 dark:text-white">{editingProductId ? 'Editar Produto' : 'Novo Produto'}</h3>
+                            <button onClick={() => setIsProductModalOpen(false)}><X size={20} className="text-slate-400"/></button>
+                        </div>
+                        <form onSubmit={handleSaveProduct} className="p-6 space-y-4">
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Produto</label>
+                                <input required type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})}/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Descrição</label>
+                                <textarea className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white h-20 resize-none" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})}/>
+                             </div>
+                             <div className="grid grid-cols-2 gap-4">
+                                 <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Preço (R$)</label>
+                                    <input required type="number" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: parseFloat(e.target.value)})}/>
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Categoria</label>
+                                    <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
+                                        <option value="Service">Serviço</option>
+                                        <option value="Product">Produto Físico</option>
+                                        <option value="Subscription">Assinatura</option>
+                                    </select>
+                                 </div>
+                             </div>
+                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Salvar Produto</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
         </div>
       </div>
     </div>

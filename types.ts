@@ -291,13 +291,20 @@ export interface Proposal {
   status: ProposalStatus;
   introduction: string;
   scope: string[];
-  price: number;
+  price: number; // Used as Total Value
+  setupCost?: number; // New: Valor de Instalação/Setup
+  monthlyCost?: number; // New: Valor Mensal/Locação
   timeline: string;
   terms: string;
   organizationId?: string;
   signature?: string;
   signedAt?: string;
   signedByIp?: string;
+  
+  // Consultant / User Data snapshot
+  consultantName?: string;
+  consultantEmail?: string;
+  consultantPhone?: string;
 }
 
 export interface Activity {

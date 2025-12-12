@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { 
     Lead, Client, Ticket, Issue, Invoice, Activity, Product, Project, 
@@ -190,6 +189,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             
             // Leads
             if (newItem.last_contact) { newItem.lastContact = newItem.last_contact; delete newItem.last_contact; }
+            if (newItem.product_interest) { newItem.productInterest = newItem.product_interest; delete newItem.product_interest; }
+            if (newItem.parking_spots) { newItem.parkingSpots = newItem.parking_spots; delete newItem.parking_spots; }
             
             // Activities
             if (newItem.due_date) { newItem.dueDate = newItem.due_date; delete newItem.due_date; }
@@ -200,6 +201,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // Projects (Fix for date mapping)
             if (newItem.start_date) { newItem.startDate = newItem.start_date; delete newItem.start_date; }
+            if (newItem.client_name) { newItem.clientName = newItem.client_name; delete newItem.client_name; }
+            if (newItem.completed_at) { newItem.completedAt = newItem.completed_at; delete newItem.completed_at; }
 
             // Competitors
             if (newItem.last_analysis) { newItem.lastAnalysis = newItem.last_analysis; delete newItem.last_analysis; }
@@ -215,6 +218,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (newItem.valid_until) { newItem.validUntil = newItem.valid_until; delete newItem.valid_until; }
             if (newItem.signed_at) { newItem.signedAt = newItem.signed_at; delete newItem.signed_at; }
             if (newItem.signed_by_ip) { newItem.signedByIp = newItem.signed_by_ip; delete newItem.signed_by_ip; }
+            // Mapeamento novos campos proposta
+            if (newItem.setup_cost) { newItem.setupCost = newItem.setup_cost; delete newItem.setup_cost; }
+            if (newItem.monthly_cost) { newItem.monthlyCost = newItem.monthly_cost; delete newItem.monthly_cost; }
+            if (newItem.consultant_name) { newItem.consultantName = newItem.consultant_name; delete newItem.consultant_name; }
+            if (newItem.consultant_email) { newItem.consultantEmail = newItem.consultant_email; delete newItem.consultant_email; }
+            if (newItem.consultant_phone) { newItem.consultantPhone = newItem.consultant_phone; delete newItem.consultant_phone; }
 
             // Audit Logs
             if (newItem.user_id) { newItem.userId = newItem.user_id; delete newItem.user_id; }
@@ -224,46 +233,80 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
     };
 
-    const mapToDb = (data: any) => {
+    const mapToDb = (data: any, tableName: string) => {
         const payload = { ...data };
-        // Common
+        
+        // Helper to clean empty strings into null for DB safety
+        const cleanEmpty = (val: any) => (val === '' ? null : val);
+
+        // --- Common Transformations ---
         if (payload.organizationId) { payload.organization_id = payload.organizationId; delete payload.organizationId; }
         if (payload.createdAt) { payload.created_at = payload.createdAt; delete payload.createdAt; }
-        
-        // Clients
-        if (payload.contactPerson) { payload.contact_person = payload.contactPerson; delete payload.contactPerson; }
-        if (payload.healthScore) { payload.health_score = payload.healthScore; delete payload.healthScore; }
-        if (payload.contractedProducts) { payload.contracted_products = payload.contractedProducts; delete payload.contractedProducts; }
-        
-        // Leads
-        if (payload.lastContact) { payload.last_contact = payload.lastContact; delete payload.lastContact; }
-        
-        // Activities & Invoices
-        if (payload.dueDate) { payload.due_date = payload.dueDate; delete payload.dueDate; }
-        if (payload.relatedTo) { payload.related_to = payload.relatedTo; delete payload.relatedTo; }
-        
-        // Projects
-        if (payload.startDate) { payload.start_date = payload.startDate; delete payload.startDate; }
 
-        // Competitors
-        if (payload.lastAnalysis) { payload.last_analysis = payload.lastAnalysis; delete payload.lastAnalysis; }
-
-        // Webhooks
-        if (payload.triggerEvent) { payload.trigger_event = payload.triggerEvent; delete payload.triggerEvent; }
-
-        // Proposals
-        if (payload.leadId) { payload.lead_id = payload.leadId; delete payload.leadId; }
-        if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
-        if (payload.companyName) { payload.company_name = payload.companyName; delete payload.companyName; }
-        if (payload.createdDate) { payload.created_date = payload.createdDate; delete payload.createdDate; }
-        if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.validUntil; }
-        if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signedAt; }
-        if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signedByIp; }
-
-        // Audit Logs
-        if (payload.userId) { payload.user_id = payload.userId; delete payload.userId; }
-        if (payload.userName) { payload.user_name = payload.userName; delete payload.userName; }
+        // --- Table Specific Transformations ---
         
+        if (tableName === 'clients') {
+             if (payload.contactPerson) { payload.contact_person = payload.contactPerson; delete payload.contactPerson; }
+             if (payload.healthScore !== undefined) { payload.health_score = payload.healthScore; delete payload.healthScore; }
+             if (payload.contractedProducts) { payload.contracted_products = payload.contractedProducts; delete payload.contractedProducts; }
+        }
+
+        if (tableName === 'leads') {
+             if (payload.lastContact) { payload.last_contact = payload.lastContact; delete payload.lastContact; }
+             if (payload.productInterest) { payload.product_interest = payload.productInterest; delete payload.productInterest; }
+             if (payload.parkingSpots) { payload.parking_spots = payload.parkingSpots; delete payload.parkingSpots; }
+        }
+
+        if (tableName === 'activities' || tableName === 'invoices') {
+            if (payload.dueDate) { payload.due_date = payload.dueDate; delete payload.dueDate; }
+            if (payload.relatedTo) { payload.related_to = payload.relatedTo; delete payload.relatedTo; }
+        }
+
+        if (tableName === 'projects') {
+             if (payload.startDate) { payload.start_date = payload.startDate; delete payload.startDate; }
+             if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
+             if (payload.completedAt) { payload.completed_at = payload.completedAt; delete payload.completedAt; }
+        }
+        
+        if (tableName === 'proposals') {
+             if (payload.leadId !== undefined) { 
+                 payload.lead_id = cleanEmpty(payload.leadId); 
+                 delete payload.leadId; 
+             }
+             if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
+             if (payload.companyName) { payload.company_name = payload.companyName; delete payload.companyName; }
+             if (payload.createdDate) { payload.created_date = payload.createdDate; delete payload.createdDate; }
+             if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.validUntil; }
+             if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signedAt; }
+             if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signedByIp; }
+
+             if (payload.setupCost !== undefined) { payload.setup_cost = payload.setupCost; delete payload.setupCost; }
+             if (payload.monthlyCost !== undefined) { payload.monthly_cost = payload.monthlyCost; delete payload.monthlyCost; }
+             if (payload.consultantName !== undefined) { payload.consultant_name = payload.consultantName; delete payload.consultantName; }
+             if (payload.consultantEmail !== undefined) { payload.consultant_email = payload.consultantEmail; delete payload.consultantEmail; }
+             if (payload.consultantPhone !== undefined) { payload.consultant_phone = payload.consultantPhone; delete payload.consultantPhone; }
+        }
+
+        if (tableName === 'competitors') {
+             if (payload.lastAnalysis) { payload.last_analysis = payload.lastAnalysis; delete payload.lastAnalysis; }
+        }
+
+        if (tableName === 'webhooks') {
+             if (payload.triggerEvent) { payload.trigger_event = payload.triggerEvent; delete payload.triggerEvent; }
+        }
+
+        // Fix for Audit Logs - ensure consistent mapping
+        if (tableName === 'audit_logs') {
+             // REMOVED user_id mapping to prevent PGRST204 if schema is outdated/missing
+             if (payload.userId) delete payload.userId; // Don't send user_id to DB for now
+             if (payload.userName) { payload.user_name = payload.userName; delete payload.userName; }
+        }
+
+        // ONLY apply this for PROFILES to prevent overwriting 'name' in products/leads
+        if (tableName === 'profiles') {
+             if (payload.name && !payload.full_name) { payload.full_name = payload.name; delete payload.name; }
+        }
+
         return payload;
     };
 
@@ -294,15 +337,83 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => { localStorage.setItem('nexus_webhooks', JSON.stringify(webhooks)); }, [webhooks]);
     useEffect(() => { localStorage.setItem('nexus_prospecting_history', JSON.stringify(prospectingHistory)); }, [prospectingHistory]);
     useEffect(() => { localStorage.setItem('nexus_disqualified_prospects', JSON.stringify(disqualifiedProspects)); }, [disqualifiedProspects]);
+    
+    // --- LOAD AND SUBSCRIBE TO AUTH CHANGES ---
+    useEffect(() => {
+        const init = async () => {
+            const supabase = getSupabase();
+            if(supabase) {
+                // Initial fetch
+                await refreshData();
+                
+                // Listener for auth changes (Login, Logout, etc.)
+                const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                        // Refresh data immediately when user signs in or token updates
+                        await refreshData();
+                    }
+                    if (event === 'SIGNED_OUT') {
+                        // Clear data if needed or handle logout
+                    }
+                });
+                
+                return () => {
+                    subscription.unsubscribe();
+                };
+            }
+        };
+        init();
+    }, []);
 
     const dbUpsert = async (table: string, data: any) => {
         const supabase = getSupabase();
         if (supabase) {
+            // Check for active session before attempting write
+            const { data: sessionData } = await supabase.auth.getSession();
+            
+            // If offline/no session, we just return (data is already in local state)
+            if (!sessionData.session) {
+                console.warn("Sem sessão ativa no Supabase. Salvando apenas localmente.");
+                return;
+            }
+
             try {
-                const payload = mapToDb(data);
-                await supabase.from(table).upsert(payload);
-            } catch (e) {
-                console.warn(`Failed to sync ${table} to cloud`, e);
+                // Se o objeto 'data' não tiver organizationId, tentamos pegar do usuário logado na hora
+                // Isso resolve o problema de dados criados antes de o contexto carregar 100%
+                let payload = mapToDb(data, table);
+                
+                if (!payload.organization_id) {
+                     // Tenta obter o ID da organização do profile local (se disponível no payload, ótimo, senão tenta outra fonte)
+                     // O ideal é que 'data' já venha com organizationId, mas como fallback:
+                     const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', sessionData.session.user.id).single();
+                     if (profile && profile.organization_id) {
+                         payload.organization_id = profile.organization_id;
+                     }
+                }
+
+                // REMOVED BLOCKING LOGIC FOR ORG-1
+                // We now allow org-1 to save if they have a valid session to a valid Supabase instance.
+                // This allows users to start testing immediately with the mock data structure on their own DB.
+
+                const { error } = await supabase.from(table).upsert(payload);
+                
+                if (error) {
+                    if (error.code === '42501') {
+                         console.error(`[Sync] Erro RLS em ${table}:`, error.message);
+                    } else if (error.code === 'PGRST204') {
+                         console.warn(`[Sync] Erro Schema em ${table} (Coluna ausente?):`, error.message);
+                         // Schema mismatch - silently ignore to allow app to work
+                    } else if (error.code === '22P02') {
+                         console.warn(`[Sync] Erro UUID em ${table}:`, error.message);
+                    } else if (error.code !== '23505') { 
+                        console.error(`[Sync] Erro Geral em ${table}:`, error.message);
+                    }
+                } else {
+                    // Success
+                    // console.log(`[Sync] Sucesso: ${table} atualizado.`);
+                }
+            } catch (e: any) {
+                console.warn(`Exception syncing ${table} to cloud`, e);
             }
         }
     };
@@ -445,27 +556,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    // Load data on mount
-    useEffect(() => {
-        const init = async () => {
-            const supabase = getSupabase();
-            if(supabase) await refreshData();
-        };
-        init();
-    }, []);
-
     // --- CRUD HANDLERS ---
+    // ... (rest of the file remains similar, with updated dbUpsert usage)
 
     const addLead = (user: User | null, lead: Lead) => {
-        setLeads(prev => [...prev, lead]);
-        dbUpsert('leads', lead);
+        const leadWithOrg = { ...lead, organizationId: user?.organizationId || lead.organizationId };
+        setLeads(prev => [...prev, leadWithOrg]);
+        dbUpsert('leads', leadWithOrg);
         logAction(user, 'Create Lead', `Created lead ${lead.name}`, 'Comercial');
-        triggerAutomation('lead_created', lead);
+        triggerAutomation('lead_created', leadWithOrg);
     };
 
     const updateLead = (user: User | null, lead: Lead) => {
-        setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
-        dbUpsert('leads', lead);
+        const leadWithOrg = { ...lead, organizationId: lead.organizationId || user?.organizationId };
+        setLeads(prev => prev.map(l => l.id === lead.id ? leadWithOrg : l));
+        dbUpsert('leads', leadWithOrg);
         logAction(user, 'Update Lead', `Updated lead ${lead.name}`, 'Comercial');
     };
 
@@ -480,16 +585,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addClient = (user: User | null, client: Client) => {
-        setClients(prev => [...prev, client]);
-        dbUpsert('clients', client);
+        const clientWithOrg = { ...client, organizationId: user?.organizationId || client.organizationId };
+        setClients(prev => [...prev, clientWithOrg]);
+        dbUpsert('clients', clientWithOrg);
         logAction(user, 'Create Client', `Created client ${client.name}`, 'Clientes');
     };
 
     const updateClient = (user: User | null, client: Client) => {
-        setClients(prev => prev.map(c => c.id === client.id ? client : c));
-        dbUpsert('clients', client);
+        const clientWithOrg = { ...client, organizationId: client.organizationId || user?.organizationId };
+        setClients(prev => prev.map(c => c.id === client.id ? clientWithOrg : c));
+        dbUpsert('clients', clientWithOrg);
         logAction(user, 'Update Client', `Updated client ${client.name}`, 'Clientes');
-        if (client.status === 'Churn Risk') triggerAutomation('client_churn_risk', client);
+        if (client.status === 'Churn Risk') triggerAutomation('client_churn_risk', clientWithOrg);
     };
 
     const removeClient = (user: User | null, clientId: string, reason: string) => {
@@ -502,8 +609,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addClientsBulk = (user: User | null, newClients: Client[]) => {
-        setClients(prev => [...prev, ...newClients]);
-        newClients.forEach(c => dbUpsert('clients', c));
+        const clientsWithOrg = newClients.map(c => ({...c, organizationId: user?.organizationId}));
+        setClients(prev => [...prev, ...clientsWithOrg]);
+        clientsWithOrg.forEach(c => dbUpsert('clients', c));
         logAction(user, 'Bulk Import', `Imported ${newClients.length} clients`, 'Clientes');
         addSystemNotification('Importação Concluída', `${newClients.length} clientes foram importados com sucesso.`, 'success');
     };
@@ -513,8 +621,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ...client,
             lastContact: new Date().toISOString()
         };
-        setClients(prev => prev.map(c => c.id === client.id ? updatedClient : c));
-        dbUpsert('clients', updatedClient);
+        // Reuse updated updateClient to handle org logic
+        updateClient(null, updatedClient);
         
         if (activity) {
             addActivity(null, activity);
@@ -522,69 +630,88 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addTicket = (user: User | null, ticket: Ticket) => {
-        setTickets(prev => [...prev, ticket]);
-        dbUpsert('tickets', ticket);
+        const ticketWithOrg = { ...ticket, organizationId: user?.organizationId || ticket.organizationId };
+        setTickets(prev => [...prev, ticketWithOrg]);
+        dbUpsert('tickets', ticketWithOrg);
         logAction(user, 'Create Ticket', `Created ticket ${ticket.subject}`, 'Suporte');
-        triggerAutomation('ticket_created', ticket);
+        triggerAutomation('ticket_created', ticketWithOrg);
     };
 
     const updateTicket = (user: User | null, ticketId: string, data: Partial<Ticket>) => {
-        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...data } : t));
         const ticket = tickets.find(t => t.id === ticketId);
-        if (ticket) dbUpsert('tickets', { ...ticket, ...data });
-        logAction(user, 'Update Ticket', `Updated ticket ${ticketId}`, 'Suporte');
+        if (ticket) {
+            const ticketWithOrg = { ...ticket, ...data, organizationId: ticket.organizationId || user?.organizationId };
+            setTickets(prev => prev.map(t => t.id === ticketId ? ticketWithOrg : t));
+            dbUpsert('tickets', ticketWithOrg);
+            logAction(user, 'Update Ticket', `Updated ticket ${ticketId}`, 'Suporte');
+        }
     };
 
     const addInvoice = (user: User | null, invoice: Invoice) => {
-        setInvoices(prev => [...prev, invoice]);
-        dbUpsert('invoices', invoice);
+        const invoiceWithOrg = { ...invoice, organizationId: user?.organizationId || invoice.organizationId };
+        setInvoices(prev => [...prev, invoiceWithOrg]);
+        dbUpsert('invoices', invoiceWithOrg);
         logAction(user, 'Create Invoice', `Created invoice for ${invoice.customer}`, 'Financeiro');
     };
 
     const updateInvoiceStatus = (user: User | null, invoiceId: string, status: InvoiceStatus) => {
-        setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status } : i));
         const invoice = invoices.find(i => i.id === invoiceId);
-        if (invoice) dbUpsert('invoices', { ...invoice, status });
-        logAction(user, 'Update Invoice', `Updated invoice status to ${status}`, 'Financeiro');
+        if (invoice) {
+            const invoiceWithOrg = { ...invoice, status, organizationId: invoice.organizationId || user?.organizationId };
+            setInvoices(prev => prev.map(i => i.id === invoiceId ? invoiceWithOrg : i));
+            dbUpsert('invoices', invoiceWithOrg);
+            logAction(user, 'Update Invoice', `Updated invoice status to ${status}`, 'Financeiro');
+        }
     };
 
     const addInvoicesBulk = (user: User | null, newInvoices: Invoice[]) => {
-        setInvoices(prev => [...prev, ...newInvoices]);
-        newInvoices.forEach(i => dbUpsert('invoices', i));
+        const invoicesWithOrg = newInvoices.map(i => ({...i, organizationId: user?.organizationId}));
+        setInvoices(prev => [...prev, ...invoicesWithOrg]);
+        invoicesWithOrg.forEach(i => dbUpsert('invoices', i));
         logAction(user, 'Bulk Import Invoices', `Imported ${newInvoices.length} invoices`, 'Financeiro');
     };
 
     const addActivity = (user: User | null, activity: Activity) => {
-        setActivities(prev => [activity, ...prev]);
-        dbUpsert('activities', activity);
+        const actWithOrg = { ...activity, organizationId: user?.organizationId || activity.organizationId };
+        setActivities(prev => [actWithOrg, ...prev]);
+        dbUpsert('activities', actWithOrg);
         if (user) logAction(user, 'Create Activity', `Created ${activity.type}`, 'Agenda');
     };
 
     const updateActivity = (user: User | null, activity: Activity) => {
-        setActivities(prev => prev.map(a => a.id === activity.id ? activity : a));
-        dbUpsert('activities', activity);
+        const actWithOrg = { ...activity, organizationId: activity.organizationId || user?.organizationId };
+        setActivities(prev => prev.map(a => a.id === activity.id ? actWithOrg : a));
+        dbUpsert('activities', actWithOrg);
     };
 
     const toggleActivity = (user: User | null, activityId: string) => {
-        setActivities(prev => prev.map(a => {
-            if (a.id === activityId) {
-                const updated = { ...a, completed: !a.completed };
-                dbUpsert('activities', updated);
-                return updated;
-            }
-            return a;
-        }));
+        const activity = activities.find(a => a.id === activityId);
+        if (activity) {
+            const updated = { ...activity, completed: !activity.completed, organizationId: activity.organizationId || user?.organizationId };
+            setActivities(prev => prev.map(a => a.id === activityId ? updated : a));
+            dbUpsert('activities', updated);
+        }
     };
 
     const addProduct = (user: User | null, product: Product) => {
-        setProducts(prev => [...prev, product]);
-        dbUpsert('products', product);
+        // Ensure Org ID is present for RLS
+        const productWithOrg = { 
+            ...product, 
+            organizationId: user?.organizationId || product.organizationId 
+        };
+        setProducts(prev => [...prev, productWithOrg]);
+        dbUpsert('products', productWithOrg);
         logAction(user, 'Create Product', `Created product ${product.name}`, 'Configurações');
     };
 
     const updateProduct = (user: User | null, product: Product) => {
-        setProducts(prev => prev.map(p => p.id === product.id ? product : p));
-        dbUpsert('products', product);
+        // Safe update keeping orgId
+        const productWithOrg = { 
+            ...product, 
+            organizationId: product.organizationId || user?.organizationId 
+        };
+        setProducts(prev => prev.map(p => p.id === product.id ? productWithOrg : p));
+        dbUpsert('products', productWithOrg);
         logAction(user, 'Update Product', `Updated product ${product.name}`, 'Configurações');
     };
 
@@ -595,14 +722,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addProject = (user: User | null, project: Project) => {
-        setProjects(prev => [...prev, project]);
-        dbUpsert('projects', project);
+        const projWithOrg = { ...project, organizationId: user?.organizationId || project.organizationId };
+        setProjects(prev => [...prev, projWithOrg]);
+        dbUpsert('projects', projWithOrg);
         logAction(user, 'Create Project', `Created project ${project.title}`, 'Projetos');
     };
 
     const updateProject = (user: User | null, project: Project) => {
-        setProjects(prev => prev.map(p => p.id === project.id ? project : p));
-        dbUpsert('projects', project);
+        const projWithOrg = { ...project, organizationId: project.organizationId || user?.organizationId };
+        setProjects(prev => prev.map(p => p.id === project.id ? projWithOrg : p));
+        dbUpsert('projects', projWithOrg);
         logAction(user, 'Update Project', `Updated project ${project.title}`, 'Projetos');
     };
 
@@ -696,8 +825,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addCompetitor = (user: User | null, competitor: Competitor) => {
-        setCompetitors(prev => [...prev, competitor]);
-        dbUpsert('competitors', competitor);
+        const compWithOrg = { ...competitor, organizationId: user?.organizationId || competitor.organizationId };
+        setCompetitors(prev => [...prev, compWithOrg]);
+        dbUpsert('competitors', compWithOrg);
         logAction(user, 'Add Competitor', `Added competitor ${competitor.name}`, 'Spy');
     };
 
@@ -754,14 +884,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addProposal = (user: User | null, proposal: Proposal) => {
-        setProposals(prev => [...prev, proposal]);
-        dbUpsert('proposals', proposal);
+        const propWithOrg = { ...proposal, organizationId: user?.organizationId || proposal.organizationId };
+        setProposals(prev => [...prev, propWithOrg]);
+        dbUpsert('proposals', propWithOrg);
         logAction(user, 'Create Proposal', `Created proposal ${proposal.title}`, 'Propostas');
     };
 
     const updateProposal = (user: User | null, proposal: Proposal) => {
-        setProposals(prev => prev.map(p => p.id === proposal.id ? proposal : p));
-        dbUpsert('proposals', proposal);
+        const propWithOrg = { ...proposal, organizationId: proposal.organizationId || user?.organizationId };
+        setProposals(prev => prev.map(p => p.id === proposal.id ? propWithOrg : p));
+        dbUpsert('proposals', propWithOrg);
         logAction(user, 'Update Proposal', `Updated proposal ${proposal.title}`, 'Propostas');
     };
 

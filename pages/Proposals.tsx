@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +7,7 @@ import { Badge } from '../components/Widgets';
 import { ProposalDocument } from '../components/ProposalDocument'; 
 
 const DEFAULT_INTRO = "Agradecemos a oportunidade de apresentar nossa solução. Com base em nossas conversas, desenhamos um projeto focado em atender suas necessidades e otimizar seus processos.";
-const DEFAULT_TERMS = "1. VALIDADE: Esta proposta é válida por 15 dias.\n\n2. PAGAMENTO: 50% no aceite e 50% na entrega.\n\n3. CRONOGRAMA: O início do projeto se dá após a confirmação do pagamento inicial.\n\n4. CONFIDENCIALIDADE: As partes comprometem-se a manter sigilo sobre as informações trocadas.";
+const DEFAULT_TERMS = "1. VALIDADE: Esta proposta é válida por 15 dias.\n\n2. PAGAMENTO: Conforme detalhado no quadro de investimento.\n\n3. CRONOGRAMA: O início do projeto se dá após a confirmação do pagamento inicial.\n\n4. CONFIDENCIALIDADE: As partes comprometem-se a manter sigilo sobre as informações trocadas.";
 
 export const Proposals: React.FC = () => {
     const { proposals, leads, clients, addProposal, updateProposal, removeProposal, addSystemNotification } = useData();
@@ -45,7 +44,8 @@ export const Proposals: React.FC = () => {
         title: '',
         clientName: '',
         companyName: '',
-        price: 0,
+        setupCost: 0, // Novo Campo: Instalação/Setup
+        monthlyCost: 0, // Novo Campo: Locação/Mensal
         timeline: '30 dias',
         introduction: DEFAULT_INTRO,
         terms: DEFAULT_TERMS,
@@ -71,10 +71,11 @@ export const Proposals: React.FC = () => {
                 leadId: lead.id,
                 clientName: lead.name,
                 companyName: lead.company,
-                price: lead.value,
+                // Default setup cost to estimated value or 0
+                setupCost: lead.value || 0,
+                monthlyCost: 0,
                 title: `Proposta Comercial - ${lead.company}`
             }));
-            if (lead.value > 0) setErrors(prev => ({ ...prev, price: undefined }));
         }
     };
 
@@ -88,20 +89,11 @@ export const Proposals: React.FC = () => {
                 leadId: '',
                 clientName: client.contactPerson,
                 companyName: client.name,
-                price: client.ltv || 0,
+                // Default monthly to current LTV/Price or 0
+                setupCost: 0,
+                monthlyCost: client.totalTablePrice || client.ltv || 0,
                 title: `Proposta Comercial - ${client.name}`
             }));
-        }
-    };
-
-    const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = Number(e.target.value);
-        setFormData(prev => ({ ...prev, price: val }));
-
-        if (val <= 0) {
-            setErrors(prev => ({ ...prev, price: 'O valor deve ser maior que zero.' }));
-        } else {
-            setErrors(prev => ({ ...prev, price: undefined }));
         }
     };
 
@@ -127,8 +119,8 @@ export const Proposals: React.FC = () => {
         const newErrors: { price?: string; scope?: string } = {};
         let isValid = true;
 
-        if (formData.price <= 0) {
-            newErrors.price = 'O valor do investimento é obrigatório.';
+        if (formData.setupCost <= 0 && formData.monthlyCost <= 0) {
+            newErrors.price = 'Preencha pelo menos um valor (Setup ou Mensal).';
             isValid = false;
         }
 
@@ -144,20 +136,40 @@ export const Proposals: React.FC = () => {
             return;
         }
 
+        // Calculate total contract value estimate (e.g. Setup + 12x Monthly)
+        // This is just for sorting/display in lists that expect a single "price"
+        const totalEstimatedValue = formData.setupCost + (formData.monthlyCost * 12);
+
+        // Find existing to preserve ID and Status if editing
+        const existingProposal = editingId ? proposals.find(p => p.id === editingId) : null;
+
         const proposalData: Proposal = {
             id: editingId || `PROP-${Date.now()}`,
             title: formData.title || 'Nova Proposta',
             leadId: formData.leadId,
             clientName: formData.clientName,
             companyName: formData.companyName,
-            price: formData.price,
-            createdDate: new Date().toISOString(),
+            
+            // New Fields
+            setupCost: formData.setupCost,
+            monthlyCost: formData.monthlyCost,
+            price: totalEstimatedValue, // Legacy support / Sorting
+
+            // Consultant Snapshot
+            consultantName: currentUser?.name || 'Consultor Nexus',
+            consultantEmail: currentUser?.email || 'contato@nexus.com',
+            consultantPhone: currentUser?.phone || '',
+
+            createdDate: existingProposal?.createdDate || new Date().toISOString(),
             validUntil: new Date(new Date().setDate(new Date().getDate() + 15)).toISOString(),
-            status: editingId ? (proposals.find(p => p.id === editingId)?.status || 'Draft') : 'Sent',
+            status: existingProposal?.status || 'Sent',
             introduction: formData.introduction,
             scope: formData.scope,
             timeline: formData.timeline,
-            terms: formData.terms
+            terms: formData.terms,
+            
+            // IMPORTANT: Ensure Organization ID is attached for RLS
+            organizationId: currentUser?.organizationId || existingProposal?.organizationId
         };
 
         if (editingId) {
@@ -170,7 +182,7 @@ export const Proposals: React.FC = () => {
 
         setView('list');
         setFormData({
-            leadId: '', title: '', clientName: '', companyName: '', price: 0, timeline: '30 dias',
+            leadId: '', title: '', clientName: '', companyName: '', setupCost: 0, monthlyCost: 0, timeline: '30 dias',
             introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: []
         });
         setEditingId(null);
@@ -187,7 +199,8 @@ export const Proposals: React.FC = () => {
             title: proposal.title,
             clientName: proposal.clientName,
             companyName: proposal.companyName,
-            price: proposal.price,
+            setupCost: proposal.setupCost || 0,
+            monthlyCost: proposal.monthlyCost || 0,
             timeline: proposal.timeline,
             introduction: proposal.introduction,
             terms: proposal.terms,
@@ -256,14 +269,14 @@ export const Proposals: React.FC = () => {
     };
 
     const handleQuickShareWhatsApp = (proposal: Proposal) => {
-        const text = encodeURIComponent(`Olá ${proposal.clientName}, segue a proposta comercial "${proposal.title}" para análise (PDF em anexo).\n\nInvestimento: ${formatCurrency(proposal.price)}\nValidade: ${new Date(proposal.validUntil).toLocaleDateString()}\n\nQualquer dúvida, estou à disposição!`);
+        const text = encodeURIComponent(`Olá ${proposal.clientName}, segue a proposta comercial "${proposal.title}" para análise (PDF em anexo).\n\nInvestimento Setup: ${formatCurrency(proposal.setupCost || 0)}\nMensalidade: ${formatCurrency(proposal.monthlyCost || 0)}\n\nQualquer dúvida, estou à disposição!`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
         setSendModalOpen(false);
     };
 
     const handleQuickShareEmail = (proposal: Proposal) => {
         const subject = encodeURIComponent(`Proposta Comercial: ${proposal.title}`);
-        const body = encodeURIComponent(`Olá ${proposal.clientName},\n\nConforme conversamos, segue em anexo a proposta comercial para o projeto na ${proposal.companyName}.\n\nResumo:\nInvestimento: ${formatCurrency(proposal.price)}\nPrazo: ${proposal.timeline}\n\nFico no aguardo do seu retorno.\n\nAtenciosamente,\nEquipe Soft Case`);
+        const body = encodeURIComponent(`Olá ${proposal.clientName},\n\nConforme conversamos, segue em anexo a proposta comercial para o projeto na ${proposal.companyName}.\n\nResumo de Investimento:\nSetup/Instalação: ${formatCurrency(proposal.setupCost || 0)}\nValor Mensal: ${formatCurrency(proposal.monthlyCost || 0)}\nPrazo: ${proposal.timeline}\n\nFico no aguardo do seu retorno.\n\nAtenciosamente,\n${proposal.consultantName || 'Equipe Soft Case'}`);
         window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
         setSendModalOpen(false);
     };
@@ -273,14 +286,20 @@ export const Proposals: React.FC = () => {
         title: formData.title,
         clientName: formData.clientName,
         companyName: formData.companyName,
-        price: formData.price,
+        setupCost: formData.setupCost,
+        monthlyCost: formData.monthlyCost,
+        price: formData.setupCost + (formData.monthlyCost * 12),
         createdDate: new Date().toISOString(),
         validUntil: new Date().toISOString(),
         status: 'Draft',
         introduction: formData.introduction,
         scope: formData.scope,
         timeline: formData.timeline,
-        terms: formData.terms
+        terms: formData.terms,
+        consultantName: currentUser?.name || 'Consultor Nexus',
+        consultantEmail: currentUser?.email || 'email@nexus.com',
+        consultantPhone: currentUser?.phone || '',
+        organizationId: currentUser?.organizationId
     });
 
     if (view === 'list') {
@@ -294,7 +313,7 @@ export const Proposals: React.FC = () => {
                     <button 
                         onClick={() => {
                             setFormData({
-                                leadId: '', title: '', clientName: '', companyName: '', price: 0, timeline: '30 dias',
+                                leadId: '', title: '', clientName: '', companyName: '', setupCost: 0, monthlyCost: 0, timeline: '30 dias',
                                 introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: []
                             });
                             setEditingId(null);
@@ -312,7 +331,8 @@ export const Proposals: React.FC = () => {
                             <tr>
                                 <th className="p-4">Título / Cliente</th>
                                 <th className="p-4">Data Criação</th>
-                                <th className="p-4">Valor</th>
+                                <th className="p-4">Valor Setup</th>
+                                <th className="p-4">Valor Mensal</th>
                                 <th className="p-4">Validade</th>
                                 <th className="p-4">Status</th>
                                 <th className="p-4 text-center">Ações</th>
@@ -330,7 +350,8 @@ export const Proposals: React.FC = () => {
                                         <div className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{prop.companyName} ({prop.clientName})</div>
                                     </td>
                                     <td className="p-4 text-slate-600 dark:text-slate-300">{new Date(prop.createdDate).toLocaleDateString()}</td>
-                                    <td className="p-4 font-bold text-slate-700 dark:text-slate-200">{formatCurrency(prop.price)}</td>
+                                    <td className="p-4 font-bold text-slate-700 dark:text-slate-200">{formatCurrency(prop.setupCost || 0)}</td>
+                                    <td className="p-4 font-bold text-slate-700 dark:text-slate-200">{formatCurrency(prop.monthlyCost || 0)}</td>
                                     <td className="p-4 text-slate-600 dark:text-slate-300">{new Date(prop.validUntil).toLocaleDateString()}</td>
                                     <td className="p-4">
                                         <Badge color={prop.status === 'Accepted' ? 'green' : prop.status === 'Sent' ? 'blue' : 'gray'}>
@@ -364,7 +385,7 @@ export const Proposals: React.FC = () => {
                             ))}
                             {proposals.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-500 italic">
+                                    <td colSpan={7} className="p-8 text-center text-slate-400 dark:text-slate-500 italic">
                                         Nenhuma proposta criada. Clique em "Nova Proposta" para começar.
                                     </td>
                                 </tr>
@@ -518,7 +539,7 @@ export const Proposals: React.FC = () => {
                         onClick={handleSave} 
                         className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-bold shadow-sm transition whitespace-nowrap"
                     >
-                        <Save size={18}/> {editingId ? 'Atualizar Proposta' : 'Salvar e Gerar'}
+                        <Save size={18}/> Salvar e Gerar Proposta
                     </button>
                 </div>
             </div>
@@ -639,23 +660,29 @@ export const Proposals: React.FC = () => {
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Investimento Total (R$)</label>
-                                        <div className="relative">
-                                            <input 
-                                                type="number" 
-                                                className={`w-full border rounded p-2 text-sm outline-none focus:ring-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-white
-                                                    ${errors.price ? 'border-red-500 focus:ring-red-200' : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'}`}
-                                                value={formData.price} 
-                                                onChange={handlePriceChange}
-                                            />
-                                            {errors.price && <AlertCircle size={16} className="absolute right-2 top-2 text-red-500" title={errors.price} />}
-                                        </div>
-                                        {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Setup / Instalação (R$)</label>
+                                        <input 
+                                            type="number" 
+                                            className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-white"
+                                            value={formData.setupCost} 
+                                            onChange={(e) => setFormData({...formData, setupCost: Number(e.target.value)})}
+                                        />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Prazo de Execução</label>
-                                        <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white outline-none" value={formData.timeline} onChange={e => setFormData({...formData, timeline: e.target.value})} />
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Mensal / Locação (R$)</label>
+                                        <input 
+                                            type="number" 
+                                            className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-white"
+                                            value={formData.monthlyCost} 
+                                            onChange={(e) => setFormData({...formData, monthlyCost: Number(e.target.value)})}
+                                        />
                                     </div>
+                                    {errors.price && <div className="col-span-2 text-xs text-red-500 mt-1">{errors.price}</div>}
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Prazo de Execução</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white outline-none" value={formData.timeline} onChange={e => setFormData({...formData, timeline: e.target.value})} />
                                 </div>
 
                                 <div>

@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { User, Role, PermissionMatrix, PermissionAction, Organization, Client } from '../types';
 import { MOCK_USERS, MOCK_ORGANIZATIONS } from '../constants';
@@ -126,32 +125,82 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       // ONLINE MODE
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (session?.user) {
-          await fetchProfileAndOrg(session.user.id, session.user.email);
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+            console.warn("Auth Check Error:", error.message);
+            if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
+                console.log("Invalid token detected. Clearing session.");
+                await supabase.auth.signOut();
+                setCurrentUser(null);
+                setCurrentOrganization(null);
+                setLoading(false);
+            } else {
+                setLoading(false);
+            }
+        } else if (data?.session?.user) {
+          await fetchProfileAndOrg(data.session.user.id, data.session.user.email);
+          await fetchTeamMembers(); // FETCH REAL TEAM FROM DB
         } else {
           setLoading(false);
         }
 
-        supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN' && session?.user) {
              setLoading(true);
              await fetchProfileAndOrg(session.user.id, session.user.email);
-          } else if (event === 'SIGNED_OUT') {
+             await fetchTeamMembers();
+          } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESH_REVOKED') {
             setCurrentUser(null);
             setCurrentOrganization(null);
             localStorage.removeItem('nexus_mock_user'); 
             setLoading(false);
           }
         });
+        
+        return () => {
+            subscription.unsubscribe();
+        };
+
       } catch (err) {
-          console.error("Auth Session Error:", err);
+          console.error("Auth Session Exception:", err);
           setLoading(false);
       }
     };
 
     initSession();
   }, []);
+
+  // Sync usersList with Supabase profiles
+  const fetchTeamMembers = async () => {
+      const supabase = getSupabase();
+      if (!supabase) return;
+
+      try {
+          const { data, error } = await supabase.from('profiles').select('*');
+          if (error) {
+              console.error("Error fetching team:", error);
+              return;
+          }
+          if (data) {
+              const mappedUsers: User[] = data.map((p: any) => ({
+                  id: p.id,
+                  name: p.full_name || 'Usuário',
+                  email: p.email,
+                  role: p.role as Role,
+                  avatar: (p.full_name || 'U').charAt(0).toUpperCase(),
+                  organizationId: p.organization_id,
+                  relatedClientId: p.related_client_id,
+                  xp: p.xp || 0,
+                  level: p.level || 1,
+                  active: p.active !== false
+              }));
+              setUsersList(mappedUsers);
+          }
+      } catch (e) {
+          console.error("Exception fetching team:", e);
+      }
+  };
 
   const fetchProfileAndOrg = async (userId: string, userEmail?: string) => {
     const supabase = getSupabase();
@@ -301,6 +350,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!authData.user) return { error: "Erro ao criar usuário" };
 
       const userId = authData.user.id;
+      // Gere o ID da organização no frontend para garantir que temos a referência antes do insert
       const orgId = crypto.randomUUID();
 
       // 2. Create Organization (Pending Approval)
@@ -313,10 +363,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (orgError) {
+          console.error("Org Creation Error:", orgError);
           return { error: "Erro ao criar organização: " + orgError.message };
       }
 
       // 3. Create Profile linked to Org
+      // Importante: RLS deve permitir insert se auth.uid() == id
       const { error: profileError } = await supabase.from('profiles').insert({
           id: userId,
           full_name: fullName,
@@ -327,13 +379,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (profileError) {
-          return { error: "Erro ao criar perfil." };
+           console.error("Profile Creation Error:", profileError);
+          // Tentar rollback da org (opcional, mas boa prática)
+          await supabase.from('organizations').delete().eq('id', orgId);
+          return { error: "Erro ao criar perfil. " + profileError.message };
       }
 
       return { success: true };
     } catch (err: any) { return { error: err.message }; }
   };
 
+  // --- NEW: Join Existing Organization ---
   const joinOrganization = async (email: string, password: string, fullName: string, orgSlug: string): Promise<{ error?: string, success?: boolean }> => {
       const supabase = getSupabase();
       if (!supabase) return { error: "Modo Offline: Recurso indisponível." };
@@ -458,12 +514,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
   
   const addTeamMember = async (name: string, email: string, role: Role) => {
-      const supabase = getSupabase();
+      // 1. Generate UUID (Compatibility with Supabase UUID fields)
+      const newId = crypto.randomUUID(); 
       
-      // 1. Update Local State (Visual feedback)
-      const tempId = crypto.randomUUID();
+      // 2. Update Local State (Optimistic)
       const newUser: User = { 
-          id: tempId, 
+          id: newId, 
           name, 
           email, 
           role, 
@@ -472,44 +528,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           organizationId: currentOrganization?.id 
       };
       setUsersList(prev => [...prev, newUser]);
-
-      // 2. Persist to Supabase if connected
-      if (supabase && currentOrganization) {
+      
+      // 3. Sync to Supabase - Handled with caution due to Auth constraints
+      const supabase = getSupabase();
+      if (supabase) {
           try {
-              // Attempt to insert. 
-              // Note: This WILL typically fail if 'profiles.id' is a foreign key to 'auth.users' 
-              // and the user hasn't signed up yet. This is expected behavior in this architecture.
-              // The user is considered "pending" until they sign up.
-              const { error } = await supabase.from('profiles').insert({
-                  id: tempId,
-                  full_name: name,
-                  email: email,
-                  role: role,
-                  organization_id: currentOrganization.id,
-                  active: true,
-                  created_at: new Date().toISOString()
-              });
-              
-              if (error) {
-                  // Foreign Key Violation is expected if user doesn't exist in Auth
-                  if (error.code === '23503') { // foreign_key_violation
-                      console.log("Profile insert skipped (User needs to sign up first). Member added to local list.");
-                  } else {
-                      console.warn("Could not save profile to DB:", error.message);
-                  }
-              }
-          } catch (err) {
-              console.error("Error inserting profile:", err);
+             // Attempt to insert into profiles.
+             // NOTE: This usually fails if the user does not exist in auth.users due to FK constraints.
+             // We catch this to prevent breaking the flow, allowing local state to persist until user signs up or is invited properly.
+             const { error } = await supabase.from('profiles').insert({
+                 id: newId,
+                 full_name: name,
+                 email: email,
+                 role: role,
+                 organization_id: currentOrganization?.id,
+                 active: true
+             });
+             
+             if (error) {
+                 console.warn("Supabase profile sync skipped (likely waiting for user signup):", error.message);
+                 // We don't return false here to allow the UI flow to continue (e.g. show invite modal)
+             }
+          } catch (e: any) {
+              console.warn("Supabase exception (profile sync):", e.message);
           }
       }
-      
-      return { success: true };
+
+      return {success: true};
   };
   
-  const createClientAccess = async (client: Client, email: string) => { 
-      const tempPassword = Math.random().toString(36).slice(-8) + 'Aa1!';
-      return { success: true, password: tempPassword };
-  };
+  const createClientAccess = async (client: Client, email: string) => { return {success: true} };
   
   const sendRecoveryInvite = async (email: string) => { 
       const supabase = getSupabase();
@@ -527,7 +575,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider value={{ 
         currentUser, currentOrganization, permissionMatrix, usersList, loading,
         login, signUp, joinOrganization, logout, switchOrganization, hasPermission, updatePermission, updateUser, 
-        changePassword, adminUpdateUser, adminDeleteUser, addTeamMember, createClientAccess, sendRecoveryInvite,
+        adminUpdateUser, adminDeleteUser, addTeamMember, createClientAccess, sendRecoveryInvite,
         approveOrganization
     }}>
       {children}

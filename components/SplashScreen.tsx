@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface SplashScreenProps {
@@ -16,17 +16,17 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ isFadingOut }) => {
         {/* Logo Animation */}
         <div className="mb-8 animate-scale-in flex flex-col items-center">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4">
-                <span className="text-5xl font-black text-white tracking-tighter">N</span>
+                <span className="text-5xl font-black text-white tracking-tighter">S</span>
             </div>
             <h1 className="text-4xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
-                Nexus CRM
+                SOFT-CRM
             </h1>
         </div>
 
         {/* Welcome Text with Delay */}
         <div className="text-center space-y-4 animate-fade-in opacity-0" style={{ animationFillMode: 'forwards', animationDelay: '0.5s' }}>
             <p className="text-lg md:text-xl text-blue-200 font-medium tracking-wide">
-                Bem-vindo de volta ao CRM Nexus
+                Bem-vindo de volta ao SOFT-CRM
             </p>
             
             {/* Loading Indicator */}

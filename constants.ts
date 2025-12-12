@@ -18,7 +18,7 @@ const daysFromNow = (days: number) => {
 // --- ORGANIZAÇÕES (SAAS MULTI-TENANT MOCK) ---
 export const MOCK_ORGANIZATIONS: Organization[] = [
     { 
-        id: 'org-softcase', 
+        id: 'org-1', // CHANGED from 'org-softcase' to 'org-1' to match your Supabase data
         name: 'Soft Case Tecnologia', 
         slug: 'softcase', 
         plan: 'Enterprise',
@@ -35,11 +35,11 @@ export const MOCK_USERS: User[] = [
       role: 'admin', 
       avatar: 'ES', 
       email: 'edson.softcase@gmail.com', 
-      organizationId: 'org-softcase',
+      organizationId: 'org-1', // Changed to match Org ID
       active: true 
   },
-  { id: 'u1', name: 'Admin Demo', role: 'admin', avatar: 'AD', email: 'admin@nexus.com', organizationId: 'org-softcase' },
-  { id: 'u-client-1', name: 'Cliente Teste', role: 'client', avatar: 'CT', email: 'client@test.com', organizationId: 'org-softcase', relatedClientId: 'c-nexus-crm' },
+  { id: 'u1', name: 'Admin Demo', role: 'admin', avatar: 'AD', email: 'admin@nexus.com', organizationId: 'org-1' },
+  { id: 'u-client-1', name: 'Cliente Teste', role: 'client', avatar: 'CT', email: 'client@test.com', organizationId: 'org-1', relatedClientId: 'c-nexus-crm' },
 ];
 
 // --- DADOS DE NEGÓCIO (ZERADOS PARA PRODUÇÃO/SAAS) ---
@@ -61,7 +61,7 @@ export const MOCK_CLIENTS: Client[] = [
         healthScore: 0,
         onboardingStatus: 'Completed',
         lastContact: daysAgo(60),
-        organizationId: 'org-softcase',
+        organizationId: 'org-1',
         address: 'Av. Paulista, 1000 - São Paulo, SP',
         cep: '01310-100'
     }
