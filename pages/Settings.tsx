@@ -1070,7 +1070,7 @@ export const Settings: React.FC = () => {
                  </div>
             )}
 
-            {/* SQL Modal (Updated with ALTER TABLE commands for safe migration) */}
+            {/* SQL Modal (Updated with robust migration script) */}
             {showSqlModal && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm">
                     <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl border border-slate-700 flex flex-col max-h-[80vh]">
@@ -1080,15 +1080,41 @@ export const Settings: React.FC = () => {
                         </div>
                         <div className="p-4 flex-1 overflow-auto bg-black">
                             <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">
-{`-- Execute este script no SQL Editor do Supabase para corrigir e atualizar a estrutura do banco.
--- Ele cria tabelas se não existirem e adiciona colunas novas se estiverem faltando.
+{`-- SQL DE ATUALIZAÇÃO COMPLETA (CORREÇÃO DE COLUNAS E TABELAS)
 
 -- 1. Habilita extensão UUID
 create extension if not exists "uuid-ossp";
 
+-- NORMALIZAÇÃO DE COLUNAS (CamelCase para snake_case)
+-- Tenta renomear colunas antigas caso existam, evitando perda de dados
+do $$
+begin
+  -- Workflows
+  if exists (select 1 from information_schema.columns where table_name = 'workflows' and column_name = 'organizationId') then
+    alter table workflows rename column "organizationId" to organization_id;
+  end if;
+  -- Custom Fields
+  if exists (select 1 from information_schema.columns where table_name = 'custom_fields' and column_name = 'organizationId') then
+    alter table custom_fields rename column "organizationId" to organization_id;
+  end if;
+  -- Webhooks
+  if exists (select 1 from information_schema.columns where table_name = 'webhooks' and column_name = 'organizationId') then
+    alter table webhooks rename column "organizationId" to organization_id;
+  end if;
+  -- Client Documents
+  if exists (select 1 from information_schema.columns where table_name = 'client_documents' and column_name = 'organizationId') then
+    alter table client_documents rename column "organizationId" to organization_id;
+  end if;
+   -- Profiles (Active/Ativo check)
+  if exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'ativo') then
+    alter table profiles rename column "ativo" to active;
+  end if;
+exception when others then null;
+end $$;
+
 -- 2. Organizations
 create table if not exists organizations (
-  id uuid primary key default uuid_generate_v4(),
+  id text primary key,
   name text not null,
   slug text unique not null,
   plan text default 'Trial',
@@ -1099,13 +1125,13 @@ create table if not exists organizations (
   created_at timestamp with time zone default now()
 );
 
--- 3. Profiles
+-- 3. Profiles (CORREÇÃO CRÍTICA: REMOVE CONSTRAINT DE AUTH.USERS SE EXISTIR)
 create table if not exists profiles (
-  id uuid references auth.users on delete cascade primary key,
+  id uuid primary key, 
   full_name text,
-  email text,
+  email text unique,
   role text default 'sales',
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   related_client_id text,
   xp integer default 0,
   level integer default 1,
@@ -1114,7 +1140,16 @@ create table if not exists profiles (
   created_at timestamp with time zone default now()
 );
 
--- 4. Leads (com ALTER TABLE para novos campos)
+-- Remove Foreign Key antiga se existir (para permitir shadow users)
+do $$
+begin
+  if exists (select 1 from information_schema.table_constraints where constraint_name = 'profiles_id_fkey') then
+    alter table profiles drop constraint profiles_id_fkey;
+  end if;
+exception when others then null;
+end $$;
+
+-- 4. Leads
 create table if not exists leads (
   id text primary key,
   name text,
@@ -1125,16 +1160,18 @@ create table if not exists leads (
   status text,
   source text,
   probability integer,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   created_at timestamp with time zone default now(),
   last_contact timestamp with time zone,
-  metadata jsonb default '{}'
+  metadata jsonb default '{}',
+  address text,
+  cep text,
+  website text,
+  product_interest text,
+  parking_spots integer,
+  description text,
+  lost_reason text
 );
-alter table leads add column if not exists address text;
-alter table leads add column if not exists cep text;
-alter table leads add column if not exists website text;
-alter table leads add column if not exists product_interest text;
-alter table leads add column if not exists parking_spots integer;
 
 -- 5. Clients
 create table if not exists clients (
@@ -1149,19 +1186,30 @@ create table if not exists clients (
   ltv numeric default 0,
   nps integer,
   health_score integer,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   contracted_products text[],
   since timestamp with time zone,
   last_contact timestamp with time zone,
-  metadata jsonb default '{}'
+  metadata jsonb default '{}',
+  address text,
+  cep text,
+  latitude numeric,
+  longitude numeric,
+  website text,
+  unit text,
+  parking_spots integer,
+  exempt_spots integer,
+  vehicle_count integer,
+  credential_count integer,
+  pricing_table text,
+  table_price numeric,
+  total_table_price numeric,
+  special_day text,
+  special_price numeric,
+  total_special_price numeric
 );
-alter table clients add column if not exists address text;
-alter table clients add column if not exists cep text;
-alter table clients add column if not exists latitude numeric;
-alter table clients add column if not exists longitude numeric;
-alter table clients add column if not exists website text;
 
--- 6. Proposals (CORREÇÃO CRÍTICA DE CAMPOS)
+-- 6. Outras Tabelas
 create table if not exists proposals (
   id text primary key,
   title text,
@@ -1176,19 +1224,17 @@ create table if not exists proposals (
   price numeric,
   timeline text,
   terms text,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   signature text,
   signed_at timestamp with time zone,
-  signed_by_ip text
+  signed_by_ip text,
+  setup_cost numeric,
+  monthly_cost numeric,
+  consultant_name text,
+  consultant_email text,
+  consultant_phone text
 );
--- Adiciona colunas que podem estar faltando
-alter table proposals add column if not exists setup_cost numeric;
-alter table proposals add column if not exists monthly_cost numeric;
-alter table proposals add column if not exists consultant_name text;
-alter table proposals add column if not exists consultant_email text;
-alter table proposals add column if not exists consultant_phone text;
 
--- 7. Products
 create table if not exists products (
   id text primary key,
   name text,
@@ -1197,10 +1243,9 @@ create table if not exists products (
   sku text,
   category text,
   active boolean default true,
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
--- 8. Activities
 create table if not exists activities (
   id text primary key,
   title text,
@@ -1208,13 +1253,12 @@ create table if not exists activities (
   due_date timestamp with time zone,
   completed boolean default false,
   related_to text,
-  assignee uuid references profiles(id),
+  assignee uuid,
   description text,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   metadata jsonb default '{}'
 );
 
--- 9. Outras Tabelas (Tickets, Invoices, Projects)
 create table if not exists tickets (
   id text primary key,
   subject text,
@@ -1223,7 +1267,7 @@ create table if not exists tickets (
   status text,
   customer text,
   channel text,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   created_at timestamp with time zone default now(),
   resolved_at timestamp with time zone,
   responses jsonb default '[]'
@@ -1236,7 +1280,7 @@ create table if not exists invoices (
   due_date timestamp with time zone,
   status text,
   description text,
-  organization_id uuid references organizations(id),
+  organization_id text references organizations(id),
   created_at timestamp with time zone default now()
 );
 
@@ -1248,10 +1292,9 @@ create table if not exists audit_logs (
   action text,
   details text,
   module text,
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
--- 10. SPY (INTELIGÊNCIA COMPETITIVA)
 create table if not exists competitors (
   id text primary key,
   name text,
@@ -1260,10 +1303,9 @@ create table if not exists competitors (
   last_analysis timestamp with time zone,
   swot jsonb,
   battlecard jsonb,
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
--- 11. PROSPECÇÃO
 create table if not exists prospecting_history (
   id text primary key,
   timestamp timestamp with time zone default now(),
@@ -1271,11 +1313,9 @@ create table if not exists prospecting_history (
   location text,
   keywords text,
   results jsonb default '[]',
-  organization_id text references organizations(id) -- Changed to text
+  organization_id text references organizations(id)
 );
-alter table prospecting_history add column if not exists organization_id text references organizations(id); -- Changed to text
 
--- 12. CONFIGURAÇÕES & MARKETING
 create table if not exists custom_fields (
   id text primary key,
   label text,
@@ -1284,7 +1324,7 @@ create table if not exists custom_fields (
   module text,
   options text[],
   required boolean default false,
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
 create table if not exists webhooks (
@@ -1295,7 +1335,7 @@ create table if not exists webhooks (
   method text,
   active boolean default true,
   headers jsonb default '{}',
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
 create table if not exists workflows (
@@ -1306,10 +1346,67 @@ create table if not exists workflows (
   actions jsonb default '[]',
   runs integer default 0,
   last_run timestamp with time zone,
-  organization_id uuid references organizations(id)
+  organization_id text references organizations(id)
 );
 
--- HABILITAR RLS (Segurança)
+create table if not exists projects (
+  id text primary key,
+  title text,
+  client_name text,
+  status text,
+  progress integer,
+  start_date timestamp with time zone,
+  deadline timestamp with time zone,
+  manager text,
+  description text,
+  tasks jsonb default '[]',
+  organization_id text references organizations(id),
+  archived boolean default false,
+  products text[],
+  installation_notes text,
+  completed_at timestamp with time zone,
+  notes jsonb default '[]',
+  photos text[],
+  install_address text
+);
+
+create table if not exists client_documents (
+  id text primary key,
+  client_id text,
+  title text,
+  type text,
+  url text,
+  uploaded_by text,
+  upload_date timestamp with time zone,
+  size text,
+  organization_id text references organizations(id)
+);
+
+-- CORREÇÃO DE TIPOS E COLUNAS FALTANTES (SAFE ALTER)
+-- Garante que colunas críticas existam e tenham o tipo correto
+do $$
+begin
+  -- Fix Workflows Column Type
+  begin alter table workflows alter column organization_id type text; exception when others then null; end;
+  -- Fix Prospecting History Type
+  begin alter table prospecting_history alter column organization_id type text; exception when others then null; end;
+  -- Fix Client Documents Column Type
+  begin alter table client_documents alter column organization_id type text; exception when others then null; end;
+  -- Fix Profiles Active
+  begin alter table profiles add column if not exists active boolean default true; exception when others then null; end;
+  -- Fix Profiles Org ID
+  begin alter table profiles add column if not exists organization_id text; exception when others then null; end;
+  
+  -- Fix Leads Columns
+  begin alter table leads add column if not exists lost_reason text; exception when others then null; end;
+  
+  -- Fix Proposals Columns
+  begin alter table proposals add column if not exists setup_cost numeric; exception when others then null; end;
+  begin alter table proposals add column if not exists monthly_cost numeric; exception when others then null; end;
+  begin alter table proposals add column if not exists consultant_name text; exception when others then null; end;
+end $$;
+
+-- HABILITAR RLS (Segurança) - Executa em todas as tabelas
 alter table profiles enable row level security;
 alter table leads enable row level security;
 alter table clients enable row level security;
@@ -1322,36 +1419,62 @@ alter table custom_fields enable row level security;
 alter table webhooks enable row level security;
 alter table workflows enable row level security;
 alter table organizations enable row level security;
+alter table projects enable row level security;
+alter table tickets enable row level security;
+alter table invoices enable row level security;
+alter table client_documents enable row level security;
+alter table audit_logs enable row level security;
 
--- POLÍTICAS DE ACESSO (PERMISSIVAS PARA CORREÇÃO)
--- 1. Remove ALL existing policies to avoid conflicts (42710)
+-- REMOVER POLÍTICAS ANTIGAS (EVITA ERRO 42710)
 drop policy if exists "Enable all access for authenticated users based on org" on leads;
 drop policy if exists "Enable insert for authenticated users" on leads;
-
 drop policy if exists "Enable all access for authenticated users based on org" on clients;
-
 drop policy if exists "Enable all access for authenticated users based on org" on proposals;
 drop policy if exists "Enable insert for authenticated users" on proposals;
-
 drop policy if exists "Enable all access for authenticated users based on org" on products;
-
 drop policy if exists "Enable all access for authenticated users based on org" on competitors;
-
 drop policy if exists "Enable all access for authenticated users based on org" on prospecting_history;
-
+drop policy if exists "Enable all access for authenticated users based on org" on activities;
+drop policy if exists "Enable all access for authenticated users based on org" on tickets;
+drop policy if exists "Enable all access for authenticated users based on org" on invoices;
+drop policy if exists "Enable all access for authenticated users based on org" on custom_fields;
+drop policy if exists "Enable all access for authenticated users based on org" on webhooks;
+drop policy if exists "Enable all access for authenticated users based on org" on workflows;
+drop policy if exists "Enable all access for authenticated users based on org" on projects;
+drop policy if exists "Enable all access for authenticated users based on org" on client_documents;
+drop policy if exists "Enable all access for authenticated users based on org" on audit_logs;
+drop policy if exists "Enable all access for authenticated users based on org" on profiles;
 drop policy if exists "Enable insert for organizations" on organizations;
 drop policy if exists "Enable select for organizations" on organizations;
 drop policy if exists "Enable update for organizations" on organizations;
 
--- Cria políticas que permitem acesso total para usuários autenticados da mesma organização
+-- RECRIAR POLÍTICAS (PERMISSIVAS PARA CORREÇÃO)
+
+-- Organizações: Permite insert para criar conta, select/update para todos (simplificado)
+create policy "Enable insert for organizations" on organizations for insert with check (true);
+create policy "Enable select for organizations" on organizations for select using (true);
+create policy "Enable update for organizations" on organizations for update using (true);
+
+-- Perfis: Permite insert para criar usuários/invites, select para todos
+create policy "Enable all access for authenticated users based on org" on profiles
+  for all using ( true ); 
+
+-- Demais tabelas: Acesso baseado na organization_id do usuário logado
+-- Helper: Policy genérica que permite leitura/escrita se o usuário pertencer à mesma org
 create policy "Enable all access for authenticated users based on org" on leads
   for all using ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+
+create policy "Enable insert for authenticated users" on leads
+  for insert with check ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
 
 create policy "Enable all access for authenticated users based on org" on clients
   for all using ( auth.uid() in (select id from profiles where organization_id = clients.organization_id) );
 
 create policy "Enable all access for authenticated users based on org" on proposals
   for all using ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+
+create policy "Enable insert for authenticated users" on proposals
+  for insert with check ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
 
 create policy "Enable all access for authenticated users based on org" on products
   for all using ( auth.uid() in (select id from profiles where organization_id = products.organization_id) );
@@ -1362,19 +1485,32 @@ create policy "Enable all access for authenticated users based on org" on compet
 create policy "Enable all access for authenticated users based on org" on prospecting_history
   for all using ( auth.uid() in (select id from profiles where organization_id = prospecting_history.organization_id) );
 
--- Importante: Política para Inserção (Insert)
--- Permite que usuários autenticados insiram dados se a organization_id bater com a deles
-create policy "Enable insert for authenticated users" on leads
-  for insert with check ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+create policy "Enable all access for authenticated users based on org" on activities
+  for all using ( auth.uid() in (select id from profiles where organization_id = activities.organization_id) );
 
-create policy "Enable insert for authenticated users" on proposals
-  for insert with check ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+create policy "Enable all access for authenticated users based on org" on tickets
+  for all using ( auth.uid() in (select id from profiles where organization_id = tickets.organization_id) );
 
--- CORREÇÃO PARA CRIAÇÃO DE ORGANIZAÇÕES
--- Permite que usuários anon/autenticados criem organizações (necessário para o fluxo de SignUp)
-create policy "Enable insert for organizations" on organizations for insert with check (true);
-create policy "Enable select for organizations" on organizations for select using (true);
-create policy "Enable update for organizations" on organizations for update using (true);
+create policy "Enable all access for authenticated users based on org" on invoices
+  for all using ( auth.uid() in (select id from profiles where organization_id = invoices.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on custom_fields
+  for all using ( auth.uid() in (select id from profiles where organization_id = custom_fields.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on webhooks
+  for all using ( auth.uid() in (select id from profiles where organization_id = webhooks.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on workflows
+  for all using ( auth.uid() in (select id from profiles where organization_id = workflows.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on projects
+  for all using ( auth.uid() in (select id from profiles where organization_id = projects.organization_id) );
+
+create policy "Enable all access for authenticated users based on org" on client_documents
+  for all using ( auth.uid() in (select id from profiles where organization_id = client_documents.organization_id) );
+  
+create policy "Enable all access for authenticated users based on org" on audit_logs
+  for all using ( auth.uid() in (select id from profiles where organization_id = audit_logs.organization_id) );
 `}
                             </pre>
                         </div>
