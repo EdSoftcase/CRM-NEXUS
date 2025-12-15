@@ -1,9 +1,10 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { DollarSign, TrendingUp, Users, AlertCircle, RefreshCw, CheckCircle, Circle, Clock, ArrowRight, X, Bell, Zap, Phone, PartyPopper, Briefcase, Eye, EyeOff, Trophy } from 'lucide-react';
 import { KPICard, SectionTitle } from '../components/Widgets';
 import { RevenueChart, PipelineFunnel } from '../components/Charts';
 import { generateExecutiveSummary } from '../services/geminiService';
-import { InvoiceStatus, Lead, Client, LeadStatus, TicketStatus } from '../types';
+import { InvoiceStatus, Lead, Client, LeadStatus, TicketStatus, TicketPriority } from '../types';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { ContactCenterWidget } from '../components/ContactCenterWidget';
@@ -26,13 +27,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   };
   
   const { activities, toggleActivity, leads, clients, tickets, invoices, notifications, markNotificationRead, addSystemNotification } = useData();
-  const { currentUser, usersList } = useAuth();
+  const { currentUser, usersList, hasPermission } = useAuth();
 
   const [stagnantLeads, setStagnantLeads] = useState<Lead[]>([]);
   const [showStagnantModal, setShowStagnantModal] = useState(false);
   
   // Explicit check for view mode
   const isContactCenterMode = viewMode === 'contact-center';
+  
+  // Permission Check for Financials
+  const canSeeFinancials = hasPermission('finance', 'view');
 
   const maskValue = (value: string | number, type: 'currency' | 'number' | 'percent' = 'number') => {
       if (!privacyMode) {
@@ -91,7 +95,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   }, [invoices, currentMRR]);
 
   const criticalTickets = tickets.filter(t => 
-      (t.priority === 'Crítica' || t.priority === 'Alta') && 
+      (t.priority === TicketPriority.CRITICAL || t.priority === TicketPriority.HIGH) && 
       (t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED)
   );
 
@@ -125,7 +129,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
     const isAdminOrSales = ['admin', 'executive', 'sales'].includes(currentUser.role);
     if (isAdminOrSales) {
         const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const inactiveLeads = leads.filter(l => new Date(l.lastContact) < sevenDaysAgo && l.status !== 'Ganho' && l.status !== 'Perdido');
+        const inactiveLeads = leads.filter(l => new Date(l.lastContact) < sevenDaysAgo && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CLOSED_LOST);
         if(inactiveLeads.length > 0) { setStagnantLeads(inactiveLeads); if(!sessionStorage.getItem('nexus_stagnant_leads_shown')) setShowStagnantModal(true); }
     }
     return () => clearTimeout(timer);
@@ -150,7 +154,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                         "Visão Executiva"
                     )}
                     
-                    {!isContactCenterMode && (
+                    {!isContactCenterMode && canSeeFinancials && (
                         <button 
                             onClick={togglePrivacy} 
                             className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full"
@@ -166,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
             </div>
         </div>
         
-        {!isContactCenterMode && (
+        {!isContactCenterMode && canSeeFinancials && (
             <div className="flex items-center gap-3 mt-4 md:mt-0">
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3 rounded-lg max-w-xl mr-4 hidden lg:block">
                     <div className="flex items-start gap-3">
@@ -187,8 +191,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
       {/* KPI Grid - Hidden in Contact Center Mode */}
       {!isContactCenterMode && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-            <KPICard title="MRR (Mensal)" value={maskValue(currentMRR, 'currency')} trend="Calculado sobre ativos" trendUp={true} icon={DollarSign} color="bg-blue-500" tooltip="Receita Mensal Recorrente calculada pela soma dos valores mensais de todos os clientes ativos." />
-            <KPICard title="ARR (Anual)" value={maskValue(currentARR, 'currency')} trend="Projeção 12m" trendUp={true} icon={TrendingUp} color="bg-emerald-500" tooltip="Receita Anual Recorrente (MRR x 12). Projeção financeira anualizada da base atual." />
+            {/* Show Financial KPIs only if user has permission */}
+            {canSeeFinancials ? (
+                <>
+                    <KPICard title="MRR (Mensal)" value={maskValue(currentMRR, 'currency')} trend="Calculado sobre ativos" trendUp={true} icon={DollarSign} color="bg-blue-500" tooltip="Receita Mensal Recorrente calculada pela soma dos valores mensais de todos os clientes ativos." />
+                    <KPICard title="ARR (Anual)" value={maskValue(currentARR, 'currency')} trend="Projeção 12m" trendUp={true} icon={TrendingUp} color="bg-emerald-500" tooltip="Receita Anual Recorrente (MRR x 12). Projeção financeira anualizada da base atual." />
+                </>
+            ) : (
+                <>
+                    <KPICard title="Fila de Chamados" value={tickets.filter(t => t.status === TicketStatus.OPEN).length.toString()} trend="Tickets Abertos" trendUp={false} icon={AlertCircle} color="bg-orange-500" tooltip="Total de chamados aguardando atendimento." />
+                    <KPICard title="Em Atendimento" value={tickets.filter(t => t.status === TicketStatus.IN_PROGRESS).length.toString()} trend="Trabalhando agora" trendUp={true} icon={Clock} color="bg-blue-500" tooltip="Total de chamados sendo tratados pela equipe." />
+                </>
+            )}
+            
             <KPICard title="Clientes Ativos" value={maskValue(activeClientsCount, 'number')} trend={`${clients.length} Total`} trendUp={true} icon={Users} color="bg-indigo-500" tooltip="Contagem total de clientes com status 'Active' no sistema." />
             <KPICard title="Taxa de Churn" value={maskValue(churnRate, 'percent')} trend={Number(churnRate) > 5 ? "Alto" : "Controlado"} trendUp={Number(churnRate) < 5} icon={AlertCircle} color="bg-red-500" tooltip="Percentual de clientes inativos ou perdidos em relação à base total de clientes." />
           </div>
@@ -200,20 +215,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
         {/* Charts Column (Hidden in Contact Mode) */}
         {!isContactCenterMode ? (
             <div className="lg:col-span-2 flex flex-col gap-6">
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
-                <SectionTitle title="Receita Realizada" subtitle="Baseado em faturas e projeção atual" />
-                <div className={`flex-1 w-full min-h-0 mt-4 transition-all duration-300 ${privacyMode ? 'filter blur-sm select-none opacity-50' : ''}`}>
-                    <RevenueChart data={revenueChartData} />
+              
+              {/* Only show Revenue Chart if permissions allow */}
+              {canSeeFinancials && (
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
+                    <SectionTitle title="Receita Realizada" subtitle="Baseado em faturas e projeção atual" />
+                    <div className={`flex-1 w-full min-h-0 mt-4 transition-all duration-300 ${privacyMode ? 'filter blur-sm select-none opacity-50' : ''}`}>
+                        <RevenueChart data={revenueChartData} />
+                    </div>
                 </div>
-              </div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0 h-auto md:h-72">
+                 
+                 {/* Show Pipeline if Can See Commercial/Financials, otherwise show something else or full width ticket */}
                  <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col min-h-[250px]">
                     <SectionTitle title="Funil de Vendas" subtitle="Leads reais por estágio" />
                     <div className={`flex-1 w-full min-h-0 transition-all duration-300 ${privacyMode ? 'filter blur-sm select-none opacity-50' : ''}`}>
                         <PipelineFunnel data={pipelineData} />
                     </div>
                  </div>
+
                  <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden min-h-[250px]">
                     <SectionTitle title="Tickets Críticos" subtitle="Atenção Imediata" />
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 mt-2">

@@ -269,7 +269,25 @@ export const Operations: React.FC = () => {
         }
     };
 
-    const isDelayed = (deadline: string) => new Date(deadline) < new Date();
+    // HELPER: Determine Project Card Border based on Deadline
+    const getDeadlineStyle = (deadlineStr: string, status: string) => {
+        if (status === 'Completed') return 'border-green-500';
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const deadline = new Date(deadlineStr);
+        deadline.setHours(0,0,0,0);
+        
+        const diffTime = deadline.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Red: Overdue
+        if (diffDays < 0) return 'border-red-500';
+        // Yellow: 5 days or less
+        if (diffDays <= 5) return 'border-yellow-500';
+        // Green: On time
+        return 'border-green-500';
+    };
 
     // --- CREATE PROJECT LOGIC ---
     const toggleNewProjectProduct = (productName: string) => {
@@ -409,27 +427,49 @@ export const Operations: React.FC = () => {
                                     </div>
                                     <span className={`px-3 py-1 rounded-full font-bold shadow-sm ${tvMode ? 'bg-black/30 text-white text-xl' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs'}`}>{getProjectsByStatus(col.id).length}</span>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-3">
+                                <div className="p-3 flex-1 overflow-y-auto custom-scrollbar space-y-3">
                                     {getProjectsByStatus(col.id).map(proj => {
-                                        const delayed = isDelayed(proj.deadline) && col.id !== 'Completed';
+                                        const borderClass = getDeadlineStyle(proj.deadline, col.id);
+                                        const delayed = borderClass === 'border-red-500';
+
                                         return (
                                             <div 
                                                 key={proj.id}
                                                 draggable={!tvMode}
                                                 onDragStart={(e) => handleDragStart(e, proj.id)}
                                                 onClick={() => handleCardClick(proj)}
-                                                className={`rounded-xl transition-all duration-200 relative overflow-hidden ${tvMode ? `p-5 bg-slate-800 border-l-[6px] ${delayed ? 'border-l-red-500 animate-pulse-slow shadow-[0_0_15px_rgba(239,68,68,0.3)]' : col.id === 'Completed' ? 'border-l-green-500' : 'border-l-blue-500'}` : 'p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:shadow-md hover:-translate-y-1 cursor-pointer'}`}
+                                                className={`
+                                                    rounded-xl transition-all duration-200 relative overflow-hidden flex flex-col
+                                                    border-l-4 ${borderClass}
+                                                    ${tvMode ? 'p-5 bg-slate-800 border-y border-r border-slate-700' : 'p-4 bg-white dark:bg-slate-800 border-y border-r border-slate-200 dark:border-slate-700 hover:shadow-md hover:-translate-y-1 cursor-pointer'}
+                                                `}
                                             >
                                                 <div className="flex justify-between items-start mb-2">
                                                     <h3 className={`font-bold leading-tight ${tvMode ? 'text-2xl text-white' : 'text-slate-800 dark:text-white'}`}>{proj.clientName}</h3>
                                                     {delayed && <div className={`flex items-center gap-1 font-bold ${tvMode ? 'text-red-400 bg-red-900/50 px-2 py-1 rounded' : 'text-red-500'}`}><AlertCircle size={tvMode ? 20 : 16} />{tvMode && <span className="text-xs uppercase">Atrasado</span>}</div>}
                                                 </div>
-                                                <p className={`font-medium mb-4 ${tvMode ? 'text-lg text-slate-300' : 'text-sm text-slate-600 dark:text-slate-300'}`}>{proj.title}</p>
-                                                <div className={`grid ${tvMode ? 'grid-cols-2 gap-4 text-sm' : 'space-y-2 text-xs'} text-slate-500 dark:text-slate-400`}>
-                                                    <div className="flex items-center gap-2"><MapPin size={tvMode ? 18 : 14} className="shrink-0"/><span className="truncate">{proj.installAddress || proj.description ? (proj.installAddress || proj.description).substring(0, 30) : 'Sem endereço'}</span></div>
-                                                    <div className={`flex items-center gap-2 ${delayed ? 'text-red-500 font-bold' : ''}`}><Clock size={tvMode ? 18 : 14} className="shrink-0"/><span>{new Date(proj.deadline).toLocaleDateString()}</span></div>
-                                                    <div className={`flex items-center gap-2 ${tvMode ? 'col-span-2 border-t border-slate-700 pt-2 mt-1' : ''}`}><div className={`rounded-full flex items-center justify-center font-bold text-white shrink-0 ${tvMode ? 'w-8 h-8 bg-indigo-600 text-sm' : 'w-5 h-5 bg-indigo-500 text-[10px]'}`}>{proj.manager?.charAt(0) || 'U'}</div><span className={`${tvMode ? 'text-base text-white' : ''}`}>{proj.manager}</span></div>
+                                                <p className={`font-medium mb-3 ${tvMode ? 'text-lg text-slate-300' : 'text-sm text-slate-600 dark:text-slate-300'}`}>{proj.title}</p>
+                                                
+                                                {/* PRODUCTS SECTION (Cleaned & Prominent) */}
+                                                <div className="mb-3 flex flex-wrap gap-1.5 min-h-[20px]">
+                                                    {proj.products && proj.products.length > 0 ? proj.products.map((prod, idx) => (
+                                                        <span 
+                                                            key={idx} 
+                                                            className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${tvMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
+                                                        >
+                                                            {prod}
+                                                        </span>
+                                                    )) : (
+                                                        <span className="text-[10px] italic text-slate-400">Sem produtos listados</span>
+                                                    )}
                                                 </div>
+
+                                                {/* CLEAN FOOTER: Deadline Only (Address & Manager Removed) */}
+                                                <div className={`flex items-center gap-2 text-xs mt-auto ${delayed ? 'text-red-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                    <Clock size={tvMode ? 18 : 14} className="shrink-0"/>
+                                                    <span>Entrega: {new Date(proj.deadline).toLocaleDateString()}</span>
+                                                </div>
+
                                                 <div className={`mt-4 w-full rounded-full overflow-hidden ${tvMode ? 'h-3 bg-slate-700' : 'h-1.5 bg-slate-100 dark:bg-slate-700'}`}><div className={`h-full transition-all duration-500 ${col.id === 'Completed' ? 'bg-green-500' : delayed ? 'bg-red-500' : 'bg-blue-500'}`} style={{width: `${proj.progress}%`}}></div></div>
                                             </div>
                                         );

@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, ComposedChart, Area, AreaChart, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { LeadStatus, Lead, TicketStatus } from '../types';
+import { LeadStatus, Lead, TicketStatus, TicketPriority } from '../types';
 import { SectionTitle, KPICard, Badge } from '../components/Widgets';
 import { 
     BarChart2, TrendingUp, BrainCircuit, Target, PieChart as PieIcon, 
@@ -153,8 +153,8 @@ export const Reports: React.FC = () => {
     const ticketStats = useMemo(() => {
         const open = filteredTickets.filter(t => t.status === TicketStatus.OPEN).length;
         const progress = filteredTickets.filter(t => t.status === TicketStatus.IN_PROGRESS).length;
-        const critical = filteredTickets.filter(t => t.priority === 'Crítica' && t.status !== TicketStatus.CLOSED).length;
-        const slaBreach = filteredTickets.filter(t => t.priority === 'Crítica').length; // Simulado
+        const critical = filteredTickets.filter(t => t.priority === TicketPriority.CRITICAL && t.status !== TicketStatus.CLOSED).length;
+        const slaBreach = filteredTickets.filter(t => t.priority === TicketPriority.CRITICAL).length; // Simulado
         return { open, progress, critical, slaBreach };
     }, [filteredTickets]);
 

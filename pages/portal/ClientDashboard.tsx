@@ -1,8 +1,7 @@
-
 import React, { useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { DollarSign, FileText, LifeBuoy, AlertCircle, CheckCircle } from 'lucide-react';
+import { DollarSign, FileText, LifeBuoy, AlertCircle, CheckCircle, Wallet } from 'lucide-react';
 import { InvoiceStatus, TicketStatus } from '../../types';
 
 interface ClientDashboardProps {
@@ -18,15 +17,46 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
     clients.find(c => c.id === currentUser?.relatedClientId), 
   [clients, currentUser]);
 
-  // Filtrar dados
+  // Filtrar dados com segurança
   const myInvoices = useMemo(() => currentClient ? invoices.filter(i => i.customer === currentClient.name) : [], [invoices, currentClient]);
-  const myProposals = useMemo(() => currentClient ? proposals.filter(p => p.companyName === currentClient.name || p.clientName === currentClient.name) : [], [proposals, currentClient]);
+  
+  const myProposals = useMemo(() => {
+    if (!currentClient) return [];
+    
+    // Normalize Helper
+    const normalize = (s: string) => (s || '').trim().toLowerCase();
+    const clientName = normalize(currentClient.name);
+    const clientContact = normalize(currentClient.contactPerson);
+
+    return proposals.filter(p => {
+        // 1. Hide Drafts
+        if (p.status === 'Draft') return false;
+
+        // 2. Match ID
+        if (p.clientId && p.clientId === currentClient.id) return true;
+
+        // 3. Fuzzy Match
+        const propCompany = normalize(p.companyName);
+        if (propCompany && (propCompany === clientName || propCompany.includes(clientName) || clientName.includes(propCompany))) return true;
+
+        const propClientName = normalize(p.clientName);
+        if (propClientName && (propClientName === clientContact || propClientName === clientName)) return true;
+
+        return false;
+    }).sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
+  }, [proposals, currentClient]);
+
   const myTickets = useMemo(() => currentClient ? tickets.filter(t => t.customer === currentClient.name) : [], [tickets, currentClient]);
 
   // Métricas
   const pendingInvoices = myInvoices.filter(i => i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.SENT || i.status === InvoiceStatus.OVERDUE);
   const pendingProposals = myProposals.filter(p => p.status === 'Sent');
   const openTickets = myTickets.filter(t => t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED);
+  
+  // Total Contratado (Aprovado)
+  const totalContractedMonthly = myProposals
+      .filter(p => p.status === 'Accepted')
+      .reduce((acc, curr) => acc + (curr.monthlyCost || 0), 0);
 
   const primaryColor = portalSettings.primaryColor || '#4f46e5';
 
@@ -56,7 +86,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
       </div>
 
       {/* Quick Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {portalSettings.allowInvoiceDownload && (
               <div onClick={() => onNavigate('portal-financial')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
                   <div className="flex items-center justify-between mb-4">
@@ -66,7 +96,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
                       <span className="text-xs font-bold text-slate-400 uppercase">Financeiro</span>
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-1">{pendingInvoices.length} Pendentes</h3>
-                  <p className="text-sm text-slate-500">Faturas em aberto ou atrasadas.</p>
+                  <p className="text-sm text-slate-500">Faturas em aberto.</p>
               </div>
           )}
 
@@ -93,6 +123,18 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
                   <p className="text-sm text-slate-500">Chamados em andamento.</p>
               </div>
           )}
+          
+          {/* NEW: Total Contracted Value */}
+          <div onClick={() => onNavigate('portal-financial')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
+              <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-lg group-hover:bg-amber-600 group-hover:text-white transition">
+                      <Wallet size={24} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 uppercase">Total Contratado</span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-1 truncate">R$ {totalContractedMonthly.toLocaleString()}</h3>
+              <p className="text-sm text-slate-500">Valor mensal recorrente.</p>
+          </div>
       </div>
 
       {/* Urgent Actions Row */}

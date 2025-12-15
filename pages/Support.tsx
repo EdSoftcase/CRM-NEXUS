@@ -154,7 +154,15 @@ export const Support: React.FC = () => {
             description: responseMessage 
         }); 
         
-        addSystemNotification('Atualização em Chamado', `Você respondeu ao chamado "${selectedTicket.subject}"`, 'success', selectedTicket.customer); 
+        // NOTIFICAR CLIENTE
+        // CRÍTICO: Usamos selectedTicket.customer como target, pois no portal verificamos se relatedTo === currentClient.name
+        addSystemNotification(
+            'Nova Resposta no Suporte', 
+            `Atualização no chamado #${selectedTicket.id}: ${selectedTicket.subject}`, 
+            'info', 
+            selectedTicket.customer 
+        ); 
+        
         setResponseMessage(''); 
     };
 

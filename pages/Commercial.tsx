@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal } from 'react-dom'; 
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/Widgets';
 import { PipelineFunnel } from '../components/Charts';
-import { Mail, Phone, Calendar, MapPin, Globe, Car, Box, X, AlertCircle, Clock, Flame, ThermometerSnowflake, Activity, MessageCircle, Send, BarChart2, ChevronDown, ChevronUp, Mic, Square, Loader2, PlayCircle, GraduationCap, Sparkles, Copy, GripVertical, Filter, Radar, UserPlus, List, Layout, Download, Calculator, DollarSign, MonitorPlay, Minimize, Search, CheckCircle, Server, User, Building, Trash2, Edit, Archive } from 'lucide-react';
+import { Mail, Phone, Calendar, MapPin, Globe, Car, Box, X, AlertCircle, Clock, Flame, ThermometerSnowflake, Activity, MessageCircle, Send, BarChart2, ChevronDown, ChevronUp, Mic, Square, Loader2, PlayCircle, GraduationCap, Sparkles, Copy, GripVertical, Filter, Radar, UserPlus, List, Layout, Download, Calculator, DollarSign, MonitorPlay, Minimize, Search, CheckCircle, Server, User, Building, Trash2, Edit, Archive, ArrowRight } from 'lucide-react';
 import { generateLeadEmail, generateSalesObjectionResponse, enrichCompanyData } from '../services/geminiService';
 import { fetchAddressByCEP, fetchCoordinates } from '../services/geoService';
-import { sendBridgeWhatsApp } from '../services/bridgeService'; // Import Bridge
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 import { Lead, LeadStatus, Note, Activity as ActivityType } from '../types';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { CustomFieldRenderer } from '../components/CustomFieldRenderer';
@@ -75,6 +75,8 @@ export const Commercial: React.FC = () => {
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [stagnantLeads, setStagnantLeads] = useState<Lead[]>([]);
+  const [showStagnantModal, setShowStagnantModal] = useState(false);
   
   // PERSISTENT BRIDGE PREFERENCE
   const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(() => {
@@ -224,6 +226,18 @@ export const Commercial: React.FC = () => {
       setIsCancelModalOpen(true);
       setCancelReason('');
   };
+
+  useEffect(() => {
+    const isAdminOrSales = currentUser && ['admin', 'executive', 'sales'].includes(currentUser.role);
+    if (isAdminOrSales) {
+        const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const inactiveLeads = leads.filter(l => new Date(l.lastContact) < sevenDaysAgo && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CLOSED_LOST);
+        if(inactiveLeads.length > 0) { 
+            setStagnantLeads(inactiveLeads); 
+            if(!sessionStorage.getItem('nexus_stagnant_leads_shown')) setShowStagnantModal(true); 
+        }
+    }
+  }, [leads, currentUser]);
 
   const handleConfirmCancel = () => {
       if (!selectedLead || !cancelReason.trim()) {
@@ -490,8 +504,8 @@ export const Commercial: React.FC = () => {
           document.body
       )}
 
-      {/* CANCEL MODAL */}
-      {isCancelModalOpen && selectedLead && (
+      {/* CANCEL MODAL - MOVED TO PORTAL FOR Z-INDEX FIX */}
+      {isCancelModalOpen && selectedLead && createPortal(
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-4 border-amber-500">
                   <div className="p-6">
@@ -519,7 +533,8 @@ export const Commercial: React.FC = () => {
                       </div>
                   </div>
               </div>
-          </div>
+          </div>,
+          document.body
       )}
 
       {showWhatsAppModal && selectedLead && (
@@ -544,6 +559,44 @@ export const Commercial: React.FC = () => {
                 </div>
             </div>
         </div>
+      )}
+
+      {showStagnantModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                  <div className="bg-blue-600 p-6 text-white text-center">
+                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse-slow">
+                          <AlertCircle size={32} />
+                      </div>
+                      <h3 className="text-xl font-bold">Oportunidades Estagnadas</h3>
+                      <p className="text-blue-100 text-sm mt-1">Identificamos {stagnantLeads.length} leads sem interação recente.</p>
+                  </div>
+                  <div className="p-6">
+                      <p className="text-slate-600 dark:text-slate-300 text-sm mb-6 text-center">
+                          Leads parados por mais de 7 dias têm 80% menos chance de fechamento. Que tal reaquecer esses contatos hoje?
+                      </p>
+                      <button 
+                          onClick={() => {
+                              sessionStorage.setItem('nexus_filter_stagnant', 'true');
+                              setShowStagnantModal(false);
+                              window.location.reload(); // Simple reload to apply filter logic
+                          }}
+                          className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                      >
+                          Ver Leads Estagnados <ArrowRight size={18}/>
+                      </button>
+                      <button 
+                          onClick={() => {
+                              setShowStagnantModal(false);
+                              sessionStorage.setItem('nexus_stagnant_leads_shown', 'true');
+                          }}
+                          className="w-full mt-3 py-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm font-medium"
+                      >
+                          Lembrar depois
+                      </button>
+                  </div>
+              </div>
+          </div>
       )}
 
       {isEmailModalOpen && emailLead && (

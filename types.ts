@@ -8,7 +8,7 @@ export enum LeadStatus {
   NEGOTIATION = 'Negociação',
   CLOSED_WON = 'Ganho',
   CLOSED_LOST = 'Perdido',
-  CANCELLED = 'Cancelado' // Added
+  CANCELLED = 'Cancelado'
 }
 
 export enum TicketPriority {
@@ -138,7 +138,7 @@ export interface Lead {
   estimatedRevenue?: string;
   competitors?: string[];
   description?: string;
-  lostReason?: string; // Added field for cancellation justification
+  lostReason?: string;
   metadata?: Record<string, any>;
 }
 
@@ -283,7 +283,8 @@ export interface Invoice {
 export interface Proposal {
   id: string;
   title: string;
-  leadId?: string; 
+  leadId?: string;
+  clientId?: string; // Correct CamelCase for App
   clientName: string;
   companyName: string;
   createdDate: string;
@@ -291,15 +292,16 @@ export interface Proposal {
   status: ProposalStatus;
   introduction: string;
   scope: string[];
-  price: number; // Used as Total Value
-  setupCost?: number; // New: Valor de Instalação/Setup
-  monthlyCost?: number; // New: Valor Mensal/Locação
+  price: number; 
+  setupCost?: number; 
+  monthlyCost?: number; 
   timeline: string;
   terms: string;
   organizationId?: string;
   signature?: string;
   signedAt?: string;
   signedByIp?: string;
+  unit?: string; // Nova propriedade para Unidade/Filial
   
   // Consultant / User Data snapshot
   consultantName?: string;

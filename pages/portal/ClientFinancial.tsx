@@ -3,11 +3,11 @@ import React, { useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { InvoiceStatus } from '../../types';
-import { DollarSign, Download, CheckCircle, Clock, AlertCircle, FileText } from 'lucide-react';
+import { DollarSign, Download, CheckCircle, Clock, AlertCircle, FileText, Building2 } from 'lucide-react';
 import { Badge } from '../../components/Widgets';
 
 export const ClientFinancial: React.FC = () => {
-  const { invoices, clients } = useData();
+  const { invoices, clients, proposals } = useData();
   const { currentUser } = useAuth();
 
   // Encontrar o cliente vinculado ao usuário logado
@@ -21,6 +21,15 @@ export const ClientFinancial: React.FC = () => {
     return invoices.filter(inv => inv.customer === currentClient.name);
   }, [invoices, currentClient]);
 
+  // Filtrar contratos aprovados
+  const approvedProposals = useMemo(() => {
+      if (!currentClient) return [];
+      return proposals.filter(p => 
+          p.status === 'Accepted' && 
+          (p.clientId === currentClient.id || p.companyName === currentClient.name)
+      );
+  }, [proposals, currentClient]);
+
   const stats = useMemo(() => {
       const open = myInvoices.filter(i => i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.SENT);
       const overdue = myInvoices.filter(i => i.status === InvoiceStatus.OVERDUE);
@@ -32,6 +41,8 @@ export const ClientFinancial: React.FC = () => {
           overdueCount: overdue.length
       };
   }, [myInvoices]);
+
+  const totalContracted = approvedProposals.reduce((acc, curr) => acc + (curr.monthlyCost || 0), 0);
 
   const handleDownload = (id: string) => {
       alert(`Download da fatura ${id} iniciado...`);
@@ -49,7 +60,7 @@ export const ClientFinancial: React.FC = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
                 <div className="p-3 bg-blue-50 text-blue-600 rounded-full">
                     <Clock size={24} />
@@ -71,13 +82,77 @@ export const ClientFinancial: React.FC = () => {
                     <p className="text-xs text-red-600 font-bold">{stats.overdueCount} faturas</p>
                 </div>
             </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-full">
+                    <FileText size={24} />
+                </div>
+                <div>
+                    <p className="text-sm text-slate-500 font-medium">Total Contratado</p>
+                    <p className="text-2xl font-bold text-emerald-700">R$ {totalContracted.toLocaleString()}</p>
+                    <p className="text-xs text-emerald-600 font-bold">Valor Mensal Recorrente</p>
+                </div>
+            </div>
+        </div>
+
+        {/* Contracted Units Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <Building2 size={18} className="text-slate-500"/> Contratos por Unidade
+                </h3>
+            </div>
+            {approvedProposals.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 text-sm">
+                    Nenhum contrato ativo encontrado.
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-white text-slate-500 uppercase text-xs border-b border-slate-100">
+                            <tr>
+                                <th className="p-4">Unidade / Filial</th>
+                                <th className="p-4">Descrição do Serviço</th>
+                                <th className="p-4 text-right">Valor Mensal</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {approvedProposals.map(prop => (
+                                <tr key={prop.id} className="hover:bg-slate-50/50 transition">
+                                    <td className="p-4 font-bold text-slate-700">
+                                        {prop.unit || 'Unidade Principal'}
+                                    </td>
+                                    <td className="p-4 text-slate-600">
+                                        {prop.title}
+                                    </td>
+                                    <td className="p-4 text-right font-mono font-bold text-slate-800">
+                                        R$ {(prop.monthlyCost || 0).toLocaleString()}
+                                    </td>
+                                </tr>
+                            ))}
+                            <tr className="bg-slate-50 font-bold border-t border-slate-200">
+                                <td className="p-4 text-slate-800">TOTAL</td>
+                                <td className="p-4"></td>
+                                <td className="p-4 text-right text-emerald-700">
+                                    R$ {totalContracted.toLocaleString()}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
 
         {/* Invoice List */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <DollarSign size={18} className="text-slate-500"/> Histórico de Faturas
+                </h3>
+            </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs border-b border-slate-200">
+                    <thead className="bg-white text-slate-500 uppercase text-xs border-b border-slate-200">
                         <tr>
                             <th className="p-4">Descrição / ID</th>
                             <th className="p-4">Vencimento</th>

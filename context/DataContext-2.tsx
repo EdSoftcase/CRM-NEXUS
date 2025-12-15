@@ -215,6 +215,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (newItem.valid_until) { newItem.validUntil = newItem.valid_until; delete newItem.valid_until; }
             if (newItem.signed_at) { newItem.signedAt = newItem.signed_at; delete newItem.signed_at; }
             if (newItem.signed_by_ip) { newItem.signedByIp = newItem.signed_by_ip; delete newItem.signed_by_ip; }
+            if (newItem.unit) { newItem.unit = newItem.unit; } // Map unit (no transformation needed as it's same name usually)
 
             // Audit Logs
             if (newItem.user_id) { newItem.userId = newItem.user_id; delete newItem.user_id; }
@@ -259,6 +260,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.validUntil; }
         if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signedAt; }
         if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signedByIp; }
+        // payload.unit is already correct
 
         // Audit Logs
         if (payload.userId) { payload.user_id = payload.userId; delete payload.userId; }

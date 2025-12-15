@@ -2,7 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useAuditLogs } from '../hooks/useAuditLogs'; 
-import { UserCircle, Shield, Activity, Lock, Edit2, Trash2, Plus, Package, X, Save, Mail, Database, CheckCircle, RefreshCw, UploadCloud, ShieldCheck, Code, Copy,  Building2, Key, Globe, Users, AlertTriangle, Monitor, Palette, Search, Calendar, Unlock, Loader2, Bell, Zap, QrCode, Server, Wifi, WifiOff, MessageCircle, Cpu, Radio, Power, ExternalLink, Clock, ListChecks, Hourglass, Camera, Settings2, Link2, CalendarCheck, CalendarDays, CheckSquare, Type, Hash, List as ListIcon, AlignLeft, ArrowRightLeft, LayoutTemplate, UserPlus, FileEdit, Smartphone } from 'lucide-react';
+import { 
+    UserCircle, Shield, Activity, Lock, Edit2, Trash2, Plus, Package, X, Save, 
+    Database, CheckCircle, Code, Copy, Building2, Key, Globe, Users, 
+    AlertTriangle, Search, Settings2, Link2, FileText, ToggleLeft, ToggleRight, List,
+    CreditCard, Cloud, HardDrive, RefreshCw, LogOut, ChevronRight, Camera, Loader2, Radio, Zap, ListChecks, FileEdit,
+    MessageCircle, Smartphone, Mail, UserCheck, Play, Pause, Eye, EyeOff
+} from 'lucide-react';
 import { SectionTitle, Badge } from '../components/Widgets';
 import { Role, User, Product, PermissionAction, PortalSettings, Organization, CustomFieldDefinition, WebhookConfig, TriggerType } from '../types';
 import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, getSupabase } from '../services/supabaseClient';
@@ -19,1654 +25,1214 @@ const ROLE_NAMES: Record<string, string> = {
     client: 'Cliente Externo (Portal)'
 };
 
+const MODULE_CONFIG = [
+    { id: 'dashboard', label: 'Visão Geral' },
+    { id: 'contact-center', label: 'Central de Contatos' },
+    { id: 'inbox', label: 'Inbox Unificado' },
+    { id: 'prospecting', label: 'Prospecção IA' },
+    { id: 'competitive-intelligence', label: 'Nexus Spy (CI)' },
+    { id: 'calendar', label: 'Agenda / Tarefas' },
+    { id: 'marketing', label: 'Marketing Hub' },
+    { id: 'commercial', label: 'Comercial / Pipeline' },
+    { id: 'proposals', label: 'Propostas' },
+    { id: 'operations', label: 'Produção / Instalação' },
+    { id: 'clients', label: 'Carteira de Clientes' },
+    { id: 'geo-intelligence', label: 'Mapa Inteligente' },
+    { id: 'projects', label: 'Gestão de Projetos' },
+    { id: 'customer-success', label: 'Sucesso do Cliente' },
+    { id: 'retention', label: 'Retenção' },
+    { id: 'automation', label: 'Nexus Flow (RPA)' },
+    { id: 'finance', label: 'Financeiro' },
+    { id: 'support', label: 'Suporte' },
+    { id: 'dev', label: 'Desenvolvimento' },
+    { id: 'reports', label: 'Relatórios' },
+    { id: 'settings', label: 'Configurações' },
+];
+
 const SUPER_ADMIN_EMAILS = ['superadmin@nexus.com', 'edson.softcase@gmail.com'];
 
 export const Settings: React.FC = () => {
-  const { currentUser, currentOrganization, updateUser, usersList, addTeamMember, adminDeleteUser, adminUpdateUser, changePassword, permissionMatrix, updatePermission, sendRecoveryInvite, approveOrganization, hasPermission } = useAuth();
+    const { currentUser, currentOrganization, updateUser, usersList, addTeamMember, adminDeleteUser, adminUpdateUser, changePassword, permissionMatrix, updatePermission, sendRecoveryInvite, approveOrganization, hasPermission } = useAuth();
   
-  const { leads, clients, tickets, invoices, issues, syncLocalToCloud, isSyncing, refreshData, products, addProduct, updateProduct, removeProduct, activities, portalSettings, updatePortalSettings, campaigns, workflows, marketingContents, projects, notifications, pushEnabled, togglePushNotifications, competitors, marketTrends, prospectingHistory, disqualifiedProspects, customFields, addCustomField, deleteCustomField, webhooks, addWebhook, deleteWebhook, updateWebhook, restoreDefaults } = useData();
-  
-  const { data: logs } = useAuditLogs();
-
-  const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'permissions' | 'audit' | 'integrations' | 'products' | 'saas_admin' | 'portal_config' | 'bridge' | 'custom_fields' | 'webhooks'>(() => {
-      return (sessionStorage.getItem('nexus_settings_tab') as any) || 'profile';
-  });
-
-  const [isEditingProfile, setIsEditingProfile] = useState(() => {
-      return sessionStorage.getItem('nexus_settings_edit_profile') === 'true';
-  });
-
-  const [isCompressing, setIsCompressing] = useState(false);
-  
-  const isSuperAdmin = currentUser?.email && SUPER_ADMIN_EMAILS.includes(currentUser.email);
-
-  // PRODUCT STATES
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [newProduct, setNewProduct] = useState<Partial<Product>>({ active: true, category: 'Subscription', price: 0 });
-
-  // TEAM STATES
-  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
-  const [newMember, setNewMember] = useState({ name: '', email: '', role: 'sales' as Role });
-  
-  // EDIT MEMBER STATE
-  const [isEditMemberModalOpen, setIsEditMemberModalOpen] = useState(false);
-  const [memberToEdit, setMemberToEdit] = useState<User | null>(null);
-  const [editMemberForm, setEditMemberForm] = useState({ name: '', role: 'sales' as Role, active: true });
-
-  // INVITE MODAL STATE
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [inviteData, setInviteData] = useState<{name: string, email: string} | null>(null);
-
-  const [isDeleteMemberModalOpen, setIsDeleteMemberModalOpen] = useState(false);
-  const [memberToDelete, setMemberToDelete] = useState<User | null>(null);
-
-  // SAAS ADMIN STATE
-  const [saasOrgs, setSaasOrgs] = useState<Organization[]>([]);
-  const [loadingSaas, setLoadingSaas] = useState(false);
-
-  // INTEGRATION STATE
-  const [supabaseForm, setSupabaseForm] = useState({ url: '', key: '' });
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [statusMessage, setStatusMessage] = useState<''>('');
-  const [showSqlModal, setShowSqlModal] = useState(false);
-  
-  const [syncStats, setSyncStats] = useState<{label: string, local: number, remote: number | string, status: 'synced'|'diff'|'error'}[]>([]);
-  const [isCheckingSync, setIsCheckingSync] = useState(false);
-
-  // PORTAL STATE
-  const [portalForm, setPortalForm] = useState<PortalSettings>(portalSettings);
-
-  // BRIDGE STATE
-  const [bridgeStatus, setBridgeStatus] = useState<{whatsapp: string, smtp: string}>({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
-  const [bridgeQr, setBridgeQr] = useState<string | null>(null);
-  const [smtpForm, setSmtpForm] = useState({ host: 'smtp.gmail.com', port: 587, user: '', pass: '' });
-  const [loadingBridge, setLoadingBridge] = useState(false);
-  const [bridgeError, setBridgeError] = useState<string | null>(null);
-
-  // CUSTOM FIELDS STATE
-  const [newFieldForm, setNewFieldForm] = useState<Partial<CustomFieldDefinition>>({ label: '', key: '', type: 'text', module: 'leads', required: false });
-  const [fieldOptionsInput, setFieldOptionsInput] = useState('');
-  
-  // WEBHOOKS STATE
-  const [newWebhookForm, setNewWebhookForm] = useState<Partial<WebhookConfig>>({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
-  
-  // PROFILE STATE
-  const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '', cpf: '', password: '', confirmPassword: '', avatar: '' });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // PASSWORD CHANGE STATE
-  const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
-  const [passwordStatus, setPasswordStatus] = useState<{type: 'success'|'error', msg: string} | null>(null);
-
-  useEffect(() => {
-      if (currentUser) {
-          setProfileForm(prev => ({
-              ...prev,
-              name: currentUser.name || '',
-              email: currentUser.email || '',
-              phone: currentUser.phone || '',
-              cpf: currentUser.cpf || '',
-              avatar: prev.avatar || currentUser.avatar || ''
-          }));
-      }
-  }, [currentUser]);
-
-  useEffect(() => {
-      sessionStorage.setItem('nexus_settings_tab', activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
-      sessionStorage.setItem('nexus_settings_edit_profile', String(isEditingProfile));
-  }, [isEditingProfile]);
-
-  useEffect(() => {
-      setPortalForm(portalSettings);
-  }, [portalSettings]);
-
-  useEffect(() => {
-      if (activeTab === 'saas_admin' && isSuperAdmin) {
-          fetchSaasOrgs();
-      }
-      if (activeTab === 'bridge') {
-          fetchBridgeStatus(); 
-      }
-      if (activeTab === 'integrations') {
-          const config = getSupabaseConfig();
-          setSupabaseForm({ url: config.url || '', key: config.key || '' });
-          
-          if (config.url && config.key) {
-              setConnectionStatus('success'); 
-              handleCheckSync();
-          }
-      }
-  }, [activeTab, isSuperAdmin]);
-
-  const fetchBridgeStatus = async (manual: boolean = false) => {
-      if (!bridgeStatus.whatsapp && manual) setLoadingBridge(true);
-      setBridgeError(null);
-      try {
-          const status = await checkBridgeStatus();
-          setBridgeStatus(status);
-          if (status.whatsapp === 'QR_READY') {
-              const qrData = await getBridgeQR();
-              if (qrData?.qrImage) setBridgeQr(qrData.qrImage);
-          } else if (status.whatsapp === 'READY') {
-              setBridgeQr(null);
-          }
-      } catch (e: any) {
-          setBridgeError(e.message || "Falha na conexão");
-          setBridgeStatus({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
-          if (manual) alert(`Erro de Conexão: ${e.message}`);
-      } finally {
-          setLoadingBridge(false);
-      }
-  };
-
-  const handleManualBridgeCheck = async () => { setLoadingBridge(true); await fetchBridgeStatus(true); setLoadingBridge(false); };
-  const handleSaveSmtp = async (e: React.FormEvent) => { e.preventDefault(); setLoadingBridge(true); try { await configureBridgeSMTP(smtpForm); alert('SMTP Configurado!'); fetchBridgeStatus(); } catch (e: any) { alert(`Erro: ${e.message}`); } finally { setLoadingBridge(false); } };
-
-  const fetchSaasOrgs = async () => { 
-      setLoadingSaas(true); 
-      const supabase = getSupabase(); 
-      if (supabase) { 
-          const { data, error } = await supabase.from('organizations').select('*'); 
-          if(error) console.error(error);
-          setSaasOrgs(data as Organization[] || MOCK_ORGANIZATIONS); 
-      } else { 
-          setSaasOrgs(MOCK_ORGANIZATIONS); 
-      } 
-      setLoadingSaas(false); 
-  };
-  
-  const handleApproveOrg = async (orgId: string) => {
-      if(approveOrganization) {
-          const success = await approveOrganization(orgId);
-          if(success) {
-              fetchSaasOrgs();
-              alert("Organização aprovada com sucesso!");
-          } else {
-              alert("Erro ao aprovar organização.");
-          }
-      }
-  };
-
-  const handleSaveSupabase = async (e: React.FormEvent) => { 
-      e.preventDefault(); 
-      setConnectionStatus('testing'); 
-      setStatusMessage('');
-      saveSupabaseConfig(supabaseForm.url, supabaseForm.key); 
-      const result = await testSupabaseConnection(); 
-      if (result.success) { 
-          setConnectionStatus('success'); 
-          setStatusMessage(result.message as any); 
-          handleForceUpdate();
-          setTimeout(() => window.location.reload(), 2000); 
-      } else { 
-          setConnectionStatus('error'); 
-          setStatusMessage(result.message as any); 
-      } 
-  };
-  const handleGenerateSchema = () => { setShowSqlModal(true); };
-
-  const handleCheckSync = async () => {
-      setIsCheckingSync(true);
-      const supabase = getSupabase();
-      if (!supabase) { setIsCheckingSync(false); return; }
-      
-      const tables = [
-          { name: 'profiles', local: usersList.length, label: 'Equipe (Perfis)' },
-          { name: 'leads', local: leads.length, label: 'Leads (Comercial)' },
-          { name: 'clients', local: clients.length, label: 'Clientes' },
-          { name: 'tickets', local: tickets.length, label: 'Chamados' },
-          { name: 'invoices', local: invoices.length, label: 'Faturas' },
-          { name: 'activities', local: activities.length, label: 'Atividades' },
-          { name: 'products', local: products.length, label: 'Produtos' },
-          { name: 'projects', local: projects.length, label: 'Projetos' },
-          { name: 'competitors', local: competitors.length, label: 'Concorrentes (Spy)' },
-          { name: 'market_trends', local: marketTrends.length, label: 'Trends (Spy)' },
-      ];
-
-      const stats = [];
-      for (const table of tables) {
-          const { count, error } = await supabase.from(table.name).select('*', { count: 'exact', head: true });
-          stats.push({
-              label: table.label,
-              local: table.local,
-              remote: error ? 'Erro' : count || 0,
-              status: error ? 'error' : (table.local === count ? 'synced' : 'diff') as any
-          });
-      }
-      setSyncStats(stats);
-      setIsCheckingSync(false);
-  };
-
-  const handleForceUpdate = async () => {
-      await refreshData();
-      handleCheckSync();
-  };
-
-  // --- TEAM MEMBER ACTIONS ---
-  const handleAddMember = async (e: React.FormEvent) => {
-      e.preventDefault();
-      const result = await addTeamMember(newMember.name, newMember.email, newMember.role);
-      
-      if (result.success) {
-          setInviteData({ name: newMember.name, email: newMember.email });
-          setIsTeamModalOpen(false);
-          setIsInviteModalOpen(true); // Open invite modal
-          setNewMember({ name: '', email: '', role: 'sales' });
-      } else {
-          alert(`Erro ao adicionar membro: ${result.error}`);
-      }
-  };
-
-  const handleOpenEditMember = (member: User) => {
-      setMemberToEdit(member);
-      setEditMemberForm({
-          name: member.name,
-          role: member.role,
-          active: member.active !== false // Default to true if undefined
-      });
-      setIsEditMemberModalOpen(true);
-  };
-
-  const handleUpdateMember = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!memberToEdit) return;
-
-      await adminUpdateUser(memberToEdit.id, {
-          name: editMemberForm.name,
-          role: editMemberForm.role,
-          active: editMemberForm.active
-      });
-
-      setIsEditMemberModalOpen(false);
-      setMemberToEdit(null);
-  };
-
-  const handleDeleteMemberClick = (member: User) => {
-      setMemberToDelete(member);
-      setIsDeleteMemberModalOpen(true);
-  };
-
-  const confirmDeleteMember = async () => {
-      if (memberToDelete) {
-          await adminDeleteUser(memberToDelete.id);
-          setMemberToDelete(null);
-          setIsDeleteMemberModalOpen(false);
-      }
-  };
-
-  const handleProfileUpdate = (e: React.FormEvent) => {
-      e.preventDefault();
-      updateUser({
-          name: profileForm.name,
-          email: profileForm.email,
-          phone: profileForm.phone,
-          cpf: profileForm.cpf,
-          avatar: profileForm.avatar
-      });
-      setIsEditingProfile(false);
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setPasswordStatus(null);
-
-      if (passwordForm.new !== passwordForm.confirm) {
-          setPasswordStatus({ type: 'error', msg: 'As senhas não coincidem.' });
-          return;
-      }
-      if (passwordForm.new.length < 6) {
-          setPasswordStatus({ type: 'error', msg: 'A senha deve ter no mínimo 6 caracteres.' });
-          return;
-      }
-
-      const result = await changePassword(passwordForm.new);
-      if (result.success) {
-          setPasswordStatus({ type: 'success', msg: 'Senha alterada com sucesso!' });
-          setPasswordForm({ current: '', new: '', confirm: '' });
-      } else {
-          setPasswordStatus({ type: 'error', msg: result.error || 'Erro ao alterar senha.' });
-      }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          if (file.size > 500 * 1024) { 
-              setIsCompressing(true);
-              const reader = new FileReader();
-              reader.readAsDataURL(file);
-              reader.onload = (event) => {
-                  const img = new Image();
-                  img.src = event.target?.result as string;
-                  img.onload = () => {
-                      const canvas = document.createElement('canvas');
-                      const ctx = canvas.getContext('2d');
-                      const maxWidth = 300;
-                      const scaleSize = maxWidth / img.width;
-                      canvas.width = maxWidth;
-                      canvas.height = img.height * scaleSize;
-                      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-                      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                      setProfileForm({ ...profileForm, avatar: compressedBase64 });
-                      setIsCompressing(false);
-                  };
-              };
-          } else {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                  setProfileForm({ ...profileForm, avatar: reader.result as string });
-              };
-              reader.readAsDataURL(file);
-          }
-      }
-  };
-
-  const handleCopyInvite = () => {
-      const text = `Olá ${inviteData?.name}, você foi convidado para o Nexus CRM da ${currentOrganization?.name}.\n\nPara acessar:\n1. Entre em: ${window.location.origin}\n2. Clique em "Entrar na Equipe"\n3. Use o identificador: ${currentOrganization?.slug}\n4. Cadastre-se com o email: ${inviteData?.email}`;
-      navigator.clipboard.writeText(text);
-      alert("Convite copiado!");
-  };
-
-  // --- PRODUCTS ACTIONS ---
-  const handleSaveProduct = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newProduct.name || newProduct.price === undefined) return;
-
-      const productData: Product = {
-          id: editingProductId || `PROD-${Date.now()}`,
-          name: newProduct.name,
-          description: newProduct.description || '',
-          price: Number(newProduct.price),
-          sku: newProduct.sku || `SKU-${Math.floor(Math.random()*10000)}`,
-          category: newProduct.category || 'Service',
-          active: newProduct.active !== false,
-          organizationId: currentUser?.organizationId
-      };
-
-      if (editingProductId) {
-          updateProduct(currentUser, productData);
-      } else {
-          addProduct(currentUser, productData);
-      }
-      setIsProductModalOpen(false);
-      setNewProduct({ active: true, category: 'Subscription', price: 0 });
-      setEditingProductId(null);
-  };
-
-  const handleEditProduct = (prod: Product) => {
-      setNewProduct(prod);
-      setEditingProductId(prod.id);
-      setIsProductModalOpen(true);
-  };
-
-  const handleDeleteProduct = (prod: Product) => {
-      if(confirm(`Tem certeza que deseja excluir o produto ${prod.name}?`)) {
-          removeProduct(currentUser, prod.id);
-      }
-  };
-
-  // --- CUSTOM FIELDS ACTIONS ---
-  const handleSaveField = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newFieldForm.label || !newFieldForm.type) return;
-
-      const options = fieldOptionsInput.split(',').map(o => o.trim()).filter(Boolean);
-      const fieldKey = newFieldForm.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
-
-      const fieldData: CustomFieldDefinition = {
-          id: `FIELD-${Date.now()}`,
-          label: newFieldForm.label,
-          key: fieldKey,
-          type: newFieldForm.type as any,
-          module: newFieldForm.module as any,
-          required: newFieldForm.required,
-          options: options.length > 0 ? options : undefined,
-          organizationId: currentUser?.organizationId
-      };
-
-      addCustomField(fieldData);
-      setNewFieldForm({ label: '', type: 'text', module: 'leads', required: false });
-      setFieldOptionsInput('');
-  };
-  
-  const handleDeleteField = (id: string) => {
-      if(confirm("Excluir campo personalizado? Dados existentes podem ser perdidos.")) {
-          deleteCustomField(id);
-      }
-  };
-
-  // --- WEBHOOKS ACTIONS ---
-  const handleSaveWebhook = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(!newWebhookForm.name || !newWebhookForm.url) return;
-
-      const webhookData: WebhookConfig = {
-          id: `WH-${Date.now()}`,
-          name: newWebhookForm.name,
-          url: newWebhookForm.url,
-          triggerEvent: newWebhookForm.triggerEvent as TriggerType,
-          method: newWebhookForm.method as any,
-          active: newWebhookForm.active !== false,
-          organizationId: currentUser?.organizationId
-      };
-
-      addWebhook(webhookData);
-      setNewWebhookForm({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
-  };
-  
-  const handleDeleteWebhook = (id: string) => {
-      if(confirm("Excluir webhook?")) {
-          deleteWebhook(id);
-      }
-  };
-
-  // --- PORTAL CONFIG SAVE ---
-  const handleSavePortal = () => {
-      updatePortalSettings(currentUser, portalForm);
-      alert('Configurações do portal salvas!');
-  };
-
-  // --- RENDER ---
-  return (
-    <div className="p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Settings2 className="text-slate-600 dark:text-slate-400" /> Configurações
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400">Gerencie sua conta e preferências do sistema.</p>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row min-h-[600px] flex-1 overflow-hidden">
-        {/* Sidebar Navigation */}
-        <div className="w-full md:w-64 border-r border-slate-200 dark:border-slate-700 p-2 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto">
-            <button onClick={() => setActiveTab('profile')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'profile' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                <UserCircle size={18} /> Meu Perfil
-            </button>
-            
-            {hasPermission('settings', 'view') && (
-                <>
-                    <button onClick={() => setActiveTab('team')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'team' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Users size={18} /> Equipe
-                    </button>
-                    <button onClick={() => setActiveTab('permissions')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'permissions' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Shield size={18} /> Permissões
-                    </button>
-                    <button onClick={() => setActiveTab('products')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'products' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Package size={18} /> Produtos
-                    </button>
-                    <button onClick={() => setActiveTab('custom_fields')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'custom_fields' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <ListChecks size={18} /> Campos Personalizados
-                    </button>
-                    <button onClick={() => setActiveTab('portal_config')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'portal_config' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Globe size={18} /> Portal do Cliente
-                    </button>
-                    <button onClick={() => setActiveTab('bridge')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'bridge' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Zap size={18} /> Integrações (Bridge)
-                    </button>
-                    <button onClick={() => setActiveTab('webhooks')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'webhooks' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Radio size={18} /> Webhooks
-                    </button>
-                    <button onClick={() => setActiveTab('integrations')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'integrations' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Database size={18} /> Banco de Dados
-                    </button>
-                    <button onClick={() => setActiveTab('audit')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-3 transition ${activeTab === 'audit' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Activity size={18} /> Auditoria
-                    </button>
-                </>
-            )}
-            
-            {isSuperAdmin && (
-                <>
-                    <div className="my-2 border-t border-slate-200 dark:border-slate-700"></div>
-                    <button onClick={() => setActiveTab('saas_admin')} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-3 transition ${activeTab === 'saas_admin' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                        <Building2 size={18} /> SaaS Admin
-                    </button>
-                </>
-            )}
-        </div>
-
-        {/* Content Area */}
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar">
-            {activeTab === 'profile' && (
-                <div className="max-w-2xl">
-                    <SectionTitle title="Meu Perfil" subtitle="Gerencie suas informações pessoais." />
-                    <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
-                        {/* Profile content */}
-                        <div className="flex items-center gap-6 mb-6">
-                            <div className="relative group cursor-pointer">
-                                <div className="w-20 h-20 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-500 dark:text-slate-300 overflow-hidden border-2 border-slate-300 dark:border-slate-600 group-hover:border-blue-500 transition">
-                                    {profileForm.avatar ? (
-                                        <img src={profileForm.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <span>{profileForm.name.charAt(0)}</span>
-                                    )}
-                                </div>
-                                {isEditingProfile && (
-                                    <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                                        <Camera size={24} className="text-white"/>
-                                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFileChange} ref={fileInputRef}/>
-                                    </div>
-                                )}
-                                {isCompressing && <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center"><Loader2 size={20} className="animate-spin text-white"/></div>}
-                            </div>
-                            
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{currentUser?.name}</h3>
-                                <p className="text-slate-500 dark:text-slate-400 text-sm">{currentUser?.email}</p>
-                                <span className="inline-block mt-2 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-bold rounded uppercase border border-blue-200 dark:border-blue-800">
-                                    {ROLE_NAMES[currentUser?.role || 'admin']}
-                                </span>
-                            </div>
-                        </div>
-
-                        <form onSubmit={handleProfileUpdate} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome Completo</label>
-                                    <input 
-                                        type="text" 
-                                        disabled={!isEditingProfile}
-                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-900/50 disabled:text-slate-500"
-                                        value={profileForm.name}
-                                        onChange={e => setProfileForm({...profileForm, name: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
-                                    <input 
-                                        type="email" 
-                                        disabled
-                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-100 dark:bg-slate-900/50 text-slate-500 cursor-not-allowed"
-                                        value={profileForm.email}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone</label>
-                                    <input 
-                                        type="text" 
-                                        disabled={!isEditingProfile}
-                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-900/50 disabled:text-slate-500"
-                                        value={profileForm.phone}
-                                        onChange={e => setProfileForm({...profileForm, phone: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">CPF</label>
-                                    <input 
-                                        type="text" 
-                                        disabled={!isEditingProfile}
-                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-900/50 disabled:text-slate-500"
-                                        value={profileForm.cpf}
-                                        onChange={e => setProfileForm({...profileForm, cpf: e.target.value})}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end pt-4">
-                                {isEditingProfile ? (
-                                    <div className="flex gap-2">
-                                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-bold shadow-sm">Salvar Alterações</button>
-                                    </div>
-                                ) : (
-                                    <button type="button" onClick={() => setIsEditingProfile(true)} className="px-6 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600 transition font-bold flex items-center gap-2">
-                                        <Edit2 size={16}/> Editar Perfil
-                                    </button>
-                                )}
-                            </div>
-                        </form>
-                    </div>
-
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <SectionTitle title="Alterar Senha" subtitle="Atualize sua senha de acesso." />
-                        <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nova Senha</label>
-                                <input type="password" required className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={passwordForm.new} onChange={e => setPasswordForm({...passwordForm, new: e.target.value})} placeholder="Mínimo 6 caracteres" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Confirmar Senha</label>
-                                <input type="password" required className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={passwordForm.confirm} onChange={e => setPasswordForm({...passwordForm, confirm: e.target.value})} placeholder="Repita a senha" />
-                            </div>
-                            {passwordStatus && (
-                                <div className={`text-xs p-3 rounded-lg border flex items-center gap-2 ${passwordStatus.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                    {passwordStatus.msg}
-                                </div>
-                            )}
-                            <button type="submit" className="px-6 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600 transition font-bold flex items-center gap-2">
-                                <Lock size={16}/> Atualizar Senha
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-            
-            {activeTab === 'team' && (
-                <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionTitle title="Gestão de Equipe" subtitle="Adicione membros e gerencie acessos." />
-                        <button onClick={() => setIsTeamModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
-                            <Plus size={18}/> Adicionar Membro
-                        </button>
-                    </div>
-                    
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
-                                <tr>
-                                    <th className="p-4">Nome / Email</th>
-                                    <th className="p-4">Cargo</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4 text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {usersList.filter(u => u.role !== 'client').map(user => (
-                                    <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                                        <td className="p-4">
-                                            <div className="font-bold text-slate-900 dark:text-white">{user.name}</div>
-                                            <div className="text-xs text-slate-500 dark:text-slate-400">{user.email}</div>
-                                        </td>
-                                        <td className="p-4"><span className="inline-block px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-600">{ROLE_NAMES[user.role]}</span></td>
-                                        <td className="p-4">{user.active !== false ? <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold border border-green-200"><CheckCircle size={12}/> Ativo</span> : <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold border border-yellow-200"><Clock size={12}/> Pendente</span>}</td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex justify-center gap-2">
-                                                <button onClick={() => handleOpenEditMember(user)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition"><FileEdit size={18}/></button>
-                                                {user.id !== currentUser?.id && <button onClick={() => handleDeleteMemberClick(user)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition"><Trash2 size={18}/></button>}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-            
-            {/* --- RESTORED PERMISSIONS TAB --- */}
-            {activeTab === 'permissions' && hasPermission('settings', 'view') && (
-                <div>
-                    <SectionTitle title="Matriz de Permissões (RBAC)" subtitle="Defina o que cada cargo pode acessar no sistema." />
-                    
-                    <div className="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
-                                <tr>
-                                    <th className="p-4 min-w-[200px]">Módulo</th>
-                                    {Object.keys(permissionMatrix).filter(r => r !== 'admin' && r !== 'client').map(role => (
-                                        <th key={role} className="p-4 text-center min-w-[120px]">{ROLE_NAMES[role] || role}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {Object.keys(permissionMatrix['sales']).map(module => (
-                                    <tr key={module} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="p-4 font-bold text-slate-700 dark:text-slate-300 capitalize">
-                                            {module.replace('-', ' ')}
-                                        </td>
-                                        {Object.keys(permissionMatrix).filter(r => r !== 'admin' && r !== 'client').map(role => {
-                                            const perms = permissionMatrix[role][module] || { view: false, create: false, edit: false, delete: false };
-                                            return (
-                                                <td key={`${role}-${module}`} className="p-4">
-                                                    <div className="flex flex-col gap-2">
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={perms.view} 
-                                                                onChange={(e) => updatePermission(role as Role, module, 'view', e.target.checked)}
-                                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                                            /> Visualizar
-                                                        </label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={perms.create} 
-                                                                onChange={(e) => updatePermission(role as Role, module, 'create', e.target.checked)}
-                                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                                            /> Criar
-                                                        </label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={perms.edit} 
-                                                                onChange={(e) => updatePermission(role as Role, module, 'edit', e.target.checked)}
-                                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                                            /> Editar
-                                                        </label>
-                                                        <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={perms.delete} 
-                                                                onChange={(e) => updatePermission(role as Role, module, 'delete', e.target.checked)}
-                                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                                            /> Excluir
-                                                        </label>
-                                                    </div>
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* --- RESTORED SAAS ADMIN TAB --- */}
-            {activeTab === 'saas_admin' && isSuperAdmin && (
-                <div>
-                    <SectionTitle title="Administração SaaS (Multi-tenant)" subtitle="Gerencie as organizações cadastradas na plataforma." />
-                    
-                    {loadingSaas ? (
-                        <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-blue-500" size={32}/><p className="mt-2 text-sm text-slate-500">Carregando organizações...</p></div>
-                    ) : (
-                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
-                                    <tr>
-                                        <th className="p-4">Organização</th>
-                                        <th className="p-4">Slug (ID)</th>
-                                        <th className="p-4">Plano</th>
-                                        <th className="p-4">Status</th>
-                                        <th className="p-4 text-center">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                    {saasOrgs.map(org => (
-                                        <tr key={org.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                            <td className="p-4 font-bold text-slate-900 dark:text-white">{org.name}</td>
-                                            <td className="p-4 font-mono text-xs text-slate-500">{org.slug}</td>
-                                            <td className="p-4"><Badge color="purple">{org.plan}</Badge></td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                    {org.status === 'active' ? 'Ativo' : 'Pendente'}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-center">
-                                                {org.status === 'pending' && (
-                                                    <button 
-                                                        onClick={() => handleApproveOrg(org.id)}
-                                                        className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 mx-auto"
-                                                    >
-                                                        <CheckCircle size={12}/> Aprovar
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            )}
-            
-            {activeTab === 'integrations' && (
-                <div>
-                    <SectionTitle title="Conexão com Banco de Dados" subtitle="Configure a conexão com seu projeto Supabase." />
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
-                        <div className="flex items-center gap-4 mb-6">
-                            <div className={`p-3 rounded-full ${connectionStatus === 'success' ? 'bg-green-100 text-green-600' : connectionStatus === 'error' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
-                                <Database size={24}/>
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Supabase Cloud</h3>
-                                <p className={`text-sm font-medium ${connectionStatus === 'success' ? 'text-green-600' : connectionStatus === 'error' ? 'text-red-600' : 'text-slate-500'}`}>
-                                    {connectionStatus === 'success' ? 'Conectado e Operacional' : connectionStatus === 'error' ? 'Erro de Conexão' : 'Não Configurado'}
-                                </p>
-                            </div>
-                        </div>
-                        <form onSubmit={handleSaveSupabase} className="space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project URL</label><input type="password" required className="w-full border rounded p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={supabaseForm.url} onChange={e => setSupabaseForm({...supabaseForm, url: e.target.value})}/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Anon)</label><input type="password" required className="w-full border rounded p-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={supabaseForm.key} onChange={e => setSupabaseForm({...supabaseForm, key: e.target.value})}/></div>
-                            <div className="flex gap-3 pt-2">
-                                <button type="submit" disabled={connectionStatus === 'testing'} className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition flex items-center gap-2">{connectionStatus === 'testing' ? <Loader2 className="animate-spin" size={18}/> : <RefreshCw size={18}/>} Testar e Salvar</button>
-                                <button type="button" onClick={handleGenerateSchema} className="px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-2"><Code size={18}/> Gerar Schema SQL</button>
-                            </div>
-                        </form>
-                    </div>
-                    {/* Sync Stats */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800 dark:text-white">Status de Sincronização</h3>
-                            <button onClick={handleCheckSync} disabled={isCheckingSync} className="text-blue-600 dark:text-blue-400 hover:underline text-xs flex items-center gap-1">{isCheckingSync ? <Loader2 className="animate-spin" size={12}/> : <RefreshCw size={12}/>} Verificar Agora</button>
-                        </div>
-                        <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium"><tr><th className="p-3">Tabela</th><th className="p-3 text-center">Local</th><th className="p-3 text-center">Nuvem</th><th className="p-3 text-center">Status</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {syncStats.map(stat => (
-                                    <tr key={stat.label}>
-                                        <td className="p-3 font-medium text-slate-700 dark:text-slate-300">{stat.label}</td>
-                                        <td className="p-3 text-center text-slate-500">{stat.local}</td>
-                                        <td className="p-3 text-center text-slate-500">{stat.remote}</td>
-                                        <td className="p-3 text-center">{stat.status === 'synced' ? <span className="text-green-600 font-bold">OK</span> : stat.status === 'error' ? <span className="text-red-500 font-bold">Erro</span> : <span className="text-amber-500 font-bold">Diferença</span>}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'products' && (
-                 <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionTitle title="Catálogo de Produtos" subtitle="Gerencie seus produtos e serviços." />
-                        <button onClick={() => setIsProductModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
-                            <Plus size={18}/> Novo Produto
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {products.map(product => (
-                            <div key={product.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition group">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h4 className="font-bold text-slate-900 dark:text-white">{product.name}</h4>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${product.category === 'Service' ? 'bg-blue-100 text-blue-700' : product.category === 'Subscription' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>{product.category}</span>
-                                </div>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">{product.description}</p>
-                                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
-                                    <span className="font-bold text-slate-800 dark:text-white">R$ {product.price.toLocaleString()}</span>
-                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                                        <button onClick={() => handleEditProduct(product)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"><Edit2 size={16}/></button>
-                                        <button onClick={() => handleDeleteProduct(product)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-red-500"><Trash2 size={16}/></button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                 </div>
-            )}
-            
-            {activeTab === 'custom_fields' && (
-                <div>
-                    <SectionTitle title="Campos Personalizados" subtitle="Adicione campos extras aos formulários de Leads e Clientes." />
-                    
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
-                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Adicionar Novo Campo</h3>
-                        <form onSubmit={handleSaveField} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Rótulo (Label)</label>
-                                <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value})} placeholder="Ex: Data de Nascimento"/>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Módulo</label>
-                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
-                                    <option value="leads">Leads</option>
-                                    <option value="clients">Clientes</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Tipo</label>
-                                <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
-                                    <option value="text">Texto</option>
-                                    <option value="number">Número</option>
-                                    <option value="date">Data</option>
-                                    <option value="boolean">Sim/Não</option>
-                                    <option value="select">Seleção (Lista)</option>
-                                </select>
-                            </div>
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition">Adicionar</button>
-                        </form>
-                        {newFieldForm.type === 'select' && (
-                             <div className="mt-4">
-                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Opções (separadas por vírgula)</label>
-                                 <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)} placeholder="Opção 1, Opção 2, Opção 3"/>
-                             </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        {customFields.map(field => (
-                            <div key={field.id} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                <div>
-                                    <span className="font-bold text-slate-800 dark:text-white text-sm">{field.label}</span>
-                                    <span className="text-xs text-slate-500 ml-2">({field.module} - {field.type})</span>
-                                </div>
-                                <button onClick={() => deleteCustomField(field.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded"><Trash2 size={16}/></button>
-                            </div>
-                        ))}
-                        {customFields.length === 0 && <p className="text-slate-400 text-sm italic">Nenhum campo personalizado criado.</p>}
-                    </div>
-                </div>
-            )}
-            
-            {activeTab === 'webhooks' && (
-                <div>
-                    <SectionTitle title="Webhooks (Integrações)" subtitle="Dispare eventos para sistemas externos (Zapier, n8n, etc)." />
-                    
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-8">
-                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Novo Webhook</h3>
-                        <form onSubmit={handleSaveWebhook} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" required className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" placeholder="Nome (Ex: Integração Slack)" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})}/>
-                            <input type="url" required className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" placeholder="URL de Destino (https://...)" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})}/>
-                            <select className="border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as any})}>
-                                <option value="lead_created">Lead Criado</option>
-                                <option value="deal_won">Venda Ganha</option>
-                                <option value="deal_lost">Venda Perdida</option>
-                                <option value="ticket_created">Ticket Criado</option>
-                            </select>
-                            <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded font-bold hover:bg-purple-700 transition">Salvar Webhook</button>
-                        </form>
-                    </div>
-
-                    <div className="space-y-2">
-                        {webhooks.map(wh => (
-                            <div key={wh.id} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                <div>
-                                    <p className="font-bold text-slate-800 dark:text-white text-sm">{wh.name}</p>
-                                    <p className="text-xs text-slate-500">{wh.url} • {wh.triggerEvent}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${wh.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{wh.active ? 'Ativo' : 'Inativo'}</span>
-                                    <button onClick={() => deleteWebhook(wh.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1 rounded"><Trash2 size={14}/></button>
-                                </div>
-                            </div>
-                        ))}
-                         {webhooks.length === 0 && <p className="text-slate-400 text-sm italic">Nenhum webhook configurado.</p>}
-                    </div>
-                </div>
-            )}
-            
-            {activeTab === 'portal_config' && (
-                <div>
-                     <SectionTitle title="Personalização do Portal" subtitle="Ajuste a aparência e recursos do portal do cliente." />
-                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 space-y-6">
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Portal</label>
-                            <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={portalForm.portalName} onChange={e => setPortalForm({...portalForm, portalName: e.target.value})}/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Cor Primária</label>
-                            <div className="flex items-center gap-3">
-                                <input type="color" className="h-10 w-10 border-0 rounded cursor-pointer" value={portalForm.primaryColor} onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})}/>
-                                <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{portalForm.primaryColor}</span>
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                             <label className="flex items-center gap-2 cursor-pointer">
-                                 <input type="checkbox" checked={portalForm.allowInvoiceDownload} onChange={e => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
-                                 <span className="text-sm text-slate-700 dark:text-slate-300">Permitir Download de Faturas</span>
-                             </label>
-                             <label className="flex items-center gap-2 cursor-pointer">
-                                 <input type="checkbox" checked={portalForm.allowTicketCreation} onChange={e => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
-                                 <span className="text-sm text-slate-700 dark:text-slate-300">Permitir Abertura de Chamados</span>
-                             </label>
-                        </div>
-                        <button onClick={handleSavePortal} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition">Salvar Configurações</button>
-                     </div>
-                </div>
-            )}
-            
-            {activeTab === 'bridge' && (
-                <div>
-                    <SectionTitle title="Nexus Bridge (Integração Local)" subtitle="Conecte seu WhatsApp e SMTP localmente para envios ilimitados." />
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                             <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4"><MessageCircle className="text-green-500"/> WhatsApp</h3>
-                             <div className="flex flex-col items-center justify-center min-h-[200px] bg-slate-50 dark:bg-slate-900 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700">
-                                 {loadingBridge ? <Loader2 className="animate-spin text-slate-400" size={32}/> : bridgeStatus.whatsapp === 'READY' ? (
-                                     <div className="text-center text-green-600">
-                                         <CheckCircle size={48} className="mx-auto mb-2"/>
-                                         <p className="font-bold">Conectado!</p>
-                                     </div>
-                                 ) : bridgeQr ? (
-                                     <div className="text-center">
-                                         <img src={bridgeQr} alt="QR Code" className="w-48 h-48 mx-auto"/>
-                                         <p className="text-xs text-slate-500 mt-2">Escaneie com seu WhatsApp</p>
-                                     </div>
-                                 ) : (
-                                     <div className="text-center text-slate-400">
-                                         <Smartphone size={48} className="mx-auto mb-2 opacity-50"/>
-                                         <p className="text-sm">Bridge desconectado.</p>
-                                         {bridgeError && <p className="text-xs text-red-500 mt-1">{bridgeError}</p>}
-                                     </div>
-                                 )}
-                             </div>
-                             <button onClick={handleManualBridgeCheck} className="w-full mt-4 bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition">Verificar Conexão</button>
-                        </div>
-
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4"><Mail className="text-blue-500"/> Servidor SMTP</h3>
-                            <form onSubmit={handleSaveSmtp} className="space-y-3">
-                                <div><label className="text-xs font-bold uppercase text-slate-500">Host</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})}/></div>
-                                <div><label className="text-xs font-bold uppercase text-slate-500">Porta</label><input type="number" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}/></div>
-                                <div><label className="text-xs font-bold uppercase text-slate-500">Usuário</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})}/></div>
-                                <div><label className="text-xs font-bold uppercase text-slate-500">Senha</label><input type="password" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})}/></div>
-                                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">Salvar SMTP</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {activeTab === 'audit' && (
-                 <div>
-                     <SectionTitle title="Logs de Auditoria" subtitle="Rastreamento de atividades do sistema." />
-                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                         <div className="max-h-[500px] overflow-y-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-medium sticky top-0"><tr><th className="p-3">Data</th><th className="p-3">Usuário</th><th className="p-3">Ação</th><th className="p-3">Detalhes</th></tr></thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                    {logs?.map(log => (
-                                        <tr key={log.id}>
-                                            <td className="p-3 text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs">{new Date(log.timestamp).toLocaleString()}</td>
-                                            <td className="p-3 font-bold text-slate-700 dark:text-slate-300">{log.userName}</td>
-                                            <td className="p-3"><span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs font-bold text-slate-600 dark:text-slate-400">{log.action}</span></td>
-                                            <td className="p-3 text-slate-600 dark:text-slate-400 text-xs">{log.details}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                         </div>
-                     </div>
-                 </div>
-            )}
-
-            {/* SQL Modal (Updated with robust migration script) */}
-            {showSqlModal && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm">
-                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl border border-slate-700 flex flex-col max-h-[80vh]">
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                            <h3 className="text-white font-bold flex items-center gap-2"><Code size={18} className="text-emerald-400"/> Schema SQL (Full Update)</h3>
-                            <button onClick={() => setShowSqlModal(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
-                        </div>
-                        <div className="p-4 flex-1 overflow-auto bg-black">
-                            <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">
-{`-- SQL DE ATUALIZAÇÃO COMPLETA (CORREÇÃO DE COLUNAS E TABELAS)
-
--- 1. Habilita extensão UUID
-create extension if not exists "uuid-ossp";
-
--- NORMALIZAÇÃO DE COLUNAS (CamelCase para snake_case)
--- Tenta renomear colunas antigas caso existam, evitando perda de dados
-do $$
-begin
-  -- Workflows
-  if exists (select 1 from information_schema.columns where table_name = 'workflows' and column_name = 'organizationId') then
-    alter table workflows rename column "organizationId" to organization_id;
-  end if;
-  -- Custom Fields
-  if exists (select 1 from information_schema.columns where table_name = 'custom_fields' and column_name = 'organizationId') then
-    alter table custom_fields rename column "organizationId" to organization_id;
-  end if;
-  -- Webhooks
-  if exists (select 1 from information_schema.columns where table_name = 'webhooks' and column_name = 'organizationId') then
-    alter table webhooks rename column "organizationId" to organization_id;
-  end if;
-  -- Client Documents
-  if exists (select 1 from information_schema.columns where table_name = 'client_documents' and column_name = 'organizationId') then
-    alter table client_documents rename column "organizationId" to organization_id;
-  end if;
-   -- Profiles (Active/Ativo check)
-  if exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'ativo') then
-    alter table profiles rename column "ativo" to active;
-  end if;
-exception when others then null;
-end $$;
-
--- 2. Organizations
-create table if not exists organizations (
-  id text primary key,
-  name text not null,
-  slug text unique not null,
-  plan text default 'Trial',
-  license_expires_at timestamp with time zone,
-  subscription_status text default 'active',
-  portal_settings jsonb default '{}',
-  status text default 'active',
-  created_at timestamp with time zone default now()
-);
-
--- 3. Profiles (CORREÇÃO CRÍTICA: REMOVE CONSTRAINT DE AUTH.USERS SE EXISTIR)
-create table if not exists profiles (
-  id uuid primary key, 
-  full_name text,
-  email text unique,
-  role text default 'sales',
-  organization_id text references organizations(id),
-  related_client_id text,
-  xp integer default 0,
-  level integer default 1,
-  active boolean default true,
-  avatar_url text,
-  created_at timestamp with time zone default now()
-);
-
--- Remove Foreign Key antiga se existir (para permitir shadow users)
-do $$
-begin
-  if exists (select 1 from information_schema.table_constraints where constraint_name = 'profiles_id_fkey') then
-    alter table profiles drop constraint profiles_id_fkey;
-  end if;
-exception when others then null;
-end $$;
-
--- 4. Leads
-create table if not exists leads (
-  id text primary key,
-  name text,
-  company text,
-  email text,
-  phone text,
-  value numeric,
-  status text,
-  source text,
-  probability integer,
-  organization_id text references organizations(id),
-  created_at timestamp with time zone default now(),
-  last_contact timestamp with time zone,
-  metadata jsonb default '{}',
-  address text,
-  cep text,
-  website text,
-  product_interest text,
-  parking_spots integer,
-  description text,
-  lost_reason text
-);
-
--- 5. Clients
-create table if not exists clients (
-  id text primary key,
-  name text not null,
-  contact_person text,
-  email text,
-  phone text,
-  document text,
-  segment text,
-  status text,
-  ltv numeric default 0,
-  nps integer,
-  health_score integer,
-  organization_id text references organizations(id),
-  contracted_products text[],
-  since timestamp with time zone,
-  last_contact timestamp with time zone,
-  metadata jsonb default '{}',
-  address text,
-  cep text,
-  latitude numeric,
-  longitude numeric,
-  website text,
-  unit text,
-  parking_spots integer,
-  exempt_spots integer,
-  vehicle_count integer,
-  credential_count integer,
-  pricing_table text,
-  table_price numeric,
-  total_table_price numeric,
-  special_day text,
-  special_price numeric,
-  total_special_price numeric
-);
-
--- 6. Outras Tabelas
-create table if not exists proposals (
-  id text primary key,
-  title text,
-  lead_id text,
-  client_name text,
-  company_name text,
-  created_date timestamp with time zone,
-  valid_until timestamp with time zone,
-  status text,
-  introduction text,
-  scope text[],
-  price numeric,
-  timeline text,
-  terms text,
-  organization_id text references organizations(id),
-  signature text,
-  signed_at timestamp with time zone,
-  signed_by_ip text,
-  setup_cost numeric,
-  monthly_cost numeric,
-  consultant_name text,
-  consultant_email text,
-  consultant_phone text
-);
-
-create table if not exists products (
-  id text primary key,
-  name text,
-  description text,
-  price numeric,
-  sku text,
-  category text,
-  active boolean default true,
-  organization_id text references organizations(id)
-);
-
-create table if not exists activities (
-  id text primary key,
-  title text,
-  type text,
-  due_date timestamp with time zone,
-  completed boolean default false,
-  related_to text,
-  assignee uuid,
-  description text,
-  organization_id text references organizations(id),
-  metadata jsonb default '{}'
-);
-
-create table if not exists tickets (
-  id text primary key,
-  subject text,
-  description text,
-  priority text,
-  status text,
-  customer text,
-  channel text,
-  organization_id text references organizations(id),
-  created_at timestamp with time zone default now(),
-  resolved_at timestamp with time zone,
-  responses jsonb default '[]'
-);
-
-create table if not exists invoices (
-  id text primary key,
-  customer text,
-  amount numeric,
-  due_date timestamp with time zone,
-  status text,
-  description text,
-  organization_id text references organizations(id),
-  created_at timestamp with time zone default now()
-);
-
-create table if not exists audit_logs (
-  id text primary key,
-  timestamp timestamp with time zone default now(),
-  user_id uuid,
-  user_name text,
-  action text,
-  details text,
-  module text,
-  organization_id text references organizations(id)
-);
-
-create table if not exists competitors (
-  id text primary key,
+    const { 
+        leads, clients, tickets, invoices, issues, syncLocalToCloud, isSyncing, refreshData, 
+        products, addProduct, updateProduct, removeProduct, activities, 
+        portalSettings, updatePortalSettings, campaigns, workflows, marketingContents, projects, 
+        notifications, pushEnabled, togglePushNotifications, competitors, marketTrends, 
+        prospectingHistory, disqualifiedProspects, customFields, addCustomField, deleteCustomField, 
+        webhooks, addWebhook, deleteWebhook, updateWebhook, restoreDefaults, addSystemNotification,
+        logs: contextLogs 
+    } = useData();
+    
+    // Fetch fresh logs directly from hook for the Audit Tab to ensure real-time view
+    const { data: auditLogs, refetch: refetchLogs } = useAuditLogs();
+    
+    // Prioritize fresh logs from the hook, fall back to context if needed
+    const displayLogs = auditLogs && auditLogs.length > 0 ? auditLogs : contextLogs;
+
+    const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'permissions' | 'audit' | 'integrations' | 'products' | 'saas_admin' | 'portal_config' | 'bridge' | 'custom_fields' | 'webhooks' | 'database' | 'organization'>('profile');
+    const [showSqlModal, setShowSqlModal] = useState(false);
+    
+    // Database Stats State
+    const [cloudCounts, setCloudCounts] = useState<Record<string, number>>({});
+    const [loadingCounts, setLoadingCounts] = useState(false);
+
+    // Profile Edit State
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '', cpf: '', password: '', confirmPassword: '', avatar: '' });
+    const [isCompressing, setIsCompressing] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Password Change State
+    const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
+    const [passwordStatus, setPasswordStatus] = useState<{type: 'success'|'error', msg: string} | null>(null);
+
+    const isSuperAdmin = currentUser?.email && SUPER_ADMIN_EMAILS.includes(currentUser.email);
+    const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+
+    // --- SUB-COMPONENT STATES ---
+    // Team
+    const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+    const [newMember, setNewMember] = useState({ name: '', email: '', role: 'sales' as Role });
+    const [inviteData, setInviteData] = useState<{name: string, email: string} | null>(null);
+    const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+    
+    // Approval / Edit Member State
+    const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+    const [memberToApprove, setMemberToApprove] = useState<User | null>(null);
+    const [approvalRole, setApprovalRole] = useState<Role>('sales');
+
+    // Integrations
+    const [supabaseForm, setSupabaseForm] = useState({ url: '', key: '' });
+    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [statusMessage, setStatusMessage] = useState<''>('');
+    const [syncStats, setSyncStats] = useState<{label: string, local: number, remote: number | string, status: 'synced'|'diff'|'error'}[]>([]);
+    const [isCheckingSync, setIsCheckingSync] = useState(false);
+
+    // Bridge
+    const [bridgeStatus, setBridgeStatus] = useState<{whatsapp: string, smtp: string}>({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
+    const [bridgeQr, setBridgeQr] = useState<string | null>(null);
+    const [smtpForm, setSmtpForm] = useState({ host: 'smtp.gmail.com', port: 587, user: '', pass: '' });
+    const [loadingBridge, setLoadingBridge] = useState(false);
+    const [bridgeError, setBridgeError] = useState<string | null>(null);
+
+    // Portal
+    const [portalForm, setPortalForm] = useState<PortalSettings>(portalSettings);
+
+    // Products
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [editingProductId, setEditingProductId] = useState<string | null>(null);
+    const [newProduct, setNewProduct] = useState<Partial<Product>>({ active: true, category: 'Subscription', price: 0 });
+
+    // Custom Fields
+    const [newFieldForm, setNewFieldForm] = useState<Partial<CustomFieldDefinition>>({ label: '', key: '', type: 'text', module: 'leads', required: false });
+    const [fieldOptionsInput, setFieldOptionsInput] = useState('');
+
+    // Webhooks
+    const [newWebhookForm, setNewWebhookForm] = useState<Partial<WebhookConfig>>({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
+
+    // SAAS
+    const [saasOrgs, setSaasOrgs] = useState<Organization[]>([]);
+    const [loadingSaas, setLoadingSaas] = useState(false);
+
+
+    // --- EFFECTS ---
+    useEffect(() => {
+        if (currentUser) {
+            setProfileForm(prev => ({
+                ...prev,
+                name: currentUser.name || '',
+                email: currentUser.email || '',
+                phone: currentUser.phone || '',
+                cpf: currentUser.cpf || '',
+                avatar: prev.avatar || currentUser.avatar || ''
+            }));
+        }
+    }, [currentUser]);
+
+    useEffect(() => {
+        setPortalForm(portalSettings);
+    }, [portalSettings]);
+
+    useEffect(() => {
+        if (activeTab === 'database') {
+            fetchCloudCounts();
+        }
+        if (activeTab === 'integrations') {
+            const config = getSupabaseConfig();
+            setSupabaseForm({ url: config.url || '', key: config.key || '' });
+            if (config.url && config.key) setConnectionStatus('success');
+        }
+        if (activeTab === 'bridge') {
+             fetchBridgeStatus();
+        }
+        if (activeTab === 'saas_admin' && isSuperAdmin) {
+            fetchSaasOrgs();
+        }
+        if (activeTab === 'audit') {
+            refetchLogs();
+        }
+    }, [activeTab]);
+
+    // --- FETCH CLOUD COUNTS (DATABASE TAB) ---
+    const fetchCloudCounts = async () => {
+        setLoadingCounts(true);
+        const supabase = getSupabase();
+        if (!supabase) {
+            setLoadingCounts(false);
+            return;
+        }
+
+        const tables = ['leads', 'clients', 'tickets', 'invoices', 'projects', 'activities', 'products', 'competitors', 'proposals', 'prospecting_history'];
+        const newCounts: Record<string, number> = {};
+
+        try {
+            await Promise.all(tables.map(async (table) => {
+                const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
+                newCounts[table] = count || 0;
+            }));
+            setCloudCounts(newCounts);
+        } catch (e) {
+            console.error("Error fetching counts", e);
+        } finally {
+            setLoadingCounts(false);
+        }
+    };
+
+    // --- HANDLERS ---
+    const handleProfileUpdate = (e: React.FormEvent) => {
+        e.preventDefault();
+        updateUser({
+            name: profileForm.name,
+            email: profileForm.email,
+            phone: profileForm.phone,
+            cpf: profileForm.cpf,
+            avatar: profileForm.avatar
+        });
+        setIsEditingProfile(false);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.size > 500 * 1024) { 
+                setIsCompressing(true);
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target?.result as string;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const maxWidth = 300;
+                        const scaleSize = maxWidth / img.width;
+                        canvas.width = maxWidth;
+                        canvas.height = img.height * scaleSize;
+                        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                        setProfileForm({ ...profileForm, avatar: compressedBase64 });
+                        setIsCompressing(false);
+                    };
+                };
+            } else {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setProfileForm({ ...profileForm, avatar: reader.result as string });
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    };
+
+    const fetchBridgeStatus = async (manual: boolean = false) => {
+        if (!bridgeStatus.whatsapp && manual) setLoadingBridge(true);
+        setBridgeError(null);
+        try {
+            const status = await checkBridgeStatus();
+            setBridgeStatus(status);
+            if (status.whatsapp === 'QR_READY') {
+                const qrData = await getBridgeQR();
+                if (qrData?.qrImage) setBridgeQr(qrData.qrImage);
+            } else if (status.whatsapp === 'READY') {
+                setBridgeQr(null);
+            }
+        } catch (e: any) {
+            setBridgeError(e.message || "Falha na conexão");
+            setBridgeStatus({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
+            if (manual) alert(`Erro de Conexão: ${e.message}`);
+        } finally {
+            setLoadingBridge(false);
+        }
+    };
+    
+    const handleManualBridgeCheck = async () => { setLoadingBridge(true); await fetchBridgeStatus(true); setLoadingBridge(false); };
+    const handleSaveSmtp = async (e: React.FormEvent) => { e.preventDefault(); setLoadingBridge(true); try { await configureBridgeSMTP(smtpForm); alert('SMTP Configurado!'); fetchBridgeStatus(); } catch (e: any) { alert(`Erro: ${e.message}`); } finally { setLoadingBridge(false); } };
+
+    const handleSaveSupabase = async (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        setConnectionStatus('testing'); 
+        setStatusMessage('');
+        saveSupabaseConfig(supabaseForm.url, supabaseForm.key); 
+        const result = await testSupabaseConnection(); 
+        if (result.success) { 
+            setConnectionStatus('success'); 
+            setStatusMessage(result.message as any); 
+            setTimeout(() => window.location.reload(), 2000); 
+        } else { 
+            setConnectionStatus('error'); 
+            setStatusMessage(result.message as any); 
+        } 
+    };
+
+    const fetchSaasOrgs = async () => { 
+        setLoadingSaas(true); 
+        const supabase = getSupabase(); 
+        if (supabase) { 
+            const { data, error } = await supabase.from('organizations').select('*'); 
+            if(error) console.error(error);
+            setSaasOrgs(data as Organization[] || MOCK_ORGANIZATIONS); 
+        } else { 
+            setSaasOrgs(MOCK_ORGANIZATIONS); 
+        } 
+        setLoadingSaas(false); 
+    };
+
+    const handleApproveOrg = async (orgId: string) => {
+        if(approveOrganization) {
+            const success = await approveOrganization(orgId);
+            if(success) {
+                fetchSaasOrgs();
+                alert("Organização aprovada com sucesso!");
+            } else {
+                alert("Erro ao aprovar organização.");
+            }
+        }
+    };
+    
+    const handleAddMember = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const result = await addTeamMember(newMember.name, newMember.email, newMember.role);
+        
+        if (result.success) {
+            setInviteData({ name: newMember.name, email: newMember.email });
+            setIsTeamModalOpen(false);
+            setIsInviteModalOpen(true);
+            setNewMember({ name: '', email: '', role: 'sales' });
+        } else {
+            alert(`Erro ao adicionar membro: ${result.error}`);
+        }
+    };
+
+    // --- APPROVAL LOGIC (CORE FIX) ---
+    const handleOpenApproval = (user: User) => {
+        setMemberToApprove(user);
+        // Default to their current role or sales if undefined
+        setApprovalRole(user.role || 'sales'); 
+        setIsApprovalModalOpen(true);
+    };
+
+    const handleConfirmApproval = async () => {
+        if (memberToApprove) {
+            await adminUpdateUser(memberToApprove.id, { 
+                active: true, 
+                role: approvalRole 
+            });
+            setIsApprovalModalOpen(false);
+            setMemberToApprove(null);
+            addSystemNotification('Membro Aprovado', `${memberToApprove.name} agora faz parte da equipe como ${ROLE_NAMES[approvalRole]}.`, 'success');
+        }
+    };
+    
+    const handleCopyInvite = () => {
+        const text = `Olá ${inviteData?.name}, você foi convidado para o Nexus CRM da ${currentOrganization?.name}.\n\nPara acessar:\n1. Entre em: ${window.location.origin}\n2. Clique em "Entrar na Equipe"\n3. Use o identificador: ${currentOrganization?.slug}\n4. Cadastre-se com o email: ${inviteData?.email}`;
+        navigator.clipboard.writeText(text);
+        alert("Convite copiado!");
+    };
+
+    const handleSavePortal = () => {
+        updatePortalSettings(currentUser, portalForm);
+        alert("Configurações salvas com sucesso!");
+    };
+
+    const handleSaveCustomField = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newFieldForm.label || !newFieldForm.key) return;
+        
+        const field: CustomFieldDefinition = {
+            id: `CF-${Date.now()}`,
+            label: newFieldForm.label,
+            key: newFieldForm.key,
+            type: newFieldForm.type || 'text',
+            module: newFieldForm.module || 'leads',
+            required: newFieldForm.required || false,
+            options: newFieldForm.type === 'select' && fieldOptionsInput ? fieldOptionsInput.split(',').map(s => s.trim()) : undefined,
+            organizationId: currentUser?.organizationId
+        };
+        addCustomField(field);
+        setNewFieldForm({ label: '', key: '', type: 'text', module: 'leads', required: false });
+        setFieldOptionsInput('');
+        alert("Campo adicionado!");
+    };
+
+    const handleSaveWebhook = (e: React.FormEvent) => {
+        e.preventDefault();
+        const webhook: WebhookConfig = {
+            id: `WH-${Date.now()}`,
+            name: newWebhookForm.name || 'Webhook',
+            url: newWebhookForm.url || '',
+            triggerEvent: newWebhookForm.triggerEvent as TriggerType,
+            method: (newWebhookForm.method as 'POST' | 'GET') || 'POST',
+            active: true,
+            organizationId: currentUser?.organizationId
+        };
+        addWebhook(webhook);
+        setNewWebhookForm({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
+        alert("Webhook adicionado!");
+    };
+
+    const handleEditProduct = (product: Product) => {
+        setNewProduct(product);
+        setEditingProductId(product.id);
+        setIsProductModalOpen(true);
+    };
+
+    const handleDeleteProduct = (product: Product) => {
+        if(confirm(`Deseja excluir o produto ${product.name}?`)) {
+            removeProduct(currentUser, product.id);
+        }
+    };
+
+    const handleSaveProduct = (e: React.FormEvent) => {
+        e.preventDefault();
+        const productData: Product = {
+            id: editingProductId || `PROD-${Date.now()}`,
+            name: newProduct.name || '',
+            description: newProduct.description || '',
+            price: Number(newProduct.price),
+            sku: newProduct.sku || '',
+            category: newProduct.category || 'Service',
+            active: newProduct.active !== undefined ? newProduct.active : true,
+            organizationId: currentUser?.organizationId
+        };
+        if(editingProductId) updateProduct(currentUser, productData);
+        else addProduct(currentUser, productData);
+        setIsProductModalOpen(false);
+        setNewProduct({ active: true, category: 'Subscription', price: 0 });
+        setEditingProductId(null);
+    };
+    
+    // --- SQL SCRIPT V11.0 - FIX COMPETITORS JSON ---
+    const sqlScript = `-- SQL DE RESET DA TABELA COMPETITORS (V11.0)
+-- Recria a tabela 'competitors' para garantir suporte a JSONB (SWOT/Battlecard) e permissões.
+
+BEGIN;
+
+DROP TABLE IF EXISTS competitors CASCADE;
+
+CREATE TABLE competitors (
+  id text PRIMARY KEY,
   name text,
   website text,
   sector text,
   last_analysis timestamp with time zone,
-  swot jsonb,
-  battlecard jsonb,
-  organization_id text references organizations(id)
+  swot jsonb DEFAULT '{}'::jsonb,
+  battlecard jsonb DEFAULT '{}'::jsonb,
+  organization_id text
 );
 
-create table if not exists prospecting_history (
-  id text primary key,
-  timestamp timestamp with time zone default now(),
-  industry text,
-  location text,
-  keywords text,
-  results jsonb default '[]',
-  organization_id text references organizations(id)
-);
+ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
 
-create table if not exists custom_fields (
-  id text primary key,
-  label text,
-  key text,
-  type text,
-  module text,
-  options text[],
-  required boolean default false,
-  organization_id text references organizations(id)
-);
+CREATE POLICY "Enable all access competitors" ON competitors FOR ALL USING (true) WITH CHECK (true);
 
-create table if not exists webhooks (
-  id text primary key,
-  name text,
-  url text,
-  trigger_event text,
-  method text,
-  active boolean default true,
-  headers jsonb default '{}',
-  organization_id text references organizations(id)
-);
+GRANT ALL ON competitors TO anon, authenticated, service_role;
 
-create table if not exists workflows (
-  id text primary key,
-  name text,
-  active boolean default true,
-  trigger text,
-  actions jsonb default '[]',
-  runs integer default 0,
-  last_run timestamp with time zone,
-  organization_id text references organizations(id)
-);
+COMMIT;
 
-create table if not exists projects (
-  id text primary key,
-  title text,
-  client_name text,
-  status text,
-  progress integer,
-  start_date timestamp with time zone,
-  deadline timestamp with time zone,
-  manager text,
-  description text,
-  tasks jsonb default '[]',
-  organization_id text references organizations(id),
-  archived boolean default false,
-  products text[],
-  installation_notes text,
-  completed_at timestamp with time zone,
-  notes jsonb default '[]',
-  photos text[],
-  install_address text
-);
+SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
+`;
 
-create table if not exists client_documents (
-  id text primary key,
-  client_id text,
-  title text,
-  type text,
-  url text,
-  uploaded_by text,
-  upload_date timestamp with time zone,
-  size text,
-  organization_id text references organizations(id)
-);
+    // Filter menu items based on Admin role for sensitive tabs
+    const menuItems = [
+        { id: 'profile', label: 'Meu Perfil', icon: UserCircle },
+    ];
 
--- CORREÇÃO DE TIPOS E COLUNAS FALTANTES (SAFE ALTER)
--- Garante que colunas críticas existam e tenham o tipo correto
-do $$
-begin
-  -- Fix Workflows Column Type
-  begin alter table workflows alter column organization_id type text; exception when others then null; end;
-  -- Fix Prospecting History Type
-  begin alter table prospecting_history alter column organization_id type text; exception when others then null; end;
-  -- Fix Client Documents Column Type
-  begin alter table client_documents alter column organization_id type text; exception when others then null; end;
-  -- Fix Profiles Active
-  begin alter table profiles add column if not exists active boolean default true; exception when others then null; end;
-  -- Fix Profiles Org ID
-  begin alter table profiles add column if not exists organization_id text; exception when others then null; end;
-  
-  -- Fix Leads Columns
-  begin alter table leads add column if not exists lost_reason text; exception when others then null; end;
-  
-  -- Fix Proposals Columns
-  begin alter table proposals add column if not exists setup_cost numeric; exception when others then null; end;
-  begin alter table proposals add column if not exists monthly_cost numeric; exception when others then null; end;
-  begin alter table proposals add column if not exists consultant_name text; exception when others then null; end;
-end $$;
+    if (isAdmin) {
+        menuItems.push(
+            { id: 'organization', label: 'Organização', icon: Building2 },
+            { id: 'team', label: 'Equipe', icon: Users },
+            { id: 'permissions', label: 'Permissões (RBAC)', icon: Shield },
+            { id: 'portal_config', label: 'Portal do Cliente', icon: Globe },
+            { id: 'products', label: 'Produtos', icon: Package },
+            { id: 'integrations', label: 'Banco de Dados', icon: Database },
+            { id: 'bridge', label: 'Integrações (Bridge)', icon: Zap },
+            { id: 'custom_fields', label: 'Campos Personalizados', icon: ListChecks },
+            { id: 'webhooks', label: 'Webhooks & API', icon: Code },
+            { id: 'database', label: 'Diagnóstico DB', icon: Activity },
+            { id: 'audit', label: 'Auditoria', icon: List },
+        );
+        if (isSuperAdmin) {
+            menuItems.push({ id: 'saas_admin', label: 'SaaS Admin', icon: Building2 });
+        }
+    }
 
--- HABILITAR RLS (Segurança) - Executa em todas as tabelas
-alter table profiles enable row level security;
-alter table leads enable row level security;
-alter table clients enable row level security;
-alter table proposals enable row level security;
-alter table products enable row level security;
-alter table activities enable row level security;
-alter table competitors enable row level security;
-alter table prospecting_history enable row level security;
-alter table custom_fields enable row level security;
-alter table webhooks enable row level security;
-alter table workflows enable row level security;
-alter table organizations enable row level security;
-alter table projects enable row level security;
-alter table tickets enable row level security;
-alter table invoices enable row level security;
-alter table client_documents enable row level security;
-alter table audit_logs enable row level security;
+    return (
+        <div className="flex h-full bg-slate-50 dark:bg-slate-900 transition-colors overflow-hidden">
+            {/* Sidebar de Configurações (Vertical) */}
+            <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 h-full">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                    <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Settings2 size={24} className="text-blue-600 dark:text-blue-400"/> Configurações
+                    </h1>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Gerencie sua conta e preferências.</p>
+                </div>
+                
+                <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+                    {menuItems.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => setActiveTab(item.id as any)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                                activeTab === item.id 
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            <item.icon size={18} />
+                            {item.label}
+                            {activeTab === item.id && <ChevronRight size={14} className="ml-auto opacity-50"/>}
+                        </button>
+                    ))}
+                </nav>
 
--- REMOVER POLÍTICAS ANTIGAS (EVITA ERRO 42710)
-drop policy if exists "Enable all access for authenticated users based on org" on leads;
-drop policy if exists "Enable insert for authenticated users" on leads;
-drop policy if exists "Enable all access for authenticated users based on org" on clients;
-drop policy if exists "Enable all access for authenticated users based on org" on proposals;
-drop policy if exists "Enable insert for authenticated users" on proposals;
-drop policy if exists "Enable all access for authenticated users based on org" on products;
-drop policy if exists "Enable all access for authenticated users based on org" on competitors;
-drop policy if exists "Enable all access for authenticated users based on org" on prospecting_history;
-drop policy if exists "Enable all access for authenticated users based on org" on activities;
-drop policy if exists "Enable all access for authenticated users based on org" on tickets;
-drop policy if exists "Enable all access for authenticated users based on org" on invoices;
-drop policy if exists "Enable all access for authenticated users based on org" on custom_fields;
-drop policy if exists "Enable all access for authenticated users based on org" on webhooks;
-drop policy if exists "Enable all access for authenticated users based on org" on workflows;
-drop policy if exists "Enable all access for authenticated users based on org" on projects;
-drop policy if exists "Enable all access for authenticated users based on org" on client_documents;
-drop policy if exists "Enable all access for authenticated users based on org" on audit_logs;
-drop policy if exists "Enable all access for authenticated users based on org" on profiles;
-drop policy if exists "Enable insert for organizations" on organizations;
-drop policy if exists "Enable select for organizations" on organizations;
-drop policy if exists "Enable update for organizations" on organizations;
+                <div className="p-4 border-t border-slate-200 dark:border-slate-700 text-center">
+                    <p className="text-[10px] text-slate-400">Nexus CRM Enterprise v3.5</p>
+                </div>
+            </aside>
 
--- RECRIAR POLÍTICAS (PERMISSIVAS PARA CORREÇÃO)
+            {/* Content Area */}
+            <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                
+                {/* 1. PROFILE TAB */}
+                {activeTab === 'profile' && currentUser && (
+                    <div className="max-w-3xl mx-auto animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            {/* Profile Header Background */}
+                            <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700 relative">
+                                <div className="absolute inset-0 bg-grid-white/[0.1] bg-[size:20px_20px]"></div>
+                            </div>
+                            
+                            <div className="px-8 pb-8 relative">
+                                {/* Avatar Module */}
+                                <div className="flex justify-between items-end -mt-12 mb-6">
+                                    <div className="relative group">
+                                        <div className="w-24 h-24 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-500 dark:text-slate-400 shadow-md overflow-hidden">
+                                            {profileForm.avatar ? (
+                                                <img src={profileForm.avatar} alt="Profile" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span>{profileForm.name.charAt(0)}</span>
+                                            )}
+                                        </div>
+                                        {isEditingProfile && (
+                                            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition">
+                                                <Camera size={20} className="text-white"/>
+                                                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFileChange} ref={fileInputRef}/>
+                                            </div>
+                                        )}
+                                        {!isEditingProfile && (
+                                            <button 
+                                                onClick={() => setIsEditingProfile(true)}
+                                                className="absolute bottom-0 right-0 p-1.5 bg-blue-600 text-white rounded-full border-2 border-white dark:border-slate-800 hover:bg-blue-700 transition shadow-sm"
+                                            >
+                                                <Edit2 size={12}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2 mb-2">
+                                        <Badge color="blue">{ROLE_NAMES[currentUser.role]}</Badge>
+                                        <Badge color={currentUser.active ? 'green' : 'red'}>{currentUser.active ? 'Ativo' : 'Inativo'}</Badge>
+                                    </div>
+                                </div>
 
--- Organizações: Permite insert para criar conta, select/update para todos (simplificado)
-create policy "Enable insert for organizations" on organizations for insert with check (true);
-create policy "Enable select for organizations" on organizations for select using (true);
-create policy "Enable update for organizations" on organizations for update using (true);
+                                {/* Personal Info Form */}
+                                <form onSubmit={handleProfileUpdate}>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome Completo</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+                                                value={profileForm.name}
+                                                onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                                                disabled={!isEditingProfile}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email de Acesso</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+                                                value={profileForm.email}
+                                                readOnly
+                                                disabled
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+                                                value={profileForm.phone}
+                                                onChange={e => setProfileForm({...profileForm, phone: e.target.value})}
+                                                disabled={!isEditingProfile}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">CPF</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+                                                value={profileForm.cpf}
+                                                onChange={e => setProfileForm({...profileForm, cpf: e.target.value})}
+                                                disabled={!isEditingProfile}
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {isEditingProfile && (
+                                        <div className="mt-6 flex justify-end gap-3">
+                                            <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">Cancelar</button>
+                                            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-sm">Salvar Alterações</button>
+                                        </div>
+                                    )}
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
--- Perfis: Permite insert para criar usuários/invites, select para todos
-create policy "Enable all access for authenticated users based on org" on profiles
-  for all using ( true ); 
+                {/* 3. TEAM TAB */}
+                {activeTab === 'team' && isAdmin && (
+                    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <SectionTitle title="Convidar Membro" subtitle="Adicione novos usuários à sua organização" />
+                            <form onSubmit={handleAddMember} className="flex flex-col md:flex-row gap-4 items-end mt-4">
+                                <div className="flex-1 w-full">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.name} onChange={(e) => setNewMember({...newMember, name: e.target.value})} required />
+                                </div>
+                                <div className="flex-1 w-full">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
+                                    <input type="email" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.email} onChange={(e) => setNewMember({...newMember, email: e.target.value})} required />
+                                </div>
+                                <div className="w-full md:w-48">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
+                                    <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.role} onChange={(e) => setNewMember({...newMember, role: e.target.value as Role})}>
+                                        {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                    </select>
+                                </div>
+                                <button type="submit" className="w-full md:w-auto bg-blue-600 text-white px-6 py-2.5 rounded font-bold hover:bg-blue-700 flex items-center justify-center gap-2">
+                                    <Plus size={18}/> Convidar
+                                </button>
+                            </form>
+                        </div>
 
--- Demais tabelas: Acesso baseado na organization_id do usuário logado
--- Helper: Policy genérica que permite leitura/escrita se o usuário pertencer à mesma org
-create policy "Enable all access for authenticated users based on org" on leads
-  for all using ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <SectionTitle title="Membros da Equipe" subtitle={`Total: ${usersList.filter(u => u.role !== 'client').length} usuários`} />
+                            <div className="overflow-x-auto mt-4">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
+                                        <tr>
+                                            <th className="p-3">Nome</th>
+                                            <th className="p-3">Email</th>
+                                            <th className="p-3">Função</th>
+                                            <th className="p-3 text-center">Status</th>
+                                            <th className="p-3 text-right">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                        {usersList.filter(u => u.role !== 'client').map(user => (
+                                            <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                <td className="p-3 font-medium text-slate-900 dark:text-white">{user.name}</td>
+                                                <td className="p-3 text-slate-600 dark:text-slate-300">{user.email}</td>
+                                                <td className="p-3"><Badge>{ROLE_NAMES[user.role]}</Badge></td>
+                                                <td className="p-3 text-center">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {user.active ? 'Ativo' : 'Inativo'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right flex justify-end gap-2">
+                                                    <button 
+                                                        onClick={() => user.active ? adminUpdateUser(user.id, { active: false }) : handleOpenApproval(user)} 
+                                                        className={`hover:bg-blue-50 dark:hover:bg-blue-900/30 p-1.5 rounded transition ${user.active ? 'text-slate-400 hover:text-red-500' : 'text-blue-600 animate-pulse'}`} 
+                                                        title={user.active ? "Desativar" : "Aprovar Entrada"}
+                                                    >
+                                                        {user.active ? <ToggleRight size={18}/> : <ToggleLeft size={18}/>}
+                                                    </button>
+                                                    <button onClick={() => adminDeleteUser(user.id)} className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded" title="Remover">
+                                                        <Trash2 size={18}/>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
-create policy "Enable insert for authenticated users" on leads
-  for insert with check ( auth.uid() in (select id from profiles where organization_id = leads.organization_id) );
+                {/* 4. PERMISSIONS TAB */}
+                {activeTab === 'permissions' && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in max-w-6xl mx-auto">
+                        <SectionTitle title="Matriz de Permissões" subtitle="Controle de acesso granular por módulo e função (RBAC). Apenas Administradores podem alterar." />
+                        <div className="overflow-x-auto mt-4">
+                            <table className="w-full text-sm border-collapse">
+                                <thead>
+                                    <tr>
+                                        <th className="p-3 border-b border-slate-200 dark:border-slate-700 text-left bg-slate-50 dark:bg-slate-900 text-slate-50 dark:text-slate-400 sticky left-0 z-10 w-48">Módulo</th>
+                                        {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => (
+                                            <th key={role} className="p-3 border-b border-slate-200 dark:border-slate-700 text-center bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white font-bold min-w-[120px]">
+                                                {ROLE_NAMES[role]}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {MODULE_CONFIG.map(modConf => (
+                                        <tr key={modConf.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                                            <td className="p-3 font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 sticky left-0 z-10 capitalize border-r border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                                                {modConf.label}
+                                            </td>
+                                            {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => {
+                                                const viewAccess = permissionMatrix[role]?.[modConf.id]?.view;
+                                                const editAccess = permissionMatrix[role]?.[modConf.id]?.edit;
+                                                const isSuper = role === 'admin' || role === 'executive';
 
-create policy "Enable all access for authenticated users based on org" on clients
-  for all using ( auth.uid() in (select id from profiles where organization_id = clients.organization_id) );
+                                                return (
+                                                    <td key={`${role}-${modConf.id}`} className="p-3 text-center border-l border-slate-100 dark:border-slate-700">
+                                                        <div className="flex justify-center gap-2">
+                                                            {/* View Toggle */}
+                                                            <button 
+                                                                onClick={() => !isSuper && updatePermission(role as Role, modConf.id, 'view', !viewAccess)}
+                                                                className={`p-1.5 rounded transition ${viewAccess ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-700'} ${isSuper ? 'cursor-not-allowed opacity-50' : ''}`}
+                                                                title="Visualizar"
+                                                                disabled={isSuper}
+                                                            >
+                                                                {viewAccess ? <Eye size={16}/> : <EyeOff size={16}/>}
+                                                            </button>
 
-create policy "Enable all access for authenticated users based on org" on proposals
-  for all using ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+                                                            {/* Edit Toggle */}
+                                                            <button 
+                                                                onClick={() => !isSuper && updatePermission(role as Role, modConf.id, 'edit', !editAccess)}
+                                                                className={`p-1.5 rounded transition ${editAccess ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-700'} ${isSuper ? 'cursor-not-allowed opacity-50' : ''}`}
+                                                                title="Editar (Criar/Alterar/Excluir)"
+                                                                disabled={isSuper}
+                                                            >
+                                                                <Edit2 size={16}/>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-4 italic">* Admins e Executivos possuem acesso total por padrão e não podem ser restritos aqui.</p>
+                    </div>
+                )}
+                
+                {/* 5. PORTAL CONFIG TAB */}
+                {activeTab === 'portal_config' && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in max-w-4xl mx-auto">
+                        <SectionTitle title="Configuração do Portal do Cliente" subtitle="Personalize a experiência dos seus clientes" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Portal</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={portalForm.portalName} onChange={(e) => setPortalForm({...portalForm, portalName: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Cor Primária</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="color" className="w-10 h-10 border border-slate-300 dark:border-slate-600 rounded cursor-pointer" value={portalForm.primaryColor} onChange={(e) => setPortalForm({...portalForm, primaryColor: e.target.value})} />
+                                        <input type="text" className="flex-1 border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white uppercase" value={portalForm.primaryColor} onChange={(e) => setPortalForm({...portalForm, primaryColor: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white">Funcionalidades</h4>
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={portalForm.allowInvoiceDownload} onChange={(e) => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})} />
+                                        <span className="text-sm text-slate-700 dark:text-slate-300">Permitir download de faturas</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={portalForm.allowTicketCreation} onChange={(e) => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})} />
+                                        <span className="text-sm text-slate-700 dark:text-slate-300">Permitir abertura de chamados</span>
+                                    </label>
+                                </div>
+                                <button onClick={handleSavePortal} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 mt-4 flex items-center gap-2">
+                                    <Save size={18}/> Salvar Configurações
+                                </button>
+                            </div>
+                            
+                            {/* Preview */}
+                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex flex-col h-80 bg-slate-50 dark:bg-slate-900">
+                                <div className="h-14 flex items-center px-4 text-white font-bold shadow-sm" style={{backgroundColor: portalForm.primaryColor}}>
+                                    {portalForm.portalName}
+                                </div>
+                                <div className="p-4 flex-1 flex flex-col gap-3 opacity-80 pointer-events-none">
+                                    <div className="h-24 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                                        <div className="w-1/3 h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                                        <div className="w-1/2 h-3 bg-slate-100 dark:bg-slate-800 rounded"></div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="h-20 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700"></div>
+                                        <div className="h-20 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* 6. PRODUCTS TAB */}
+                {activeTab === 'products' && isAdmin && (
+                    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+                        <div className="flex justify-between items-center mb-4">
+                             <SectionTitle title="Catálogo de Produtos" subtitle="Gerencie serviços e produtos disponíveis" />
+                             <button onClick={() => { setNewProduct({ active: true, category: 'Subscription', price: 0 }); setEditingProductId(null); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2">
+                                 <Plus size={18}/> Novo Produto
+                             </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {products.map(product => (
+                                <div key={product.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition group">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className={`px-2 py-0.5 text-xs font-bold rounded uppercase ${product.category === 'Subscription' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{product.category}</span>
+                                        <span className={`w-2 h-2 rounded-full ${product.active ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                    </div>
+                                    <h3 className="font-bold text-slate-900 dark:text-white mb-1">{product.name}</h3>
+                                    <p className="text-slate-500 dark:text-slate-400 text-sm mb-3 line-clamp-2 h-10">{product.description}</p>
+                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+                                        <span className="font-bold text-slate-800 dark:text-white">R$ {product.price.toLocaleString()}</span>
+                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                            <button onClick={() => handleEditProduct(product)} className="text-blue-600 dark:text-blue-400 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"><Edit2 size={16}/></button>
+                                            <button onClick={() => handleDeleteProduct(product)} className="text-red-600 dark:text-red-400 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"><Trash2 size={16}/></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                
+                {/* 7. INTEGRATIONS / BRIDGE TAB */}
+                {(activeTab === 'integrations' || activeTab === 'bridge') && isAdmin && (
+                    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+                        
+                        {/* SUPABASE CONFIG */}
+                        {activeTab === 'integrations' && (
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <div className="flex items-start gap-4">
+                                    <div className="p-3 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                                        <Database size={24}/>
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Conexão com Banco de Dados</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Configuração do Supabase (URL e API Key).</p>
+                                        
+                                        <form onSubmit={handleSaveSupabase} className="space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Project URL</label>
+                                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={supabaseForm.url} onChange={e => setSupabaseForm({...supabaseForm, url: e.target.value})} placeholder="https://xyz.supabase.co" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Anon Key</label>
+                                                    <input type="password" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={supabaseForm.key} onChange={e => setSupabaseForm({...supabaseForm, key: e.target.value})} placeholder="eyJ..." />
+                                                </div>
+                                            </div>
+                                            
+                                            {connectionStatus === 'error' && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-2 rounded">{statusMessage}</p>}
+                                            {connectionStatus === 'success' && <p className="text-green-600 text-sm bg-green-50 dark:bg-green-900/20 p-2 rounded font-bold flex items-center gap-2"><CheckCircle size={14}/> {statusMessage}</p>}
+                                            
+                                            <button type="submit" disabled={connectionStatus === 'testing'} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-slate-800 dark:hover:bg-slate-600 flex items-center gap-2 disabled:opacity-70">
+                                                {connectionStatus === 'testing' ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
+                                                {connectionStatus === 'testing' ? 'Testando...' : 'Salvar e Conectar'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* BRIDGE CONFIG */}
+                        {activeTab === 'bridge' && (
+                            <div className="space-y-6">
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg"><Zap size={24}/></div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Nexus Bridge</h3>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">Gateway local para WhatsApp e SMTP.</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={handleManualBridgeCheck} className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline">
+                                            <RefreshCw size={12} className={loadingBridge ? "animate-spin" : ""}/> Verificar Status
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* WHATSAPP CARD */}
+                                        <div className="p-5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 flex flex-col items-center justify-center text-center min-h-[200px]">
+                                            <div className="mb-3">
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-xl shadow-sm ${bridgeStatus.whatsapp === 'READY' ? 'bg-green-500' : 'bg-slate-400'}`}>
+                                                    <MessageCircle size={24}/>
+                                                </div>
+                                            </div>
+                                            <h4 className="font-bold text-slate-800 dark:text-white">WhatsApp</h4>
+                                            <p className={`text-xs font-bold uppercase mb-4 ${bridgeStatus.whatsapp === 'READY' ? 'text-green-600' : 'text-slate-500'}`}>
+                                                {bridgeStatus.whatsapp === 'READY' ? 'Conectado' : bridgeStatus.whatsapp === 'QR_READY' ? 'Aguardando Leitura' : 'Desconectado'}
+                                            </p>
+                                            
+                                            {bridgeStatus.whatsapp === 'QR_READY' && bridgeQr ? (
+                                                <div className="bg-white p-2 rounded-lg shadow-sm">
+                                                    <img src={bridgeQr} alt="QR Code" className="w-32 h-32"/>
+                                                </div>
+                                            ) : bridgeStatus.whatsapp === 'READY' ? (
+                                                <div className="flex items-center gap-2 text-green-600 text-sm font-bold bg-green-100 dark:bg-green-900/30 px-3 py-1 rounded-full">
+                                                    <CheckCircle size={14}/> Online
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 max-w-[200px]">Certifique-se que o servidor bridge está rodando na porta 3001.</p>
+                                            )}
+                                        </div>
+                                        
+                                        {/* SMTP CARD */}
+                                        <div className="p-5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                                            <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                                <Mail size={16}/> Configuração SMTP
+                                            </h4>
+                                            <form onSubmit={handleSaveSmtp} className="space-y-3">
+                                                <input type="text" placeholder="Host (smtp.gmail.com)" className="w-full border rounded p-2 text-xs" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})} />
+                                                <input type="number" placeholder="Porta (587)" className="w-full border rounded p-2 text-xs" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})} />
+                                                <input type="email" placeholder="Email (User)" className="w-full border rounded p-2 text-xs" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})} />
+                                                <input type="password" placeholder="Senha de App" className="w-full border rounded p-2 text-xs" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})} />
+                                                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded text-xs font-bold hover:bg-blue-700">Salvar SMTP</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    
+                                    {bridgeError && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs rounded border border-red-200 dark:border-red-800 flex items-center gap-2"><AlertTriangle size={14}/> {bridgeError}</div>}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-create policy "Enable insert for authenticated users" on proposals
-  for insert with check ( auth.uid() in (select id from profiles where organization_id = proposals.organization_id) );
+                {/* 8. CUSTOM FIELDS */}
+                {activeTab === 'custom_fields' && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-4xl mx-auto">
+                        <SectionTitle title="Campos Personalizados" subtitle="Estenda o modelo de dados de Leads e Clientes." />
+                        
+                        <form onSubmit={handleSaveCustomField} className="flex gap-3 items-end mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                            <div className="flex-1">
+                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Rótulo</label>
+                                <input required type="text" className="w-full border rounded p-2 text-sm" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value, key: e.target.value.toLowerCase().replace(/\s+/g, '_')})} placeholder="Ex: Data de Nascimento"/>
+                            </div>
+                            <div className="w-32">
+                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Tipo</label>
+                                <select className="w-full border rounded p-2 text-sm" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
+                                    <option value="text">Texto</option>
+                                    <option value="number">Número</option>
+                                    <option value="date">Data</option>
+                                    <option value="select">Seleção</option>
+                                    <option value="boolean">Sim/Não</option>
+                                </select>
+                            </div>
+                            <div className="w-32">
+                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Módulo</label>
+                                <select className="w-full border rounded p-2 text-sm" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
+                                    <option value="leads">Leads</option>
+                                    <option value="clients">Clientes</option>
+                                </select>
+                            </div>
+                            <button type="submit" className="bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 h-[38px] w-[38px] flex items-center justify-center">
+                                <Plus size={20}/>
+                            </button>
+                        </form>
+                        
+                        {newFieldForm.type === 'select' && (
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Opções (separadas por vírgula)</label>
+                                <input type="text" className="w-full border rounded p-2 text-sm" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)} placeholder="Opção A, Opção B, Opção C"/>
+                            </div>
+                        )}
 
-create policy "Enable all access for authenticated users based on org" on products
-  for all using ( auth.uid() in (select id from profiles where organization_id = products.organization_id) );
-  
-create policy "Enable all access for authenticated users based on org" on competitors
-  for all using ( auth.uid() in (select id from profiles where organization_id = competitors.organization_id) );
+                        <div className="space-y-2">
+                            {customFields.map(field => (
+                                <div key={field.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                    <div>
+                                        <p className="font-bold text-sm text-slate-800 dark:text-white">{field.label}</p>
+                                        <p className="text-xs text-slate-500">Chave: {field.key} • Tipo: {field.type} • Módulo: {field.module}</p>
+                                    </div>
+                                    <button onClick={() => deleteCustomField(field.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
+                                </div>
+                            ))}
+                            {customFields.length === 0 && <p className="text-center text-slate-400 py-4">Nenhum campo personalizado.</p>}
+                        </div>
+                    </div>
+                )}
 
-create policy "Enable all access for authenticated users based on org" on prospecting_history
-  for all using ( auth.uid() in (select id from profiles where organization_id = prospecting_history.organization_id) );
+                {/* 9. WEBHOOKS */}
+                {activeTab === 'webhooks' && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-4xl mx-auto">
+                        <SectionTitle title="Webhooks & API" subtitle="Integre o Nexus com outras plataformas." />
+                        
+                        <form onSubmit={handleSaveWebhook} className="mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700 space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div><label className="text-xs font-bold uppercase text-slate-500">Nome</label><input required className="w-full border rounded p-2 text-sm" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})}/></div>
+                                <div><label className="text-xs font-bold uppercase text-slate-500">URL de Destino</label><input required type="url" className="w-full border rounded p-2 text-sm" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})}/></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500">Evento Gatilho</label>
+                                    <select className="w-full border rounded p-2 text-sm" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as TriggerType})}>
+                                        <option value="lead_created">Novo Lead</option>
+                                        <option value="deal_won">Venda Ganha</option>
+                                        <option value="deal_lost">Venda Perdida</option>
+                                        <option value="ticket_created">Ticket Criado</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500">Método</label>
+                                    <select className="w-full border rounded p-2 text-sm" value={newWebhookForm.method} onChange={e => setNewWebhookForm({...newWebhookForm, method: e.target.value as any})}>
+                                        <option value="POST">POST</option>
+                                        <option value="GET">GET</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded text-sm font-bold hover:bg-slate-700">Adicionar Webhook</button>
+                        </form>
 
-create policy "Enable all access for authenticated users based on org" on activities
-  for all using ( auth.uid() in (select id from profiles where organization_id = activities.organization_id) );
+                        <div className="space-y-2">
+                            {webhooks.map(hook => (
+                                <div key={hook.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                    <div>
+                                        <p className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                                            {hook.name} <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{hook.triggerEvent}</span>
+                                        </p>
+                                        <p className="text-xs text-slate-500 font-mono mt-1 truncate max-w-md">{hook.url}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => updateWebhook({...hook, active: !hook.active})} className={`text-xs font-bold px-2 py-1 rounded ${hook.active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>{hook.active ? 'Ativo' : 'Pausado'}</button>
+                                        <button onClick={() => deleteWebhook(hook.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
-create policy "Enable all access for authenticated users based on org" on tickets
-  for all using ( auth.uid() in (select id from profiles where organization_id = tickets.organization_id) );
+                {/* 10. AUDIT LOG */}
+                {activeTab === 'audit' && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col h-[600px]">
+                        <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                            <SectionTitle title="Logs de Auditoria" subtitle="Rastreamento de ações dos usuários" />
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 sticky top-0">
+                                    <tr>
+                                        <th className="p-3">Data/Hora</th>
+                                        <th className="p-3">Usuário</th>
+                                        <th className="p-3">Ação</th>
+                                        <th className="p-3">Módulo</th>
+                                        <th className="p-3">Detalhes</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {displayLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-300">
+                                            <td className="p-3 whitespace-nowrap text-xs font-mono">{new Date(log.timestamp).toLocaleString()}</td>
+                                            <td className="p-3 font-bold">{log.userName}</td>
+                                            <td className="p-3"><span className="bg-slate-100 dark:bg-slate-600 px-2 py-0.5 rounded text-xs font-medium">{log.action}</span></td>
+                                            <td className="p-3 text-xs uppercase text-slate-500">{log.module}</td>
+                                            <td className="p-3 text-xs truncate max-w-xs" title={log.details}>{log.details}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* 11. DATABASE DIAGNOSTICS */}
+                {activeTab === 'database' && isAdmin && (
+                     <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="Diagnóstico de Banco de Dados" subtitle="Contagem de registros e status de sincronização." />
+                            <button onClick={() => setShowSqlModal(true)} className="text-blue-600 hover:underline text-sm font-bold flex items-center gap-1"><Code size={14}/> Ver Script SQL</button>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {Object.entries(cloudCounts).map(([table, count]) => (
+                                <div key={table} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
+                                    <p className="text-xs text-slate-400 uppercase font-bold mb-1">{table}</p>
+                                    {loadingCounts ? <Loader2 className="animate-spin mx-auto text-blue-500" size={20}/> : <p className="text-2xl font-bold text-slate-800 dark:text-white">{count}</p>}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-200">
+                            <p className="font-bold flex items-center gap-2 mb-2"><Database size={16}/> Sincronização Local vs Cloud</p>
+                            <p>Os dados são armazenados localmente para performance e sincronizados em segundo plano com o Supabase. Se houver divergência, clique em "Forçar Sincronização" no menu lateral.</p>
+                        </div>
+                     </div>
+                )}
 
-create policy "Enable all access for authenticated users based on org" on invoices
-  for all using ( auth.uid() in (select id from profiles where organization_id = invoices.organization_id) );
+                {/* 12. ORGANIZATION INFO */}
+                {activeTab === 'organization' && currentOrganization && isAdmin && (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl mx-auto">
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-slate-900 text-white rounded-lg flex items-center justify-center text-3xl font-bold mx-auto mb-3 shadow-lg">
+                                {currentOrganization.name.charAt(0)}
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{currentOrganization.name}</h2>
+                            <p className="text-slate-500 dark:text-slate-400 font-mono text-sm bg-slate-100 dark:bg-slate-700 inline-block px-3 py-1 rounded-full mt-2">ID: {currentOrganization.id}</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6 border-t border-slate-100 dark:border-slate-700 pt-6">
+                            <div className="text-center">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Plano Atual</p>
+                                <Badge color="purple">{currentOrganization.plan}</Badge>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Status da Assinatura</p>
+                                <span className={`text-sm font-bold ${currentOrganization.subscription_status === 'active' ? 'text-green-600' : 'text-red-500'}`}>
+                                    {currentOrganization.subscription_status?.toUpperCase() || 'ATIVO'}
+                                </span>
+                            </div>
+                        </div>
 
-create policy "Enable all access for authenticated users based on org" on custom_fields
-  for all using ( auth.uid() in (select id from profiles where organization_id = custom_fields.organization_id) );
+                        {isSuperAdmin && (
+                            <div className="mt-8 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                                <h4 className="font-bold text-sm text-slate-700 dark:text-white mb-2">Zona de Perigo</h4>
+                                <button className="w-full border border-red-200 text-red-600 hover:bg-red-50 py-2 rounded text-sm font-bold transition">
+                                    Encerrar Conta da Organização
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                
+            </main>
 
-create policy "Enable all access for authenticated users based on org" on webhooks
-  for all using ( auth.uid() in (select id from profiles where organization_id = webhooks.organization_id) );
-
-create policy "Enable all access for authenticated users based on org" on workflows
-  for all using ( auth.uid() in (select id from profiles where organization_id = workflows.organization_id) );
-
-create policy "Enable all access for authenticated users based on org" on projects
-  for all using ( auth.uid() in (select id from profiles where organization_id = projects.organization_id) );
-
-create policy "Enable all access for authenticated users based on org" on client_documents
-  for all using ( auth.uid() in (select id from profiles where organization_id = client_documents.organization_id) );
-  
-create policy "Enable all access for authenticated users based on org" on audit_logs
-  for all using ( auth.uid() in (select id from profiles where organization_id = audit_logs.organization_id) );
-`}
+            {/* SQL Modal */}
+            {showSqlModal && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl border border-slate-700 flex flex-col max-h-[80vh]">
+                        <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                            <h3 className="text-white font-bold flex items-center gap-2"><Code size={18} className="text-emerald-400"/> Schema SQL (Full Update V11.0)</h3>
+                            <button onClick={() => setShowSqlModal(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
+                        </div>
+                        <div className="p-4 flex-1 overflow-auto bg-black custom-scrollbar">
+                            <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap select-text">
+                                {sqlScript}
                             </pre>
                         </div>
-                        <div className="p-4 border-t border-slate-700 text-right">
-                            <button onClick={() => { navigator.clipboard.writeText(`...script content...`); alert("Copiado!"); }} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition flex items-center gap-2 ml-auto"><Copy size={16}/> Copiar Script</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {/* ... rest of the component ... */}
-            {isTeamModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-800 dark:text-white">Adicionar Membro</h3>
-                            <button onClick={() => setIsTeamModalOpen(false)}><X size={20} className="text-slate-400"/></button>
-                        </div>
-                        <form onSubmit={handleAddMember} className="p-6 space-y-4">
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
-                                <input required type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})}/>
-                             </div>
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
-                                <input required type="email" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})}/>
-                             </div>
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
-                                <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as Role})}>
-                                    <option value="admin">Administrador</option>
-                                    <option value="sales">Comercial</option>
-                                    <option value="support">Suporte</option>
-                                    <option value="finance">Financeiro</option>
-                                </select>
-                             </div>
-                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Adicionar</button>
-                        </form>
-                    </div>
-                </div>
-            )}
-            
-            {/* Invite Modal */}
-            {isInviteModalOpen && inviteData && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in text-center p-6">
-                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
-                            <CheckCircle size={32}/>
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Membro Adicionado!</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                            Envie o link de convite abaixo para <strong>{inviteData.name}</strong> se cadastrar na organização.
-                        </p>
-                        
-                        <div className="bg-slate-100 dark:bg-slate-700 p-4 rounded-lg text-left mb-6 border border-slate-200 dark:border-slate-600">
-                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Link de Acesso:</p>
-                            <code className="text-sm font-mono text-blue-600 dark:text-blue-400 break-all">{window.location.origin}</code>
-                            <p className="text-xs text-slate-400 uppercase font-bold mt-3 mb-1">Identificador da Empresa:</p>
-                            <code className="text-sm font-mono text-slate-800 dark:text-white font-bold">{currentOrganization?.slug}</code>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button onClick={() => setIsInviteModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Fechar</button>
-                            <button onClick={handleCopyInvite} className="flex-1 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 flex items-center justify-center gap-2"><Copy size={16}/> Copiar Convite</button>
+                        <div className="p-4 border-t border-slate-700 text-right bg-slate-800 rounded-b-xl">
+                            <button onClick={() => { navigator.clipboard.writeText(sqlScript); alert("Copiado!"); }} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition flex items-center gap-2 ml-auto shadow-lg"><Copy size={16}/> Copiar Script</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {isEditMemberModalOpen && memberToEdit && (
-                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-800 dark:text-white">Editar Membro</h3>
-                            <button onClick={() => setIsEditMemberModalOpen(false)}><X size={20} className="text-slate-400"/></button>
-                        </div>
-                        <form onSubmit={handleUpdateMember} className="p-6 space-y-4">
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
-                                <input type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editMemberForm.name} onChange={e => setEditMemberForm({...editMemberForm, name: e.target.value})}/>
-                             </div>
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
-                                <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editMemberForm.role} onChange={e => setEditMemberForm({...editMemberForm, role: e.target.value as Role})}>
-                                    <option value="admin">Administrador</option>
-                                    <option value="sales">Comercial</option>
-                                    <option value="support">Suporte</option>
-                                    <option value="finance">Financeiro</option>
-                                </select>
-                             </div>
-                             <label className="flex items-center gap-2 cursor-pointer">
-                                 <input type="checkbox" checked={editMemberForm.active} onChange={e => setEditMemberForm({...editMemberForm, active: e.target.checked})} className="w-5 h-5 rounded text-blue-600"/>
-                                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usuário Ativo</span>
-                             </label>
-                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Salvar Alterações</button>
-                        </form>
-                    </div>
-                </div>
-            )}
-            
-            {isDeleteMemberModalOpen && memberToDelete && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in p-6 text-center">
-                         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
-                            <Trash2 size={32}/>
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Excluir Usuário?</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                            Tem certeza que deseja remover <strong>{memberToDelete.name}</strong>? Esta ação não pode ser desfeita.
-                        </p>
-                        <div className="flex gap-3">
-                            <button onClick={() => setIsDeleteMemberModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700">Cancelar</button>
-                            <button onClick={confirmDeleteMember} className="flex-1 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Excluir</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
+            {/* PRODUCT MODAL */}
             {isProductModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-800 dark:text-white">{editingProductId ? 'Editar Produto' : 'Novo Produto'}</h3>
-                            <button onClick={() => setIsProductModalOpen(false)}><X size={20} className="text-slate-400"/></button>
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-900 dark:text-white">{editingProductId ? 'Editar Produto' : 'Novo Produto'}</h3>
+                            <button onClick={() => setIsProductModalOpen(false)}><X className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"/></button>
                         </div>
                         <form onSubmit={handleSaveProduct} className="p-6 space-y-4">
-                             <div>
+                            <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Produto</label>
-                                <input required type="text" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})}/>
-                             </div>
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Descrição</label>
-                                <textarea className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white h-20 resize-none" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})}/>
-                             </div>
-                             <div className="grid grid-cols-2 gap-4">
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Preço (R$)</label>
-                                    <input required type="number" className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: parseFloat(e.target.value)})}/>
-                                 </div>
-                                 <div>
+                                <input required type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Preço</label>
+                                    <input required type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
+                                </div>
+                                <div>
                                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Categoria</label>
-                                    <select className="w-full border rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
+                                    <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.category || 'Service'} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
                                         <option value="Service">Serviço</option>
                                         <option value="Product">Produto Físico</option>
                                         <option value="Subscription">Assinatura</option>
                                     </select>
-                                 </div>
-                             </div>
-                             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Salvar Produto</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Descrição</label>
+                                <textarea className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 h-20 resize-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
+                            </div>
+                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 shadow-md">Salvar Produto</button>
                         </form>
                     </div>
                 </div>
             )}
 
+            {/* APPROVAL MODAL (The requested feature) */}
+            {isApprovalModalOpen && memberToApprove && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in overflow-hidden border border-slate-200 dark:border-slate-700">
+                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <UserCheck size={20} className="text-green-600"/> Aprovar Membro
+                            </h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-600 dark:text-slate-300">
+                                Selecione a função para <strong>{memberToApprove.name}</strong> ({memberToApprove.email}).
+                            </p>
+                            
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função (Role)</label>
+                                <select 
+                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-green-500 transition" 
+                                    value={approvalRole} 
+                                    onChange={(e) => setApprovalRole(e.target.value as Role)}
+                                >
+                                    {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => (
+                                        <option key={key} value={key}>{label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button 
+                                    onClick={() => { setIsApprovalModalOpen(false); setMemberToApprove(null); }}
+                                    className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleConfirmApproval}
+                                    className="flex-1 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md transition"
+                                >
+                                    Confirmar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
-      </div>
-    </div>
-  );
+    );
 };

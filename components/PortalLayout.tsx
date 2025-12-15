@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -10,7 +11,11 @@ import {
   Menu, 
   X, 
   Bell,
-  Info
+  Info,
+  User,
+  Lock,
+  Save,
+  Loader2
 } from 'lucide-react';
 import { ClientPortalTour } from './ClientPortalTour';
 
@@ -21,10 +26,19 @@ interface PortalLayoutProps {
 }
 
 export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModule, onNavigate }) => {
-  const { currentUser, logout, currentOrganization } = useAuth();
+  const { currentUser, logout, currentOrganization, updateUser, changePassword } = useAuth();
   const { portalSettings, notifications, clients, markNotificationRead } = useData();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  
+  // Profile Edit State
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({ 
+      name: currentUser?.name || '', 
+      password: '', 
+      confirmPassword: '' 
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const navItems = [
     { id: 'portal-dashboard', label: 'Visão Geral', icon: LayoutDashboard },
@@ -57,6 +71,47 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
 
   const handleNotificationClick = (id: string) => {
       markNotificationRead(id);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSavingProfile(true);
+
+      try {
+          // 1. Update Name
+          if (profileForm.name !== currentUser?.name) {
+              updateUser({ name: profileForm.name });
+          }
+
+          // 2. Update Password if provided
+          if (profileForm.password) {
+              if (profileForm.password !== profileForm.confirmPassword) {
+                  alert("As senhas não coincidem.");
+                  setIsSavingProfile(false);
+                  return;
+              }
+              if (profileForm.password.length < 6) {
+                  alert("A senha deve ter no mínimo 6 caracteres.");
+                  setIsSavingProfile(false);
+                  return;
+              }
+              
+              const result = await changePassword(profileForm.password);
+              if (!result.success) {
+                  alert("Erro ao alterar senha: " + result.error);
+                  setIsSavingProfile(false);
+                  return;
+              }
+          }
+
+          alert("Perfil atualizado com sucesso!");
+          setIsProfileModalOpen(false);
+          setProfileForm(prev => ({ ...prev, password: '', confirmPassword: '' }));
+      } catch (e) {
+          alert("Erro ao atualizar perfil.");
+      } finally {
+          setIsSavingProfile(false);
+      }
   };
 
   // Dynamic style for primary color
@@ -128,11 +183,14 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
               <div className="relative">
                   <button 
                     onClick={handleBellClick}
-                    className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 relative"
+                    className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 relative group"
                   >
-                    <Bell size={20} />
+                    <Bell size={20} className={unreadCount > 0 ? "animate-swing" : ""} />
                     {unreadCount > 0 && (
-                        <span className="absolute top-2 right-2 w-2 h-2 rounded-full border-2 border-white" style={{ backgroundColor: primaryColor }}></span>
+                        <>
+                            <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full border-2 border-white animate-ping" style={{ backgroundColor: primaryColor }}></span>
+                            <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full border-2 border-white" style={{ backgroundColor: primaryColor }}></span>
+                        </>
                     )}
                   </button>
 
@@ -171,12 +229,13 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
                   )}
               </div>
               
-              <div className="hidden md:flex items-center gap-3 pl-4 border-l border-slate-200">
+              {/* User Profile Trigger - Clickable now */}
+              <div className="hidden md:flex items-center gap-3 pl-4 border-l border-slate-200 cursor-pointer group" onClick={() => setIsProfileModalOpen(true)}>
                 <div className="text-right">
-                    <p className="text-sm font-medium text-slate-900">{currentUser?.name}</p>
+                    <p className="text-sm font-medium text-slate-900 group-hover:text-blue-600 transition">{currentUser?.name}</p>
                     <p className="text-xs text-slate-500">{currentUser?.email}</p>
                 </div>
-                <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold overflow-hidden">
+                <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold overflow-hidden group-hover:ring-2 ring-blue-200 transition">
                     {currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http')) ? (
                       <img src={currentUser.avatar} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
@@ -184,7 +243,7 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
                     )}
                 </div>
                 <button 
-                    onClick={logout}
+                    onClick={(e) => { e.stopPropagation(); logout(); }}
                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition ml-2"
                     title="Sair"
                 >
@@ -229,7 +288,7 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
                  )
               })}
               <div className="border-t border-slate-100 my-2 pt-2">
-                  <div className="flex items-center gap-3 px-3 py-2">
+                  <div className="flex items-center gap-3 px-3 py-2 cursor-pointer" onClick={() => setIsProfileModalOpen(true)}>
                       <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold overflow-hidden">
                         {currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http')) ? (
                           <img src={currentUser.avatar} alt="Profile" className="w-full h-full object-cover" />
@@ -266,6 +325,71 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ children, activeModu
               <p className="mt-1">Powered by SOFT-CRM Enterprise</p>
           </div>
       </footer>
+
+      {/* PROFILE EDIT MODAL */}
+      {isProfileModalOpen && (
+          <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-scale-in">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                      <h3 className="font-bold text-slate-900 flex items-center gap-2"><User size={20} className="text-blue-600"/> Meu Perfil</h3>
+                      <button onClick={() => setIsProfileModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                  </div>
+                  <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
+                          <input 
+                              type="text" 
+                              required
+                              className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              value={profileForm.name}
+                              onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                          />
+                      </div>
+                      
+                      <div className="border-t border-slate-100 pt-4 mt-2">
+                          <p className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1"><Lock size={12}/> Alterar Senha (Opcional)</p>
+                          <div className="space-y-3">
+                              <div>
+                                  <input 
+                                      type="password" 
+                                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                      placeholder="Nova Senha (min. 6 caracteres)"
+                                      value={profileForm.password}
+                                      onChange={e => setProfileForm({...profileForm, password: e.target.value})}
+                                  />
+                              </div>
+                              <div>
+                                  <input 
+                                      type="password" 
+                                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                      placeholder="Confirme a Nova Senha"
+                                      value={profileForm.confirmPassword}
+                                      onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})}
+                                  />
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                              type="button" 
+                              onClick={() => setIsProfileModalOpen(false)}
+                              className="flex-1 py-2.5 border border-slate-300 text-slate-600 font-bold rounded-lg hover:bg-slate-50 transition"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                              type="submit" 
+                              disabled={isSavingProfile}
+                              className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                          >
+                              {isSavingProfile ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} Salvar
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

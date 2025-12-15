@@ -13,6 +13,9 @@ export const Clients: React.FC = () => {
     const { clients, leads, tickets, invoices, products, addClient, addClientsBulk, removeClient, updateClient, addSystemNotification, customFields } = useData();
     const { currentUser, hasPermission } = useAuth();
     
+    // Permission Check
+    const canSeeFinancials = hasPermission('finance', 'view');
+
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -98,7 +101,8 @@ export const Clients: React.FC = () => {
             'Telefone': c.phone,
             'Documento': c.document,
             'Status': c.status,
-            'Valor Total': c.totalTablePrice || c.ltv,
+            // Only export value if allowed
+            ...(canSeeFinancials ? { 'Valor Total': c.totalTablePrice || c.ltv } : {}),
             'Vagas': c.parkingSpots,
             'Endereço': c.address,
             'Último Contato': new Date(c.lastContact || c.since).toLocaleDateString(),
@@ -160,8 +164,9 @@ export const Clients: React.FC = () => {
             address: editForm.address, 
             parkingSpots: editForm.parkingSpots, 
             status: editForm.status, 
-            totalTablePrice: Number(editForm.value), 
-            ltv: Number(editForm.value), 
+            // Preserve original value if user can't see/edit financials
+            totalTablePrice: canSeeFinancials ? Number(editForm.value) : clientToEdit.totalTablePrice, 
+            ltv: canSeeFinancials ? Number(editForm.value) : clientToEdit.ltv, 
             contractedProducts: editForm.contractedProducts,
             metadata: editForm.metadata
         }; 
@@ -233,12 +238,14 @@ export const Clients: React.FC = () => {
                                 </div>
                                 
                                 <div className="space-y-2 mb-4">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500 dark:text-slate-400">Valor</span>
-                                        <span className="font-bold text-slate-700 dark:text-slate-200">
-                                            {client.totalTablePrice ? `R$ ${client.totalTablePrice.toLocaleString()}` : `R$ ${client.ltv.toLocaleString()}`}
-                                        </span>
-                                    </div>
+                                    {canSeeFinancials && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500 dark:text-slate-400">Valor</span>
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">
+                                                {client.totalTablePrice ? `R$ ${client.totalTablePrice.toLocaleString()}` : `R$ ${client.ltv.toLocaleString()}`}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500 dark:text-slate-400">Vagas</span>
                                         <span className="font-bold text-slate-700 dark:text-slate-200">{client.parkingSpots || '-'}</span>
@@ -268,14 +275,14 @@ export const Clients: React.FC = () => {
 
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-medium sticky top-0 z-10 shadow-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 font-medium sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th className="p-3 pb-1 text-xs uppercase tracking-wider font-bold">Contrato / Cliente</th>
                                 <th className="p-3 pb-1 text-xs uppercase tracking-wider font-bold">Unidade</th>
                                 <th className="p-3 pb-1 text-center text-xs uppercase tracking-wider font-bold">Vagas</th>
                                 <th className="p-3 pb-1 text-center text-xs uppercase tracking-wider font-bold">Status</th>
                                 <th className="p-3 pb-1 text-center text-xs uppercase tracking-wider font-bold">Último Contato</th>
-                                <th className="p-3 pb-1 text-right text-xs uppercase tracking-wider font-bold">Valor Total</th>
+                                {canSeeFinancials && <th className="p-3 pb-1 text-right text-xs uppercase tracking-wider font-bold">Valor Total</th>}
                                 <th className="p-3 pb-1 text-center text-xs uppercase tracking-wider font-bold">Ações</th>
                             </tr>
                             <tr className="bg-slate-50 dark:bg-slate-700 border-b border-slate-200 dark:border-slate-600">
@@ -284,7 +291,7 @@ export const Clients: React.FC = () => {
                                 <th className="p-2"><input type="text" className="w-16 mx-auto block border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none font-normal text-center bg-white dark:bg-slate-800 dark:text-white" value={filters.spots} onChange={e => setFilters({...filters, spots: e.target.value})}/></th>
                                 <th className="p-2"><select className="w-full border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none font-normal bg-white dark:bg-slate-800 dark:text-white" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}><option value="All">Todos</option><option value="Active">Ativo</option><option value="Churn Risk">Risco</option><option value="Inactive">Inativo</option></select></th>
                                 <th className="p-2 text-center text-xs text-slate-400 font-normal">-</th>
-                                <th className="p-2"><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none font-normal text-right bg-white dark:bg-slate-800 dark:text-white" value={filters.value} onChange={e => setFilters({...filters, value: e.target.value})}/></th>
+                                {canSeeFinancials && <th className="p-2"><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none font-normal text-right bg-white dark:bg-slate-800 dark:text-white" value={filters.value} onChange={e => setFilters({...filters, value: e.target.value})}/></th>}
                                 <th className="p-2"></th>
                             </tr>
                         </thead>
@@ -314,9 +321,11 @@ export const Clients: React.FC = () => {
                                         </div>
                                         {daysInactive > 30 && <div className="text-[9px] text-red-400">{daysInactive} dias</div>}
                                     </td>
-                                    <td className="p-3 text-right font-mono text-xs text-slate-700 dark:text-slate-300">
-                                        {client.totalTablePrice ? `R$ ${client.totalTablePrice.toLocaleString()}` : client.ltv ? `R$ ${client.ltv.toLocaleString()}` : '-'}
-                                    </td>
+                                    {canSeeFinancials && (
+                                        <td className="p-3 text-right font-mono text-xs text-slate-700 dark:text-slate-300">
+                                            {client.totalTablePrice ? `R$ ${client.totalTablePrice.toLocaleString()}` : client.ltv ? `R$ ${client.ltv.toLocaleString()}` : '-'}
+                                        </td>
+                                    )}
                                     <td className="p-3 text-center">
                                         <div className="flex items-center justify-center gap-2">
                                             <button onClick={(e) => handleEditClick(e, client)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-500 dark:text-slate-400" title="Editar">
@@ -353,7 +362,9 @@ export const Clients: React.FC = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Contato Principal</label><input required type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientForm.contactPerson} onChange={e => setNewClientForm({...newClientForm, contactPerson: e.target.value})}/></div>
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" className={`w-full border rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white ${emailError ? 'border-red-500' : 'border-slate-300 dark:border-slate-600'}`} value={newClientForm.email} onChange={handleEmailChange}/>{emailError && <p className="text-red-500 text-xs mt-1">{emailError}</p>}</div>
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone</label><input type="text" className={`w-full border rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white ${phoneError ? 'border-red-500' : 'border-slate-300 dark:border-slate-600'}`} value={newClientForm.phone} onChange={handlePhoneChange}/>{phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}</div>
-                                <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Contrato (Mensal)</label><input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientForm.ltv} onChange={e => setNewClientForm({...newClientForm, ltv: e.target.value})}/></div>
+                                {canSeeFinancials && (
+                                    <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Contrato (Mensal)</label><input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientForm.ltv} onChange={e => setNewClientForm({...newClientForm, ltv: e.target.value})}/></div>
+                                )}
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">CEP</label><div className="relative"><input type="text" className={`w-full border rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white ${cepError ? 'border-red-500' : 'border-slate-300 dark:border-slate-600'}`} value={newClientForm.cep} onChange={handleCepChange} placeholder="00000-000" maxLength={9}/>{isLoadingCep && <div className="absolute right-3 top-3"><Loader2 className="animate-spin text-blue-500" size={16}/></div>}</div>{cepError && <p className="text-red-500 text-xs mt-1">{cepError}</p>}</div>
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Endereço</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientForm.address} onChange={e => setNewClientForm({...newClientForm, address: e.target.value})}/></div>
                             </div>
@@ -406,7 +417,9 @@ export const Clients: React.FC = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Documento</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.document} onChange={e => setEditForm({...editForm, document: e.target.value})}/></div>
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}/></div>
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})}/></div>
-                                <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Contrato</label><input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.value} onChange={e => setEditForm({...editForm, value: Number(e.target.value)})}/></div>
+                                {canSeeFinancials && (
+                                    <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Contrato</label><input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.value} onChange={e => setEditForm({...editForm, value: Number(e.target.value)})}/></div>
+                                )}
                                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Status</label><select className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value as any})}><option value="Active">Ativo</option><option value="Inactive">Inativo</option><option value="Churn Risk">Risco de Churn</option></select></div>
                                 <div className="col-span-1 md:col-span-2"><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Endereço</label><input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})}/></div>
                             </div>
