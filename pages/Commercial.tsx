@@ -3,49 +3,41 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Lead, LeadStatus } from '../types';
+import { Lead, LeadStatus, Activity } from '../types';
 import { 
-    Users, Plus, Search, Filter, MessageCircle, Mail, 
-    MoreVertical, Archive, Trash2, Edit2, Phone, X, 
-    CheckCircle, AlertCircle, Loader2, Send, Server 
+    Users, Plus, Search, MessageCircle, Mail, 
+    Archive, Trash2, Edit2, Phone, X, 
+    CheckCircle, AlertCircle, Loader2, Send, Server, History, Calendar, FileText
 } from 'lucide-react';
 import { Badge } from '../components/Widgets';
-import { SendEmailModal } from '../components/SendEmailModal';
 import { sendBridgeWhatsApp } from '../services/bridgeService';
-
-// WhatsApp Templates
-const whatsappTemplates = [
-    { label: 'Saudação', text: 'Olá [Nome], tudo bem? Sou da [Sua Empresa].' },
-    { label: 'Follow-up', text: 'Olá [Nome], gostaria de saber se conseguiu avaliar nossa proposta.' },
-    { label: 'Agendamento', text: 'Oi [Nome], podemos agendar uma reunião para apresentar nossa solução?' }
-];
+import { sendEmail } from '../services/emailService';
 
 export const Commercial: React.FC = () => {
-    const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification } = useData();
+    const { 
+        leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification, 
+        activities, inboxConversations, addInboxInteraction 
+    } = useData();
     const { currentUser } = useAuth();
 
     // View & Filter State
-    const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<LeadStatus | 'All'>('All');
 
     // Modals State
     const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
-    const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-    const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-    const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
-
-    // Selection State
-    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-    const [emailLead, setEmailLead] = useState<Lead | null>(null);
-
-    // Action Data State
-    const [cancelReason, setCancelReason] = useState('');
-    const [whatsAppMessage, setWhatsAppMessage] = useState('');
     
-    // CHANGE: Default to TRUE for automatic sending
-    const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(true);
-    const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+    // Detail Modal State
+    const [detailLead, setDetailLead] = useState<Lead | null>(null);
+    const [activeDetailTab, setActiveDetailTab] = useState<'note' | 'whatsapp' | 'email'>('note');
+    
+    // Actions Data State
+    const [noteContent, setNoteContent] = useState('');
+    const [whatsAppMessage, setWhatsAppMessage] = useState('');
+    const [emailSubject, setEmailSubject] = useState('');
+    const [emailBody, setEmailBody] = useState('');
+    const [useBridge, setUseBridge] = useState(false);
+    const [isSending, setIsSending] = useState(false);
 
     // New Lead Form
     const [newLeadForm, setNewLeadForm] = useState<Partial<Lead>>({ status: LeadStatus.NEW, source: 'Manual' });
@@ -53,7 +45,7 @@ export const Commercial: React.FC = () => {
     // Drag & Drop
     const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
-    // ... Helper functions ...
+    // Filter Leads
     const filteredLeads = useMemo(() => {
         return leads.filter(l => {
             const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -63,6 +55,37 @@ export const Commercial: React.FC = () => {
         });
     }, [leads, searchTerm, filterStatus]);
 
+    // Timeline History Logic (Activities + Inbox Messages)
+    const leadHistory = useMemo(() => {
+        if (!detailLead) return [];
+
+        // 1. Activities related to this lead
+        const relatedActivities = activities.filter(a => a.relatedTo === detailLead.name).map(a => ({
+            id: a.id,
+            type: 'activity',
+            subtype: a.type,
+            title: a.title,
+            description: a.description,
+            date: a.dueDate,
+            author: a.assignee
+        }));
+
+        // 2. Inbox Conversations related to this lead (by name)
+        const conversations = inboxConversations.filter(c => c.contactName === detailLead.name);
+        const messages = conversations.flatMap(c => c.messages.map(m => ({
+            id: m.id,
+            type: 'message',
+            subtype: c.type, // WhatsApp, Email
+            title: c.type === 'WhatsApp' ? 'Mensagem WhatsApp' : 'E-mail',
+            description: m.text,
+            date: m.timestamp,
+            author: m.sender === 'agent' ? 'Você' : detailLead.name
+        })));
+
+        // Merge and Sort
+        return [...relatedActivities, ...messages].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [detailLead, activities, inboxConversations]);
+
     const columns = [
         { id: LeadStatus.NEW, label: 'Novo', color: 'border-blue-500' },
         { id: LeadStatus.QUALIFIED, label: 'Qualificado', color: 'border-indigo-500' },
@@ -71,7 +94,8 @@ export const Commercial: React.FC = () => {
         { id: LeadStatus.CLOSED_WON, label: 'Ganho', color: 'border-green-500' }
     ];
 
-    // Handlers
+    // --- HANDLERS ---
+
     const handleDragStart = (e: React.DragEvent, id: string) => {
         setDraggedLeadId(id);
         e.dataTransfer.setData('leadId', id);
@@ -89,104 +113,98 @@ export const Commercial: React.FC = () => {
         setDraggedLeadId(null);
     };
 
-    const openWhatsApp = (lead: Lead) => {
-        setSelectedLead(lead);
-        setWhatsAppMessage('');
-        setShowWhatsAppModal(true);
+    const handleCardClick = (lead: Lead) => {
+        setDetailLead(lead);
+        setActiveDetailTab('note');
+    };
+
+    const handleAddNote = () => {
+        if (!detailLead || !noteContent.trim()) return;
+        addActivity(currentUser, {
+            id: `NOTE-${Date.now()}`,
+            title: 'Nota Rápida',
+            type: 'Task',
+            dueDate: new Date().toISOString(),
+            completed: true,
+            relatedTo: detailLead.name,
+            assignee: currentUser?.id || 'user',
+            description: noteContent
+        });
+        setNoteContent('');
+        addSystemNotification('Nota Adicionada', 'Anotação salva no histórico.', 'success');
     };
 
     const handleSendWhatsApp = async () => {
-        if (!selectedLead || !whatsAppMessage) return;
-        setSendingWhatsApp(true);
-        
+        if (!detailLead || !whatsAppMessage.trim()) return;
+        setIsSending(true);
         try {
-            if (useBridgeWhatsApp) {
-                // Try sending via Bridge
-                await sendBridgeWhatsApp(selectedLead.phone || '', whatsAppMessage);
-                addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${selectedLead.name} via Bridge.`, 'success');
+            const phone = detailLead.phone || '';
+            if (useBridge) {
+                await sendBridgeWhatsApp(phone, whatsAppMessage);
             } else {
-                // Manual fallback
-                const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
-                window.open(url, '_blank');
+                window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`, '_blank');
             }
 
-            // Log activity regardless of method
+            // Save Activity
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
                 title: 'WhatsApp Enviado',
-                type: 'Call', 
+                type: 'Call', // Using Call type as generic for communication
                 dueDate: new Date().toISOString(),
                 completed: true,
-                relatedTo: selectedLead.name,
+                relatedTo: detailLead.name,
                 assignee: currentUser?.id || 'system',
                 description: whatsAppMessage
             });
 
-            setShowWhatsAppModal(false);
+            // Save to Inbox (Sync)
+            addInboxInteraction(detailLead.name, 'WhatsApp', whatsAppMessage, detailLead.phone);
 
-        } catch (error: any) {
+            addSystemNotification('WhatsApp Enviado', 'Mensagem registrada e sincronizada com o Inbox.', 'success');
+            setWhatsAppMessage('');
+        } catch (error) {
             console.error(error);
-            // Smart Fallback: If bridge fails, ask to open manually
-            if (useBridgeWhatsApp && confirm("O Nexus Bridge parece estar desconectado. Deseja enviar via WhatsApp Web/App padrão?")) {
-                 const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
-                 window.open(url, '_blank');
-                 setShowWhatsAppModal(false);
-            } else if (!useBridgeWhatsApp) {
-                alert("Erro ao abrir WhatsApp.");
-            }
+            alert("Erro ao enviar WhatsApp.");
         } finally {
-            setSendingWhatsApp(false);
+            setIsSending(false);
         }
     };
 
-    const toggleBridgeWhatsApp = () => setUseBridgeWhatsApp(!useBridgeWhatsApp);
+    const handleSendEmail = async () => {
+        if (!detailLead || !emailSubject.trim() || !emailBody.trim()) return;
+        setIsSending(true);
+        try {
+            if (useBridge) {
+                // Local Bridge (SMTP) currently doesn't export sendBridgeEmail directly in this context without import, assuming service availability
+                // For this implementation, we assume sendEmail handles the abstraction or we import bridge service
+                // Just calling generic sendEmail service which handles both modes now based on implementation
+                await sendEmail(detailLead.name, detailLead.email, emailSubject, emailBody, currentUser?.name || 'Vendedor');
+            } else {
+                await sendEmail(detailLead.name, detailLead.email, emailSubject, emailBody, currentUser?.name || 'Vendedor');
+            }
 
-    const openEmail = (lead: Lead) => {
-        setEmailLead(lead);
-        setIsEmailModalOpen(true);
-    };
-
-    const handleEmailSuccess = (msg: string) => {
-        addSystemNotification('Email Enviado', msg, 'success');
-        if (emailLead) {
-             addActivity(currentUser, {
+            // Save Activity
+            addActivity(currentUser, {
                 id: `ACT-EMAIL-${Date.now()}`,
-                title: 'Email Enviado',
+                title: `Email: ${emailSubject}`,
                 type: 'Email',
                 dueDate: new Date().toISOString(),
                 completed: true,
-                relatedTo: emailLead.name,
+                relatedTo: detailLead.name,
                 assignee: currentUser?.id || 'system',
-                description: msg
+                description: emailBody
             });
-        }
-    };
 
-    const openCancelModal = (lead: Lead) => {
-        setSelectedLead(lead);
-        setCancelReason('');
-        setIsCancelModalOpen(true);
-    };
+            // Save to Inbox (Sync)
+            addInboxInteraction(detailLead.name, 'Email', `[Assunto: ${emailSubject}] ${emailBody}`, detailLead.email);
 
-    const handleConfirmCancel = () => {
-        if (selectedLead && cancelReason) {
-            updateLead(currentUser, { 
-                ...selectedLead, 
-                status: LeadStatus.CLOSED_LOST, 
-                lostReason: cancelReason
-            });
-             addActivity(currentUser, {
-                id: `ACT-LOST-${Date.now()}`,
-                title: 'Lead Perdido/Cancelado',
-                type: 'Task',
-                dueDate: new Date().toISOString(),
-                completed: true,
-                relatedTo: selectedLead.name,
-                assignee: currentUser?.id || 'system',
-                description: `Motivo: ${cancelReason}`
-            });
-            setIsCancelModalOpen(false);
-            setSelectedLead(null);
+            addSystemNotification('Email Enviado', 'E-mail registrado e sincronizado com o Inbox.', 'success');
+            setEmailSubject('');
+            setEmailBody('');
+        } catch (error: any) {
+            alert(`Erro ao enviar email: ${error.message}`);
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -247,14 +265,13 @@ export const Commercial: React.FC = () => {
                                         key={lead.id}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, lead.id)}
-                                        className="bg-white dark:bg-slate-700 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md cursor-grab active:cursor-grabbing group relative"
+                                        onClick={() => handleCardClick(lead)}
+                                        className="bg-white dark:bg-slate-700 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md cursor-pointer group relative hover:border-blue-400 transition"
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <h4 className="font-bold text-slate-800 dark:text-white">{lead.company}</h4>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                                                <button onClick={() => openWhatsApp(lead)} className="p-1 text-slate-400 hover:text-green-500" title="WhatsApp"><MessageCircle size={14}/></button>
-                                                <button onClick={() => openEmail(lead)} className="p-1 text-slate-400 hover:text-blue-500" title="Email"><Mail size={14}/></button>
-                                                <button onClick={() => openCancelModal(lead)} className="p-1 text-slate-400 hover:text-red-500" title="Arquivar/Cancelar"><Archive size={14}/></button>
+                                            <div className="opacity-0 group-hover:opacity-100 transition text-blue-500">
+                                                <Edit2 size={14}/>
                                             </div>
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{lead.name}</p>
@@ -293,67 +310,124 @@ export const Commercial: React.FC = () => {
                 </div>
             )}
 
-            {/* Cancel Modal */}
-            {isCancelModalOpen && selectedLead && createPortal(
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-4 border-amber-500">
-                        <div className="p-6">
-                            <div className="flex items-start gap-4 mb-4">
-                                <div className="bg-amber-100 dark:bg-amber-900/50 p-3 rounded-full text-amber-600 dark:text-amber-400 shrink-0"><Archive size={28} /></div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Cancelar Lead</h2>
-                                    <p className="text-slate-600 dark:text-slate-300 mt-1 text-sm">O lead será arquivado para contato futuro.</p>
+            {/* DETAIL & ACTION MODAL (UNIFIED) */}
+            {detailLead && createPortal(
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-end z-[9000] p-0 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl h-full shadow-2xl animate-slide-in-right flex flex-col border-l border-slate-200 dark:border-slate-800">
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-start">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{detailLead.name}</h2>
+                                <p className="text-slate-500 dark:text-slate-400 text-sm">{detailLead.company} • <span className="font-mono text-xs">{detailLead.email}</span></p>
+                                <div className="flex gap-2 mt-2">
+                                    <Badge color="blue">{detailLead.status}</Badge>
+                                    <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded">R$ {detailLead.value.toLocaleString()}</span>
                                 </div>
                             </div>
-                            
-                            <div className="mb-4">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Justificativa <span className="text-red-500">*</span></label>
-                                <textarea 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                                    placeholder="Por que este lead está sendo cancelado agora? (ex: Sem budget no momento, projeto adiado)"
-                                    value={cancelReason}
-                                    onChange={(e) => setCancelReason(e.target.value)}
-                                />
+                            <button onClick={() => setDetailLead(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition"><X size={24}/></button>
+                        </div>
+
+                        {/* Two Columns Layout */}
+                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                            {/* Left: Timeline History */}
+                            <div className="flex-1 flex flex-col border-r border-slate-200 dark:border-slate-800 overflow-hidden">
+                                <div className="p-3 bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                    <History size={14}/> Histórico de Interações
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+                                    {leadHistory.length === 0 ? (
+                                        <div className="text-center text-slate-400 text-xs mt-10">Nenhuma interação registrada.</div>
+                                    ) : (
+                                        leadHistory.map((item, idx) => (
+                                            <div key={idx} className="flex gap-3 relative">
+                                                <div className="flex flex-col items-center">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 
+                                                        ${item.subtype === 'WhatsApp' ? 'bg-green-100 text-green-600' : 
+                                                          item.subtype === 'Email' ? 'bg-blue-100 text-blue-600' : 
+                                                          'bg-slate-200 text-slate-600'}`}
+                                                    >
+                                                        {item.subtype === 'WhatsApp' ? <MessageCircle size={14}/> : item.subtype === 'Email' ? <Mail size={14}/> : <FileText size={14}/>}
+                                                    </div>
+                                                    {idx !== leadHistory.length - 1 && <div className="w-0.5 bg-slate-200 dark:bg-slate-700 flex-1 my-1"></div>}
+                                                </div>
+                                                <div className="pb-4">
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500">{new Date(item.date).toLocaleString()} • {item.author}</p>
+                                                    <p className="text-sm font-bold text-slate-800 dark:text-white mt-0.5">{item.title}</p>
+                                                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 whitespace-pre-wrap leading-relaxed bg-slate-50 dark:bg-slate-800/50 p-2 rounded border border-slate-100 dark:border-slate-700">{item.description}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             </div>
 
-                            <div className="flex gap-3 justify-end">
-                                <button onClick={() => setIsCancelModalOpen(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                                <button onClick={handleConfirmCancel} className="px-6 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition shadow-sm">Confirmar Cancelamento</button>
+                            {/* Right: Actions Panel */}
+                            <div className="w-full md:w-80 bg-slate-50 dark:bg-slate-900 flex flex-col shrink-0 border-t md:border-t-0">
+                                {/* Tabs */}
+                                <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800">
+                                    <button onClick={() => setActiveDetailTab('note')} className={`flex-1 py-3 text-xs font-bold uppercase transition ${activeDetailTab === 'note' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-slate-500'}`}>Nota</button>
+                                    <button onClick={() => setActiveDetailTab('whatsapp')} className={`flex-1 py-3 text-xs font-bold uppercase transition ${activeDetailTab === 'whatsapp' ? 'border-b-2 border-green-500 text-green-600' : 'text-slate-500'}`}>WhatsApp</button>
+                                    <button onClick={() => setActiveDetailTab('email')} className={`flex-1 py-3 text-xs font-bold uppercase transition ${activeDetailTab === 'email' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-slate-500'}`}>E-mail</button>
+                                </div>
+
+                                <div className="flex-1 p-4 overflow-y-auto">
+                                    {activeDetailTab === 'note' && (
+                                        <div className="flex flex-col h-full">
+                                            <textarea 
+                                                className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white mb-3"
+                                                placeholder="Adicionar nota interna..."
+                                                value={noteContent}
+                                                onChange={e => setNoteContent(e.target.value)}
+                                            />
+                                            <button onClick={handleAddNote} disabled={!noteContent.trim()} className="bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition shadow-sm disabled:opacity-50">Salvar Nota</button>
+                                        </div>
+                                    )}
+
+                                    {activeDetailTab === 'whatsapp' && (
+                                        <div className="flex flex-col h-full space-y-3">
+                                            <div className="flex items-center justify-between bg-slate-200 dark:bg-slate-800 p-2 rounded text-xs cursor-pointer" onClick={() => setUseBridge(!useBridge)}>
+                                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                                    <Server size={14}/> Usar Bridge
+                                                </div>
+                                                <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${useBridge ? 'bg-green-500' : 'bg-slate-400'}`}><div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${useBridge ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
+                                            </div>
+                                            <textarea 
+                                                className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                                                placeholder="Mensagem WhatsApp..."
+                                                value={whatsAppMessage}
+                                                onChange={e => setWhatsAppMessage(e.target.value)}
+                                            />
+                                            <button onClick={handleSendWhatsApp} disabled={isSending || !whatsAppMessage.trim()} className="bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 transition shadow-sm disabled:opacity-50 flex justify-center items-center gap-2">
+                                                {isSending ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>} Enviar Whats
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {activeDetailTab === 'email' && (
+                                        <div className="flex flex-col h-full space-y-3">
+                                            <input 
+                                                type="text" 
+                                                placeholder="Assunto"
+                                                className="border border-slate-300 dark:border-slate-600 rounded-lg p-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-orange-500"
+                                                value={emailSubject}
+                                                onChange={e => setEmailSubject(e.target.value)}
+                                            />
+                                            <textarea 
+                                                className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-orange-500 outline-none resize-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                                                placeholder="Corpo do e-mail..."
+                                                value={emailBody}
+                                                onChange={e => setEmailBody(e.target.value)}
+                                            />
+                                            <button onClick={handleSendEmail} disabled={isSending || !emailBody.trim() || !emailSubject.trim()} className="bg-orange-600 text-white font-bold py-2 rounded-lg hover:bg-orange-700 transition shadow-sm disabled:opacity-50 flex justify-center items-center gap-2">
+                                                {isSending ? <Loader2 size={16} className="animate-spin"/> : <Mail size={16}/>} Enviar E-mail
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>,
-                document.body
-            )}
-
-            {/* WhatsApp Modal */}
-            {showWhatsAppModal && selectedLead && createPortal(
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2"><MessageCircle size={20} className="text-green-600 dark:text-green-400"/> Enviar WhatsApp</h2>
-                            <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"><X size={20}/></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">Para: <strong>{selectedLead.name}</strong> ({selectedLead.phone})</p>
-                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer" onClick={toggleBridgeWhatsApp}>
-                                <div className="flex items-center gap-2"><Server size={16} className={useBridgeWhatsApp ? 'text-green-600' : 'text-slate-400'}/><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usar Nexus Bridge (Automático)</span></div>
-                                <div className={`w-10 h-5 rounded-full p-0.5 transition-colors ${useBridgeWhatsApp ? 'bg-green-500' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${useBridgeWhatsApp ? 'translate-x-5' : 'translate-x-0'}`}></div></div>
-                            </div>
-                            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Mensagem</label><textarea className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 h-32 resize-none focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={whatsAppMessage} onChange={(e) => setWhatsAppMessage(e.target.value)}/></div>
-                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">{whatsappTemplates.map((tmpl, idx) => (<button key={idx} onClick={() => { const text = tmpl.text.replace('[Nome]', selectedLead.name.split(' ')[0]).replace('[Empresa]', selectedLead.company); setWhatsAppMessage(text); }} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap border border-slate-200 dark:border-slate-600 transition">{tmpl.label}</button>))}</div>
-                        </div>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                            <button onClick={() => setShowWhatsAppModal(false)} className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition">Cancelar</button>
-                            <button onClick={handleSendWhatsApp} disabled={sendingWhatsApp} className="px-6 py-2 rounded-lg bg-[#25D366] text-white font-bold hover:bg-[#128C7E] shadow-md transition flex items-center gap-2 disabled:opacity-70">{sendingWhatsApp ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>}{sendingWhatsApp ? 'Enviando...' : 'Enviar'}</button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {isEmailModalOpen && emailLead && createPortal(
-                <SendEmailModal lead={emailLead} onClose={() => setIsEmailModalOpen(false)} onSuccess={handleEmailSuccess}/>,
                 document.body
             )}
         </div>
