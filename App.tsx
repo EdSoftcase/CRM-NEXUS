@@ -118,8 +118,6 @@ const AppContent: React.FC = () => {
   }
 
   // --- UNAUTHENTICATED OR PENDING STATE ---
-  // CORREÇÃO: Mantém o usuário na tela de Login (que gerencia estados de pendência)
-  // se ele não estiver logado OU se a organização estiver pendente OU se o usuário estiver inativo.
   const isPendingAccess = currentUser && (
       (currentOrganization && currentOrganization.status === 'pending') || 
       currentUser.active === false
@@ -217,14 +215,14 @@ const AppContent: React.FC = () => {
             </div>
         </div>
 
-        {/* Desktop Top Bar - User Profile */}
-        <div className="hidden md:flex absolute top-4 right-8 z-30 pointer-events-none">
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 py-1.5 px-3 rounded-full shadow-sm border border-slate-200 dark:border-slate-700 transition-colors pointer-events-auto">
+        {/* Desktop Header / Top Bar (CORRIGIDO: Estrutura de Header dedicada para evitar sobreposição) */}
+        <header className="hidden md:flex w-full h-16 items-center justify-end px-8 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 z-20">
+            <div className="flex items-center gap-3 py-1.5 px-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors pointer-events-auto cursor-default">
                 <div className="text-right leading-tight">
                     <p className="text-xs font-bold text-slate-800 dark:text-white">{currentUser?.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">{currentUser?.role}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">{currentUser?.role}</p>
                 </div>
-                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border border-slate-300 dark:border-slate-600 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border border-slate-300 dark:border-slate-600 flex items-center justify-center shadow-sm">
                      {currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http')) ? (
                         <img src={currentUser.avatar} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
@@ -232,7 +230,7 @@ const AppContent: React.FC = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </header>
         
         <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
             {activeModule === 'dashboard' && <Dashboard onNavigate={setActiveModule} />}

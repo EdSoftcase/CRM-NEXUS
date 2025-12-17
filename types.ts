@@ -79,6 +79,16 @@ export interface Note {
   created_at: string;
 }
 
+export interface FinancialCategory {
+  id: string;
+  name: string;
+  code?: string;
+  type: 'Revenue' | 'Expense'; // Novo campo para DRE (Receita ou Despesa)
+  description?: string;
+  budget?: number;
+  organizationId?: string;
+}
+
 export interface Product {
     id: string;
     name: string;
@@ -87,6 +97,7 @@ export interface Product {
     sku: string;
     category: 'Service' | 'Product' | 'Subscription';
     active: boolean;
+    costCenterId?: string;
     organizationId?: string;
 }
 
@@ -222,6 +233,7 @@ export interface Client {
   contractEndDate?: string;
   unit?: string;
   parkingSpots?: number;
+  paymentDay?: number; // Dia de vencimento preferencial
   exemptSpots?: number;
   vehicleCount?: number;
   credentialCount?: number;
@@ -272,11 +284,13 @@ export interface Issue {
 
 export interface Invoice {
   id: string;
-  customer: string; 
+  type: 'Income' | 'Expense'; // Identifica se é Receita ou Despesa
+  customer: string; // Em Despesas, representa o Fornecedor
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
   description: string;
+  costCenterId?: string;
   organizationId?: string;
 }
 
