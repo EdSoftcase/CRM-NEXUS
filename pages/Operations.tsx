@@ -2,12 +2,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Project, ProjectTask, ProjectNote } from '../types';
-import { MonitorPlay, Minimize, Wrench, MapPin, Calendar, User, Clock, CheckCircle, AlertCircle, Filter, X, Search, Image as ImageIcon, Camera, FileText, Upload, CheckSquare, ChevronRight, Edit2, Save, FilePlus, MessageSquare, Send, StopCircle, RefreshCw, Package, Archive, Sparkles, History, Box, Cpu, ClipboardCheck, ArrowRight } from 'lucide-react';
+import { Project, ProjectTask, ProjectNote, MarketingContent } from '../types';
+import { MonitorPlay, Minimize, Wrench, MapPin, Calendar, User, Clock, CheckCircle, AlertCircle, Filter, X, Search, Image as ImageIcon, Camera, FileText, Upload, CheckSquare, ChevronRight, Edit2, Save, FilePlus, MessageSquare, Send, StopCircle, RefreshCw, Package, Archive, Sparkles, History, Box, Cpu, ClipboardCheck, ArrowRight, Megaphone } from 'lucide-react';
 import { generateProjectTasks } from '../services/geminiService';
 
 export const Operations: React.FC = () => {
-    const { projects, addProject, updateProject, deleteProject, clients, addSystemNotification, products } = useData();
+    const { projects, addProject, updateProject, deleteProject, clients, addSystemNotification, products, addMarketingContent } = useData();
     const { currentUser } = useAuth();
     
     // UI States
@@ -198,17 +198,48 @@ export const Operations: React.FC = () => {
     // View Mode State
     const [viewMode, setViewMode] = useState<'board' | 'history'>('board');
 
+    // --- AUTOMATION: NOTIFY MARKETING ---
+    const notifyMarketingAndCreateDraft = (project: Project) => {
+        // 1. Create Marketing Content Draft
+        const draftContent: MarketingContent = {
+            id: `CONT-OP-${Date.now()}`,
+            title: `Case de Instalação: ${project.clientName}`,
+            channel: 'Instagram',
+            status: 'Draft',
+            tone: 'Técnico e Inspirador',
+            createdAt: new Date().toISOString(),
+            content: `🔧 Mais uma instalação de sucesso concluída na **${project.clientName}**!\n\nNossa equipe técnica finalizou a implementação do projeto **${project.title}** garantindo qualidade e eficiência.\n\nConfira os detalhes dessa operação:\n✅ Tecnologia de ponta\n✅ Entrega no prazo\n✅ Cliente satisfeito\n\n#Operações #Instalação #${project.clientName.replace(/\s/g, '')} #Tecnologia #Excelência`,
+            organizationId: currentUser?.organizationId
+        };
+
+        addMarketingContent(currentUser, draftContent);
+
+        // 2. Send System Notification
+        addSystemNotification(
+            'Marketing Alertado', 
+            `Instalação "${project.title}" concluída! Um rascunho foi criado no módulo de Marketing.`, 
+            'success',
+            'Marketing'
+        );
+    };
+
     // ... (Drag & Drop Logic) ...
     const handleDragStart = (e: React.DragEvent, projectId: string) => {
         if (isMobile) { e.preventDefault(); return; }
         e.dataTransfer.setData('projectId', projectId);
     };
     const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+    
     const handleDrop = (e: React.DragEvent, targetStatus: string) => {
         const projectId = e.dataTransfer.getData('projectId');
         const project = projects.find(p => p.id === projectId);
         if (project && project.status !== targetStatus) {
             updateProject(currentUser, { ...project, status: targetStatus as any });
+            
+            // Check if dropped into Completed to trigger alerts
+            if (targetStatus === 'Completed' && project.status !== 'Completed') {
+                notifyMarketingAndCreateDraft(project);
+            }
         }
     };
 
@@ -263,9 +294,14 @@ export const Operations: React.FC = () => {
     };
 
     const handleFinalizeProject = (project: Project) => {
-        if (confirm(`Deseja finalizar o projeto "${project.title}"?\n\nIsso irá:\n1. Mover o projeto para o Histórico.\n2. Notificar o Financeiro para cobrança.`)) {
+        if (confirm(`Deseja finalizar o projeto "${project.title}"?\n\nIsso irá:\n1. Mover o projeto para o Histórico.\n2. Notificar o Financeiro.\n3. Alertar o Marketing para divulgação.`)) {
             updateProject(currentUser, { ...project, archived: true, completedAt: new Date().toISOString(), status: 'Completed', progress: 100 });
+            
+            // Notify Finance
             addSystemNotification('Faturamento Pendente', `Projeto "${project.title}" (${project.clientName}) concluído. Verificar faturamento final.`, 'info', project.clientName);
+            
+            // Notify Marketing
+            notifyMarketingAndCreateDraft(project);
         }
     };
 
@@ -469,6 +505,16 @@ export const Operations: React.FC = () => {
                                                     <Clock size={tvMode ? 18 : 14} className="shrink-0"/>
                                                     <span>Entrega: {new Date(proj.deadline).toLocaleDateString()}</span>
                                                 </div>
+                                                
+                                                {/* Finalize Button for Completed Column */}
+                                                {col.id === 'Completed' && !tvMode && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleFinalizeProject(proj); }}
+                                                        className="mt-3 w-full bg-green-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-1 shadow-sm"
+                                                    >
+                                                        <Megaphone size={12}/> Finalizar e Divulgar
+                                                    </button>
+                                                )}
 
                                                 <div className={`mt-4 w-full rounded-full overflow-hidden ${tvMode ? 'h-3 bg-slate-700' : 'h-1.5 bg-slate-100 dark:bg-slate-700'}`}><div className={`h-full transition-all duration-500 ${col.id === 'Completed' ? 'bg-green-500' : delayed ? 'bg-red-500' : 'bg-blue-500'}`} style={{width: `${proj.progress}%`}}></div></div>
                                             </div>

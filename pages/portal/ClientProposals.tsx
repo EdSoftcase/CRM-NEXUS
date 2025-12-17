@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -211,19 +212,19 @@ export const ClientProposals: React.FC = () => {
                                 {prop.setupCost !== undefined && prop.setupCost > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">Setup</span>
-                                        <span className="font-medium text-slate-900">R$ {prop.setupCost.toLocaleString()}</span>
+                                        <span className="font-medium text-slate-900">R$ {(prop.setupCost || 0).toLocaleString()}</span>
                                     </div>
                                 )}
                                 {prop.monthlyCost !== undefined && prop.monthlyCost > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">Mensalidade</span>
-                                        <span className="font-medium text-slate-900">R$ {prop.monthlyCost.toLocaleString()}</span>
+                                        <span className="font-medium text-slate-900">R$ {(prop.monthlyCost || 0).toLocaleString()}</span>
                                     </div>
                                 )}
                                 {(!prop.setupCost && !prop.monthlyCost) && (
                                      <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">Total</span>
-                                        <span className="font-medium text-slate-900">R$ {prop.price.toLocaleString()}</span>
+                                        <span className="font-medium text-slate-900">R$ {(prop.price || 0).toLocaleString()}</span>
                                     </div>
                                 )}
                             </div>

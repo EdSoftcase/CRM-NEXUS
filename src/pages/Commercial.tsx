@@ -42,9 +42,7 @@ export const Commercial: React.FC = () => {
     // Action Data State
     const [cancelReason, setCancelReason] = useState('');
     const [whatsAppMessage, setWhatsAppMessage] = useState('');
-    
-    // CHANGE: Default to TRUE for automatic sending
-    const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(true);
+    const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(false);
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
     // New Lead Form
@@ -98,19 +96,16 @@ export const Commercial: React.FC = () => {
     const handleSendWhatsApp = async () => {
         if (!selectedLead || !whatsAppMessage) return;
         setSendingWhatsApp(true);
-        
         try {
             if (useBridgeWhatsApp) {
-                // Try sending via Bridge
                 await sendBridgeWhatsApp(selectedLead.phone || '', whatsAppMessage);
                 addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${selectedLead.name} via Bridge.`, 'success');
             } else {
-                // Manual fallback
                 const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
                 window.open(url, '_blank');
             }
-
-            // Log activity regardless of method
+            setShowWhatsAppModal(false);
+            // Log activity
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
                 title: 'WhatsApp Enviado',
@@ -121,19 +116,9 @@ export const Commercial: React.FC = () => {
                 assignee: currentUser?.id || 'system',
                 description: whatsAppMessage
             });
-
-            setShowWhatsAppModal(false);
-
-        } catch (error: any) {
+        } catch (error) {
             console.error(error);
-            // Smart Fallback: If bridge fails, ask to open manually
-            if (useBridgeWhatsApp && confirm("O Nexus Bridge parece estar desconectado. Deseja enviar via WhatsApp Web/App padrão?")) {
-                 const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
-                 window.open(url, '_blank');
-                 setShowWhatsAppModal(false);
-            } else if (!useBridgeWhatsApp) {
-                alert("Erro ao abrir WhatsApp.");
-            }
+            alert("Erro ao enviar WhatsApp.");
         } finally {
             setSendingWhatsApp(false);
         }

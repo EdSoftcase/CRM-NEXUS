@@ -3,9 +3,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Proposal } from '../types';
-import { Plus, Search, FileText, Edit2, Trash2, Send, Download, Printer, CheckCircle, X, Save, Share2, Globe, RefreshCw, Calculator, ShoppingCart, Percent } from 'lucide-react';
+import { Plus, Search, FileText, Edit2, Trash2, Send, Download, Printer, CheckCircle, X, Save, Share2, Globe, RefreshCw, Calculator, ShoppingCart, Percent, Loader2 } from 'lucide-react';
 import { ProposalDocument } from '../components/ProposalDocument';
 import { SectionTitle, Badge } from '../components/Widgets';
+import { SignaturePad } from '../components/SignaturePad';
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 
 const DEFAULT_INTRO = "Prezados,\n\nApresentamos nossa proposta comercial para fornecimento de soluções tecnológicas, visando atender às necessidades específicas do seu negócio com eficiência e qualidade.";
 const DEFAULT_TERMS = "1. Validade da proposta: 15 dias.\n2. Pagamento: Conforme acordado em contrato.\n3. Prazo de entrega: A definir após assinatura.";
@@ -37,6 +39,7 @@ export const Proposals: React.FC = () => {
 
     const [isSendModalOpen, setSendModalOpen] = useState(false);
     const [proposalToSend, setProposalToSend] = useState<Proposal | null>(null);
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
     // Form State
     const [targetType, setTargetType] = useState<'lead' | 'client'>('lead');
@@ -393,10 +396,42 @@ export const Proposals: React.FC = () => {
         }
     };
 
-    const handleQuickShareWhatsApp = (proposal: Proposal) => {
-        const text = encodeURIComponent(`Olá ${proposal.clientName}, segue a proposta comercial "${proposal.title}" para análise (PDF em anexo).\n\nInvestimento Setup: ${formatCurrency(proposal.setupCost || 0)}\nMensalidade: ${formatCurrency(proposal.monthlyCost || 0)}\n\nQualquer dúvida, estou à disposição!`);
-        window.open(`https://wa.me/?text=${text}`, '_blank');
-        setSendModalOpen(false);
+    const handleQuickShareWhatsApp = async (proposal: Proposal) => {
+        setSendingWhatsApp(true);
+        const text = `Olá ${proposal.clientName}, segue a proposta comercial "${proposal.title}" para análise.\n\nInvestimento Setup: ${formatCurrency(proposal.setupCost || 0)}\nMensalidade: ${formatCurrency(proposal.monthlyCost || 0)}\n\nQualquer dúvida, estou à disposição!`;
+        
+        try {
+            // Tenta encontrar o telefone
+            let phone = '';
+            if (proposal.clientId) {
+                const client = clients.find(c => c.id === proposal.clientId);
+                phone = client?.phone || '';
+            } else if (proposal.leadId) {
+                const lead = leads.find(l => l.id === proposal.leadId);
+                phone = lead?.phone || '';
+            }
+
+            if (!phone) {
+                throw new Error("Telefone não encontrado para este contato.");
+            }
+
+            // Tenta via Bridge
+            await sendBridgeWhatsApp(phone, text);
+            addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${proposal.clientName} via Bridge.`, 'success');
+            setSendModalOpen(false);
+
+        } catch (error: any) {
+            console.warn("Bridge send failed or no phone:", error);
+            
+            // Fallback para link nativo
+            if (confirm("O envio direto falhou ou o Bridge está offline. Deseja abrir o WhatsApp Web/App?")) {
+                const encodedText = encodeURIComponent(text);
+                window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+                setSendModalOpen(false);
+            }
+        } finally {
+            setSendingWhatsApp(false);
+        }
     };
 
     const handleQuickShareEmail = (proposal: Proposal) => {
@@ -541,6 +576,7 @@ export const Proposals: React.FC = () => {
                 </>
             ) : (
                 <div className="flex flex-col h-full overflow-hidden">
+                    {/* ... (Create/Edit View Logic - Same as before) ... */}
                     <div className="flex justify-between items-center mb-6 shrink-0">
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{editingId ? 'Editar Proposta' : 'Nova Proposta'}</h1>
                         <div className="flex gap-2">
@@ -562,6 +598,7 @@ export const Proposals: React.FC = () => {
                         {/* Editor Form */}
                         <div className="w-1/2 overflow-y-auto pr-2 custom-scrollbar bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                             <div className="space-y-6">
+                                {/* ... (Form Fields - Same as before) ... */}
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Destinatário (Tipo)</label>
                                     <div className="flex gap-4">
@@ -673,7 +710,6 @@ export const Proposals: React.FC = () => {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Mensal (Recorrente)</label>
-                                            {/* Note: This is now editable, but primarily set by the calculator if items exist */}
                                             <input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: Number(e.target.value)})} placeholder="0.00" />
                                         </div>
                                     </div>
@@ -752,11 +788,13 @@ export const Proposals: React.FC = () => {
                                 </div>
                             </button>
 
-                            <button onClick={() => handleQuickShareWhatsApp(proposalToSend)} className="w-full flex items-center gap-3 p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/20 transition group">
-                                <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-full text-green-600 dark:text-green-400"><Share2 size={24}/></div>
+                            <button onClick={() => handleQuickShareWhatsApp(proposalToSend)} disabled={sendingWhatsApp} className="w-full flex items-center gap-3 p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/20 transition group disabled:opacity-70">
+                                <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-full text-green-600 dark:text-green-400">
+                                    {sendingWhatsApp ? <Loader2 size={24} className="animate-spin"/> : <Share2 size={24}/>}
+                                </div>
                                 <div className="text-left">
-                                    <p className="font-bold text-slate-800 dark:text-white group-hover:text-green-600 dark:group-hover:text-green-400">WhatsApp</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">Enviar link direto com resumo</p>
+                                    <p className="font-bold text-slate-800 dark:text-white group-hover:text-green-600 dark:group-hover:text-green-400">WhatsApp (Bridge)</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">{sendingWhatsApp ? 'Enviando...' : 'Enviar direto ou gerar link'}</p>
                                 </div>
                             </button>
 

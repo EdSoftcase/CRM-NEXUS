@@ -2,12 +2,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Project, ProjectTask } from '../types';
-import { Trello, Plus, Calendar, User, MoreHorizontal, CheckSquare, Sparkles, X, Save, Trash2, Clock, CheckCircle, Archive, AlertCircle, History } from 'lucide-react';
+import { Project, ProjectTask, MarketingContent } from '../types';
+import { Trello, Plus, Calendar, User, MoreHorizontal, CheckSquare, Sparkles, X, Save, Trash2, Clock, CheckCircle, Archive, AlertCircle, History, Megaphone } from 'lucide-react';
 import { generateProjectTasks } from '../services/geminiService';
 
 export const Projects: React.FC = () => {
-    const { projects, addProject, updateProject, deleteProject, clients, addSystemNotification } = useData();
+    const { projects, addProject, updateProject, deleteProject, clients, addSystemNotification, addMarketingContent } = useData();
     const { currentUser } = useAuth();
     
     // View State
@@ -50,6 +50,31 @@ export const Projects: React.FC = () => {
             new Date(p.completedAt) >= thirtyDaysAgo
         ).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
     }, [projects]);
+
+    // --- AUTOMATION: NOTIFY MARKETING ---
+    const notifyMarketingAndCreateDraft = (project: Project) => {
+        // 1. Create Marketing Content Draft
+        const draftContent: MarketingContent = {
+            id: `CONT-AUTO-${Date.now()}`,
+            title: `Case de Sucesso: ${project.clientName}`,
+            channel: 'LinkedIn',
+            status: 'Draft',
+            tone: 'Inspirador',
+            createdAt: new Date().toISOString(),
+            content: `🚀 Mais um projeto entregue com sucesso!\n\nÉ com orgulho que anunciamos a conclusão do projeto **${project.title}** na **${project.clientName}**.\n\nAgradecemos a confiança e a parceria. Nossa equipe trabalhou duro para entregar excelência.\n\n#CaseDeSucesso #${project.clientName.replace(/\s/g, '')} #Tecnologia #Resultados`,
+            organizationId: currentUser?.organizationId
+        };
+
+        addMarketingContent(currentUser, draftContent);
+
+        // 2. Send System Notification
+        addSystemNotification(
+            'Marketing Alertado', 
+            `Projeto "${project.title}" concluído! Um rascunho de postagem foi criado automaticamente no módulo de Marketing.`, 
+            'success',
+            'Marketing'
+        );
+    };
 
     const handleCreateProject = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -113,7 +138,7 @@ export const Projects: React.FC = () => {
 
     // --- FINALIZE & ARCHIVE LOGIC ---
     const handleFinalizeProject = (project: Project) => {
-        if (confirm(`Deseja finalizar o projeto "${project.title}"?\n\nIsso irá:\n1. Mover o projeto para o Histórico.\n2. Notificar o Financeiro para cobrança.`)) {
+        if (confirm(`Deseja finalizar o projeto "${project.title}"?\n\nIsso irá:\n1. Mover o projeto para o Histórico.\n2. Notificar o Financeiro para cobrança.\n3. Criar rascunho de postagem para o Marketing.`)) {
             // 1. Archive Project
             updateProject(currentUser, {
                 ...project,
@@ -130,6 +155,9 @@ export const Projects: React.FC = () => {
                 'info',
                 project.clientName
             );
+
+            // 3. Notify Marketing & Create Draft
+            notifyMarketingAndCreateDraft(project);
         }
     };
 
@@ -147,6 +175,11 @@ export const Projects: React.FC = () => {
         const project = projects.find(p => p.id === projectId);
         if (project && project.status !== targetStatus) {
             updateProject(currentUser, { ...project, status: targetStatus as any });
+            
+            // Check if dropped into Completed to trigger alerts
+            if (targetStatus === 'Completed' && project.status !== 'Completed') {
+                notifyMarketingAndCreateDraft(project);
+            }
         }
     };
 
@@ -214,10 +247,10 @@ export const Projects: React.FC = () => {
                                             <div className="mb-3">
                                                 <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300 mb-1">
                                                     <span>Progresso</span>
-                                                    <span className="font-bold">{proj.progress}%</span>
+                                                    <span className="font-bold">{proj.progress || 0}%</span>
                                                 </div>
                                                 <div className="w-full bg-slate-100 dark:bg-slate-600 rounded-full h-1.5">
-                                                    <div className={`h-1.5 rounded-full transition-all duration-500 ${proj.progress === 100 ? 'bg-green-500' : 'bg-blue-600 dark:bg-blue-500'}`} style={{width: `${proj.progress}%`}}></div>
+                                                    <div className={`h-1.5 rounded-full transition-all duration-500 ${proj.progress === 100 ? 'bg-green-500' : 'bg-blue-600 dark:bg-blue-500'}`} style={{width: `${proj.progress || 0}%`}}></div>
                                                 </div>
                                             </div>
 
@@ -232,7 +265,7 @@ export const Projects: React.FC = () => {
                                                     onClick={(e) => { e.stopPropagation(); handleFinalizeProject(proj); }}
                                                     className="mt-3 w-full bg-green-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-1 shadow-sm"
                                                 >
-                                                    <CheckCircle size={12}/> Finalizar Entrega
+                                                    <Megaphone size={12}/> Finalizar e Divulgar
                                                 </button>
                                             )}
                                         </div>
@@ -264,7 +297,7 @@ export const Projects: React.FC = () => {
                             </div>
                         ) : (
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 uppercase text-xs sticky top-0 shadow-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs sticky top-0 shadow-sm">
                                     <tr>
                                         <th className="p-4">Projeto</th>
                                         <th className="p-4">Cliente</th>
@@ -307,7 +340,7 @@ export const Projects: React.FC = () => {
             {/* NEW PROJECT MODAL */}
             {isNewProjectOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
                         <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
                             <h3 className="font-bold text-slate-900 dark:text-white">Iniciar Projeto</h3>
                             <button onClick={() => setIsNewProjectOpen(false)}><X className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"/></button>
@@ -363,10 +396,10 @@ export const Projects: React.FC = () => {
                             <div className="mb-6">
                                 <div className="flex justify-between text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
                                     <span>Progresso Geral</span>
-                                    <span>{selectedProject.progress}%</span>
+                                    <span>{selectedProject.progress || 0}%</span>
                                 </div>
                                 <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-3">
-                                    <div className={`h-3 rounded-full transition-all duration-500 ${selectedProject.progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{width: `${selectedProject.progress}%`}}></div>
+                                    <div className={`h-3 rounded-full transition-all duration-500 ${selectedProject.progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{width: `${selectedProject.progress || 0}%`}}></div>
                                 </div>
                             </div>
 

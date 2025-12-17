@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -7,12 +8,14 @@ import {
     Database, CheckCircle, Code, Copy, Building2, Key, Globe, Users, 
     AlertTriangle, Search, Settings2, Link2, FileText, ToggleLeft, ToggleRight, List,
     CreditCard, Cloud, HardDrive, RefreshCw, LogOut, ChevronRight, Camera, Loader2, Radio, Zap, ListChecks, FileEdit,
-    MessageCircle, Smartphone, Mail, UserCheck, Play, Pause, Eye, EyeOff
+    MessageCircle, Smartphone, Mail, UserCheck, Play, Pause, Eye, EyeOff, Server,
+    PieChart as PieIcon, Wallet, Terminal, Power, AlertCircle, Send, Wifi, WifiOff
 } from 'lucide-react';
 import { SectionTitle, Badge } from '../components/Widgets';
-import { Role, User, Product, PermissionAction, PortalSettings, Organization, CustomFieldDefinition, WebhookConfig, TriggerType } from '../types';
+import { Role, User, Product, PermissionAction, PortalSettings, Organization, CustomFieldDefinition, WebhookConfig, TriggerType, FinancialCategory } from '../types';
 import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, getSupabase } from '../services/supabaseClient';
-import { checkBridgeStatus, getBridgeQR, configureBridgeSMTP } from '../services/bridgeService';
+import { checkBridgeStatus, getBridgeQR, configureBridgeSMTP, sendBridgeEmail } from '../services/bridgeService';
+import { sendEmail } from '../services/emailService';
 import { MOCK_ORGANIZATIONS } from '../constants';
 
 const ROLE_NAMES: Record<string, string> = {
@@ -24,30 +27,6 @@ const ROLE_NAMES: Record<string, string> = {
     finance: 'Financeiro',
     client: 'Cliente Externo (Portal)'
 };
-
-const MODULE_CONFIG = [
-    { id: 'dashboard', label: 'Visão Geral' },
-    { id: 'contact-center', label: 'Central de Contatos' },
-    { id: 'inbox', label: 'Inbox Unificado' },
-    { id: 'prospecting', label: 'Prospecção IA' },
-    { id: 'competitive-intelligence', label: 'Nexus Spy (CI)' },
-    { id: 'calendar', label: 'Agenda / Tarefas' },
-    { id: 'marketing', label: 'Marketing Hub' },
-    { id: 'commercial', label: 'Comercial / Pipeline' },
-    { id: 'proposals', label: 'Propostas' },
-    { id: 'operations', label: 'Produção / Instalação' },
-    { id: 'clients', label: 'Carteira de Clientes' },
-    { id: 'geo-intelligence', label: 'Mapa Inteligente' },
-    { id: 'projects', label: 'Gestão de Projetos' },
-    { id: 'customer-success', label: 'Sucesso do Cliente' },
-    { id: 'retention', label: 'Retenção' },
-    { id: 'automation', label: 'Nexus Flow (RPA)' },
-    { id: 'finance', label: 'Financeiro' },
-    { id: 'support', label: 'Suporte' },
-    { id: 'dev', label: 'Desenvolvimento' },
-    { id: 'reports', label: 'Relatórios' },
-    { id: 'settings', label: 'Configurações' },
-];
 
 const SUPER_ADMIN_EMAILS = ['superadmin@nexus.com', 'edson.softcase@gmail.com'];
 
@@ -61,80 +40,79 @@ export const Settings: React.FC = () => {
         notifications, pushEnabled, togglePushNotifications, competitors, marketTrends, 
         prospectingHistory, disqualifiedProspects, customFields, addCustomField, deleteCustomField, 
         webhooks, addWebhook, deleteWebhook, updateWebhook, restoreDefaults, addSystemNotification,
-        logs: contextLogs 
+        logs: contextLogs,
+        financialCategories, addFinancialCategory, deleteFinancialCategory
     } = useData();
     
-    // Fetch fresh logs directly from hook for the Audit Tab to ensure real-time view
     const { data: auditLogs, refetch: refetchLogs } = useAuditLogs();
-    
-    // Prioritize fresh logs from the hook, fall back to context if needed
     const displayLogs = auditLogs && auditLogs.length > 0 ? auditLogs : contextLogs;
 
-    const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'permissions' | 'audit' | 'integrations' | 'products' | 'saas_admin' | 'portal_config' | 'bridge' | 'custom_fields' | 'webhooks' | 'database' | 'organization'>('profile');
-    const [showSqlModal, setShowSqlModal] = useState(false);
+    // --- STATES ---
+    const [activeTab, setActiveTab] = useState<'profile' | 'organization' | 'team' | 'permissions' | 'portal_config' | 'products' | 'integrations' | 'bridge' | 'custom_fields' | 'webhooks' | 'database' | 'audit' | 'saas_admin' | 'financial'>('profile');
     
-    // Database Stats State
+    const [showSqlModal, setShowSqlModal] = useState(false);
     const [cloudCounts, setCloudCounts] = useState<Record<string, number>>({});
     const [loadingCounts, setLoadingCounts] = useState(false);
 
-    // Profile Edit State
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '', cpf: '', password: '', confirmPassword: '', avatar: '' });
     const [isCompressing, setIsCompressing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Password Change State
-    const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
-    const [passwordStatus, setPasswordStatus] = useState<{type: 'success'|'error', msg: string} | null>(null);
-
     const isSuperAdmin = currentUser?.email && SUPER_ADMIN_EMAILS.includes(currentUser.email);
     const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
 
-    // --- SUB-COMPONENT STATES ---
-    // Team
+    // Sub-Modals States
     const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
     const [newMember, setNewMember] = useState({ name: '', email: '', role: 'sales' as Role });
     const [inviteData, setInviteData] = useState<{name: string, email: string} | null>(null);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     
-    // Approval / Edit Member State
     const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
     const [memberToApprove, setMemberToApprove] = useState<User | null>(null);
     const [approvalRole, setApprovalRole] = useState<Role>('sales');
 
-    // Integrations
+    // Integrations State
     const [supabaseForm, setSupabaseForm] = useState({ url: '', key: '' });
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [statusMessage, setStatusMessage] = useState<''>('');
-    const [syncStats, setSyncStats] = useState<{label: string, local: number, remote: number | string, status: 'synced'|'diff'|'error'}[]>([]);
-    const [isCheckingSync, setIsCheckingSync] = useState(false);
-
-    // Bridge
-    const [bridgeStatus, setBridgeStatus] = useState<{whatsapp: string, smtp: string}>({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
+    const [testApiEmail, setTestApiEmail] = useState('');
+    const [sendingApiTest, setSendingApiTest] = useState(false);
+    
+    // Bridge State
+    const [bridgeStatus, setBridgeStatus] = useState<{whatsapp: string, smtp: string, server?: string}>({ whatsapp: 'OFFLINE', smtp: 'OFFLINE', server: 'OFFLINE' });
     const [bridgeQr, setBridgeQr] = useState<string | null>(null);
     const [smtpForm, setSmtpForm] = useState({ host: 'smtp.gmail.com', port: 587, user: '', pass: '' });
     const [loadingBridge, setLoadingBridge] = useState(false);
-    const [bridgeError, setBridgeError] = useState<string | null>(null);
+    const [smtpStatusMsg, setSmtpStatusMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [testSmtpEmail, setTestSmtpEmail] = useState('');
+    const [sendingSmtpTest, setSendingSmtpTest] = useState(false);
+    const [debugInfo, setDebugInfo] = useState<string>('');
 
-    // Portal
-    const [portalForm, setPortalForm] = useState<PortalSettings>(portalSettings);
+    // Portal State
+    const [portalForm, setPortalForm] = useState<PortalSettings>(portalSettings || { organizationId: 'org-1', portalName: 'Portal', primaryColor: '#4f46e5', allowInvoiceDownload: true, allowTicketCreation: true });
 
-    // Products
+    // Product State
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProductId, setEditingProductId] = useState<string | null>(null);
-    const [newProduct, setNewProduct] = useState<Partial<Product>>({ active: true, category: 'Subscription', price: 0 });
+    const [newProduct, setNewProduct] = useState<Partial<Product>>({ active: true, category: 'Subscription', price: 0, costCenterId: '' });
 
-    // Custom Fields
+    // Custom Fields State
     const [newFieldForm, setNewFieldForm] = useState<Partial<CustomFieldDefinition>>({ label: '', key: '', type: 'text', module: 'leads', required: false });
     const [fieldOptionsInput, setFieldOptionsInput] = useState('');
 
-    // Webhooks
+    // Webhooks State
     const [newWebhookForm, setNewWebhookForm] = useState<Partial<WebhookConfig>>({ name: '', url: '', triggerEvent: 'lead_created', method: 'POST', active: true });
 
-    // SAAS
+    // Financial Categories State
+    const [newFinCatForm, setNewFinCatForm] = useState<Partial<FinancialCategory>>({ name: '', code: '', type: 'Expense' });
+
+    // SaaS Admin State
     const [saasOrgs, setSaasOrgs] = useState<Organization[]>([]);
     const [loadingSaas, setLoadingSaas] = useState(false);
 
+    // Permissions State
+    const [selectedRoleForPerms, setSelectedRoleForPerms] = useState<Role>('sales');
 
     // --- EFFECTS ---
     useEffect(() => {
@@ -147,12 +125,32 @@ export const Settings: React.FC = () => {
                 cpf: currentUser.cpf || '',
                 avatar: prev.avatar || currentUser.avatar || ''
             }));
+            // Pre-fill test email with current user email
+            if (currentUser.email) {
+                setTestApiEmail(currentUser.email);
+                setTestSmtpEmail(currentUser.email);
+            }
         }
     }, [currentUser]);
 
     useEffect(() => {
-        setPortalForm(portalSettings);
+        if (portalSettings) {
+            setPortalForm(portalSettings);
+        }
     }, [portalSettings]);
+
+    // AUTO-REFRESH BRIDGE STATUS
+    useEffect(() => {
+        let interval: any;
+        if (activeTab === 'bridge') {
+             fetchBridgeStatus();
+             // Poll every 5 seconds to keep status updated
+             interval = setInterval(() => {
+                 fetchBridgeStatus(true);
+             }, 5000);
+        }
+        return () => clearInterval(interval);
+    }, [activeTab]);
 
     useEffect(() => {
         if (activeTab === 'database') {
@@ -163,9 +161,6 @@ export const Settings: React.FC = () => {
             setSupabaseForm({ url: config.url || '', key: config.key || '' });
             if (config.url && config.key) setConnectionStatus('success');
         }
-        if (activeTab === 'bridge') {
-             fetchBridgeStatus();
-        }
         if (activeTab === 'saas_admin' && isSuperAdmin) {
             fetchSaasOrgs();
         }
@@ -174,7 +169,7 @@ export const Settings: React.FC = () => {
         }
     }, [activeTab]);
 
-    // --- FETCH CLOUD COUNTS (DATABASE TAB) ---
+    // --- HANDLERS ---
     const fetchCloudCounts = async () => {
         setLoadingCounts(true);
         const supabase = getSupabase();
@@ -183,7 +178,7 @@ export const Settings: React.FC = () => {
             return;
         }
 
-        const tables = ['leads', 'clients', 'tickets', 'invoices', 'projects', 'activities', 'products', 'competitors', 'proposals', 'prospecting_history'];
+        const tables = ['leads', 'clients', 'tickets', 'invoices', 'projects', 'activities', 'products', 'competitors', 'proposals', 'prospecting_history', 'financial_categories'];
         const newCounts: Record<string, number> = {};
 
         try {
@@ -199,7 +194,71 @@ export const Settings: React.FC = () => {
         }
     };
 
-    // --- HANDLERS ---
+    const handleHardReset = () => {
+        if (confirm("ATENÇÃO: Isso limpará todo o cache local, cookies e recarregará a aplicação para baixar os dados mais recentes do servidor.\n\nUse isso se os dados estiverem desatualizados ou com erro.\n\nContinuar?")) {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = window.location.origin; // Force root reload
+            window.location.reload();
+        }
+    };
+
+    const runDiagnostics = async () => {
+        setDebugInfo('Iniciando diagnóstico...\n');
+        setLoadingBridge(true);
+        
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const start = Date.now();
+            setDebugInfo(prev => prev + `Tentando conectar em http://127.0.0.1:3001/status...\n`);
+            
+            const res = await fetch('http://127.0.0.1:3001/status', { 
+                method: 'GET',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            const data = await res.json();
+            const time = Date.now() - start;
+
+            setDebugInfo(prev => prev + `✅ Sucesso! Resposta em ${time}ms.\n`);
+            setDebugInfo(prev => prev + `Status HTTP: ${res.status}\n`);
+            setDebugInfo(prev => prev + `Dados: ${JSON.stringify(data, null, 2)}`);
+            
+            setBridgeStatus(data);
+        } catch (e: any) {
+            setDebugInfo(prev => prev + `❌ FALHA NA CONEXÃO.\n`);
+            setDebugInfo(prev => prev + `Erro: ${e.name} - ${e.message}\n\n`);
+            
+            if (e.message.includes('Failed to fetch')) {
+                setDebugInfo(prev => prev + `CAUSA PROVÁVEL:\n1. O servidor Node.js não está rodando.\n2. Bloqueio de Misto (Mixed Content) se você estiver usando HTTPS no frontend.\n3. Bloqueio de CORS.`);
+            } else if (e.name === 'AbortError') {
+                 setDebugInfo(prev => prev + `CAUSA PROVÁVEL: Timeout. O servidor demorou mais de 5s para responder.`);
+            }
+        } finally {
+            setLoadingBridge(false);
+        }
+    };
+
+    const fetchBridgeStatus = async (force = false) => {
+        // If we are already connected, we don't need to force spinner, just silent update
+        try {
+            const status = await checkBridgeStatus();
+            setBridgeStatus(status);
+            if (status.whatsapp !== 'READY') {
+                const qrData = await getBridgeQR();
+                if (qrData && qrData.qrImage) setBridgeQr(qrData.qrImage);
+                else setBridgeQr(null);
+            } else {
+                setBridgeQr(null);
+            }
+        } catch (e) {
+            setBridgeStatus({ whatsapp: 'OFFLINE', smtp: 'OFFLINE', server: 'OFFLINE' });
+        }
+    };
+
     const handleProfileUpdate = (e: React.FormEvent) => {
         e.preventDefault();
         updateUser({
@@ -210,6 +269,7 @@ export const Settings: React.FC = () => {
             avatar: profileForm.avatar
         });
         setIsEditingProfile(false);
+        addSystemNotification("Sucesso", "Perfil atualizado com sucesso.", "success");
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,29 +305,68 @@ export const Settings: React.FC = () => {
         }
     };
 
-    const fetchBridgeStatus = async (manual: boolean = false) => {
-        if (!bridgeStatus.whatsapp && manual) setLoadingBridge(true);
-        setBridgeError(null);
+    const handleManualBridgeCheck = async () => { setLoadingBridge(true); await fetchBridgeStatus(true); setLoadingBridge(false); };
+    
+    const handleSaveSmtp = async (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        setLoadingBridge(true); 
+        setSmtpStatusMsg(null);
+        try { 
+            await configureBridgeSMTP(smtpForm); 
+            addSystemNotification("Sucesso", "Configuração SMTP salva! O servidor local aceitou os dados.", "success");
+            setSmtpStatusMsg({ type: 'success', text: 'Configuração salva com sucesso!' });
+            fetchBridgeStatus(); 
+        } catch (e: any) { 
+            const msg = e.message === "Bridge desconectado" ? "O servidor local não está rodando. Abra o terminal e rode 'node index.js'." : e.message;
+            setSmtpStatusMsg({ type: 'error', text: msg });
+        } finally { 
+            setLoadingBridge(false); 
+        } 
+    };
+
+    const handleTestApiEmail = async () => {
+        if (!testApiEmail) return;
+        setSendingApiTest(true);
         try {
-            const status = await checkBridgeStatus();
-            setBridgeStatus(status);
-            if (status.whatsapp === 'QR_READY') {
-                const qrData = await getBridgeQR();
-                if (qrData?.qrImage) setBridgeQr(qrData.qrImage);
-            } else if (status.whatsapp === 'READY') {
-                setBridgeQr(null);
+            const result = await sendEmail(
+                "Teste API", 
+                testApiEmail, 
+                "Teste de Integração (Nexus API)", 
+                "Se você recebeu este e-mail, a integração via Supabase Edge Functions/Resend está funcionando corretamente.", 
+                currentUser?.name || "Admin"
+            );
+            if(result.success) {
+                if (result.method === 'MOCK') {
+                    addSystemNotification("Simulação", result.warning || "E-mail simulado (Cloud offline)", "warning");
+                } else {
+                    addSystemNotification("Sucesso", "E-mail enviado via Cloud API (Supabase/Resend)", "success");
+                }
             }
         } catch (e: any) {
-            setBridgeError(e.message || "Falha na conexão");
-            setBridgeStatus({ whatsapp: 'OFFLINE', smtp: 'OFFLINE' });
-            if (manual) alert(`Erro de Conexão: ${e.message}`);
+            alert(`Erro no envio API: ${e.message}`);
         } finally {
-            setLoadingBridge(false);
+            setSendingApiTest(false);
         }
     };
-    
-    const handleManualBridgeCheck = async () => { setLoadingBridge(true); await fetchBridgeStatus(true); setLoadingBridge(false); };
-    const handleSaveSmtp = async (e: React.FormEvent) => { e.preventDefault(); setLoadingBridge(true); try { await configureBridgeSMTP(smtpForm); alert('SMTP Configurado!'); fetchBridgeStatus(); } catch (e: any) { alert(`Erro: ${e.message}`); } finally { setLoadingBridge(false); } };
+
+    const handleTestSmtpEmail = async () => {
+        if (!testSmtpEmail) return;
+        setSendingSmtpTest(true);
+        try {
+            await sendBridgeEmail(
+                testSmtpEmail, 
+                "Teste de Integração (Nexus Bridge)", 
+                "<h1>Teste SMTP</h1><p>Se você recebeu este e-mail, o servidor local Nexus Bridge está conectado corretamente ao seu provedor SMTP.</p>", 
+                currentUser?.name || "Admin"
+            );
+            addSystemNotification("Sucesso", "E-mail enviado via Bridge (Servidor Local)", "success");
+        } catch (e: any) {
+            const msg = e.message === "Bridge desconectado" ? "Servidor local offline. Inicie o 'node index.js'." : e.message;
+            alert(`Erro no envio SMTP: ${msg}`);
+        } finally {
+            setSendingSmtpTest(false);
+        }
+    };
 
     const handleSaveSupabase = async (e: React.FormEvent) => { 
         e.preventDefault(); 
@@ -298,22 +397,9 @@ export const Settings: React.FC = () => {
         setLoadingSaas(false); 
     };
 
-    const handleApproveOrg = async (orgId: string) => {
-        if(approveOrganization) {
-            const success = await approveOrganization(orgId);
-            if(success) {
-                fetchSaasOrgs();
-                alert("Organização aprovada com sucesso!");
-            } else {
-                alert("Erro ao aprovar organização.");
-            }
-        }
-    };
-    
     const handleAddMember = async (e: React.FormEvent) => {
         e.preventDefault();
         const result = await addTeamMember(newMember.name, newMember.email, newMember.role);
-        
         if (result.success) {
             setInviteData({ name: newMember.name, email: newMember.email });
             setIsTeamModalOpen(false);
@@ -324,30 +410,19 @@ export const Settings: React.FC = () => {
         }
     };
 
-    // --- APPROVAL LOGIC (CORE FIX) ---
     const handleOpenApproval = (user: User) => {
         setMemberToApprove(user);
-        // Default to their current role or sales if undefined
         setApprovalRole(user.role || 'sales'); 
         setIsApprovalModalOpen(true);
     };
 
     const handleConfirmApproval = async () => {
         if (memberToApprove) {
-            await adminUpdateUser(memberToApprove.id, { 
-                active: true, 
-                role: approvalRole 
-            });
+            await adminUpdateUser(memberToApprove.id, { active: true, role: approvalRole });
             setIsApprovalModalOpen(false);
             setMemberToApprove(null);
             addSystemNotification('Membro Aprovado', `${memberToApprove.name} agora faz parte da equipe como ${ROLE_NAMES[approvalRole]}.`, 'success');
         }
-    };
-    
-    const handleCopyInvite = () => {
-        const text = `Olá ${inviteData?.name}, você foi convidado para o Nexus CRM da ${currentOrganization?.name}.\n\nPara acessar:\n1. Entre em: ${window.location.origin}\n2. Clique em "Entrar na Equipe"\n3. Use o identificador: ${currentOrganization?.slug}\n4. Cadastre-se com o email: ${inviteData?.email}`;
-        navigator.clipboard.writeText(text);
-        alert("Convite copiado!");
     };
 
     const handleSavePortal = () => {
@@ -358,7 +433,6 @@ export const Settings: React.FC = () => {
     const handleSaveCustomField = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newFieldForm.label || !newFieldForm.key) return;
-        
         const field: CustomFieldDefinition = {
             id: `CF-${Date.now()}`,
             label: newFieldForm.label,
@@ -391,6 +465,23 @@ export const Settings: React.FC = () => {
         alert("Webhook adicionado!");
     };
 
+    const handleSaveFinancialCategory = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newFinCatForm.name) return;
+        const category: FinancialCategory = {
+            id: `FC-${Date.now()}`,
+            name: newFinCatForm.name,
+            code: newFinCatForm.code,
+            type: newFinCatForm.type || 'Expense', 
+            description: newFinCatForm.description,
+            budget: Number(newFinCatForm.budget) || 0,
+            organizationId: currentUser?.organizationId
+        };
+        addFinancialCategory(category);
+        setNewFinCatForm({ name: '', code: '', type: 'Expense' });
+        addSystemNotification('Sucesso', 'Centro de custo adicionado ao Plano de Contas.', 'success');
+    };
+
     const handleEditProduct = (product: Product) => {
         setNewProduct(product);
         setEditingProductId(product.id);
@@ -413,46 +504,17 @@ export const Settings: React.FC = () => {
             sku: newProduct.sku || '',
             category: newProduct.category || 'Service',
             active: newProduct.active !== undefined ? newProduct.active : true,
+            costCenterId: newProduct.costCenterId,
             organizationId: currentUser?.organizationId
         };
         if(editingProductId) updateProduct(currentUser, productData);
         else addProduct(currentUser, productData);
         setIsProductModalOpen(false);
-        setNewProduct({ active: true, category: 'Subscription', price: 0 });
+        setNewProduct({ active: true, category: 'Subscription', price: 0, costCenterId: '' });
         setEditingProductId(null);
     };
     
-    // --- SQL SCRIPT V11.0 - FIX COMPETITORS JSON ---
-    const sqlScript = `-- SQL DE RESET DA TABELA COMPETITORS (V11.0)
--- Recria a tabela 'competitors' para garantir suporte a JSONB (SWOT/Battlecard) e permissões.
-
-BEGIN;
-
-DROP TABLE IF EXISTS competitors CASCADE;
-
-CREATE TABLE competitors (
-  id text PRIMARY KEY,
-  name text,
-  website text,
-  sector text,
-  last_analysis timestamp with time zone,
-  swot jsonb DEFAULT '{}'::jsonb,
-  battlecard jsonb DEFAULT '{}'::jsonb,
-  organization_id text
-);
-
-ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Enable all access competitors" ON competitors FOR ALL USING (true) WITH CHECK (true);
-
-GRANT ALL ON competitors TO anon, authenticated, service_role;
-
-COMMIT;
-
-SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
-`;
-
-    // Filter menu items based on Admin role for sensitive tabs
+    // --- MENU CONFIG ---
     const menuItems = [
         { id: 'profile', label: 'Meu Perfil', icon: UserCircle },
     ];
@@ -462,13 +524,14 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
             { id: 'organization', label: 'Organização', icon: Building2 },
             { id: 'team', label: 'Equipe', icon: Users },
             { id: 'permissions', label: 'Permissões (RBAC)', icon: Shield },
-            { id: 'portal_config', label: 'Portal do Cliente', icon: Globe },
+            { id: 'portal_config', label: 'Portal do Cliente', icon: Globe }, 
             { id: 'products', label: 'Produtos', icon: Package },
-            { id: 'integrations', label: 'Banco de Dados', icon: Database },
-            { id: 'bridge', label: 'Integrações (Bridge)', icon: Zap },
+            { id: 'financial', label: 'Financeiro (DRE)', icon: Wallet },
+            { id: 'integrations', label: 'Banco de Dados', icon: Database }, 
+            { id: 'bridge', label: 'Nexus Bridge', icon: Server }, 
             { id: 'custom_fields', label: 'Campos Personalizados', icon: ListChecks },
             { id: 'webhooks', label: 'Webhooks & API', icon: Code },
-            { id: 'database', label: 'Diagnóstico DB', icon: Activity },
+            { id: 'database', label: 'Diagnóstico BD', icon: Activity },
             { id: 'audit', label: 'Auditoria', icon: List },
         );
         if (isSuperAdmin) {
@@ -476,9 +539,65 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
         }
     }
 
+    const sqlRepairScript = `-- SCRIPT DE CORREÇÃO DE PERMISSÕES E REALTIME (COMPLETO)
+-- Execute este bloco no SQL Editor do Supabase para corrigir o erro "permission denied" e ativar atualizações automáticas
+
+-- 1. Cria a tabela se não existir
+create table if not exists public.financial_categories (
+  id text primary key,
+  organization_id text,
+  name text,
+  code text,
+  type text, -- Adicionado para DRE
+  description text,
+  budget numeric,
+  created_at timestamptz default now()
+);
+
+-- 2. Desativa segurança de linha (RLS) para permitir leitura/escrita livre e evitar erros de permissão
+alter table public.financial_categories disable row level security;
+alter table public.clients disable row level security;
+alter table public.leads disable row level security;
+alter table public.tickets disable row level security;
+alter table public.products disable row level security;
+alter table public.invoices disable row level security;
+alter table public.activities disable row level security;
+
+-- 3. Garante permissões explícitas para todos os roles (anon/public/authenticated)
+GRANT ALL ON public.financial_categories TO anon, authenticated, service_role;
+GRANT ALL ON public.clients TO anon, authenticated, service_role;
+GRANT ALL ON public.leads TO anon, authenticated, service_role;
+GRANT ALL ON public.tickets TO anon, authenticated, service_role;
+GRANT ALL ON public.products TO anon, authenticated, service_role;
+GRANT ALL ON public.invoices TO anon, authenticated, service_role;
+GRANT ALL ON public.activities TO anon, authenticated, service_role;
+
+-- 4. Habilita Realtime (Publicação) para que os dados atualizem sozinhos na tela
+-- Primeiro remove para evitar duplicidade, depois recria
+begin;
+  drop publication if exists supabase_realtime;
+  create publication supabase_realtime for table public.clients, public.leads, public.tickets;
+commit;
+
+-- Confirmação
+select count(*) as categorias_existentes from public.financial_categories;
+`;
+
+    // Visual Status Logic for Bridge
+    const getServerStatusColor = () => {
+        if (bridgeStatus.server !== 'ONLINE') return 'bg-red-100 text-red-600';
+        if (bridgeStatus.smtp === 'MISSING_CREDENTIALS') return 'bg-yellow-100 text-yellow-600';
+        return 'bg-green-100 text-green-600 animate-pulse';
+    };
+
+    const getServerStatusText = () => {
+        if (bridgeStatus.server !== 'ONLINE') return 'Desconectado';
+        if (bridgeStatus.smtp === 'MISSING_CREDENTIALS') return 'Aguardando Configuração';
+        return 'Conectado';
+    };
+
     return (
         <div className="flex h-full bg-slate-50 dark:bg-slate-900 transition-colors overflow-hidden">
-            {/* Sidebar de Configurações (Vertical) */}
             <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 h-full">
                 <div className="p-6 border-b border-slate-200 dark:border-slate-700">
                     <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -506,24 +625,20 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
                 </nav>
 
                 <div className="p-4 border-t border-slate-200 dark:border-slate-700 text-center">
-                    <p className="text-[10px] text-slate-400">Nexus CRM Enterprise v3.5</p>
+                    <p className="text-[10px] text-slate-400">Nexus CRM Enterprise v3.7</p>
                 </div>
             </aside>
 
-            {/* Content Area */}
             <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                
-                {/* 1. PROFILE TAB */}
+                {/* --- PROFILE TAB --- */}
                 {activeTab === 'profile' && currentUser && (
                     <div className="max-w-3xl mx-auto animate-fade-in">
+                        <SectionTitle title="Meu Perfil" subtitle="Gerencie suas informações pessoais" />
                         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                            {/* Profile Header Background */}
-                            <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700 relative">
+                             <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700 relative">
                                 <div className="absolute inset-0 bg-grid-white/[0.1] bg-[size:20px_20px]"></div>
                             </div>
-                            
                             <div className="px-8 pb-8 relative">
-                                {/* Avatar Module */}
                                 <div className="flex justify-between items-end -mt-12 mb-6">
                                     <div className="relative group">
                                         <div className="w-24 h-24 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-500 dark:text-slate-400 shadow-md overflow-hidden">
@@ -533,28 +648,22 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
                                                 <span>{profileForm.name.charAt(0)}</span>
                                             )}
                                         </div>
-                                        {isEditingProfile && (
-                                            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition">
-                                                <Camera size={20} className="text-white"/>
-                                                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFileChange} ref={fileInputRef}/>
-                                            </div>
-                                        )}
-                                        {!isEditingProfile && (
-                                            <button 
-                                                onClick={() => setIsEditingProfile(true)}
-                                                className="absolute bottom-0 right-0 p-1.5 bg-blue-600 text-white rounded-full border-2 border-white dark:border-slate-800 hover:bg-blue-700 transition shadow-sm"
-                                            >
-                                                <Edit2 size={12}/>
-                                            </button>
-                                        )}
+                                        <label className="absolute bottom-0 right-0 bg-white dark:bg-slate-700 p-1.5 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 transition">
+                                            <Camera size={14} className="text-slate-500 dark:text-slate-300"/>
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} ref={fileInputRef}/>
+                                        </label>
                                     </div>
-                                    <div className="flex gap-2 mb-2">
-                                        <Badge color="blue">{ROLE_NAMES[currentUser.role]}</Badge>
-                                        <Badge color={currentUser.active ? 'green' : 'red'}>{currentUser.active ? 'Ativo' : 'Inativo'}</Badge>
-                                    </div>
+                                    {!isEditingProfile ? (
+                                        <button onClick={() => setIsEditingProfile(true)} className="px-4 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-600 transition flex items-center gap-2">
+                                            <Edit2 size={16}/> Editar Perfil
+                                        </button>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setIsEditingProfile(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">Cancelar</button>
+                                            <button onClick={handleProfileUpdate} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-sm">Salvar</button>
+                                        </div>
+                                    )}
                                 </div>
-
-                                {/* Personal Info Form */}
                                 <form onSubmit={handleProfileUpdate}>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
@@ -568,13 +677,12 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email de Acesso</label>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
                                             <input 
-                                                type="text" 
+                                                type="email" 
                                                 className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
                                                 value={profileForm.email}
-                                                readOnly
-                                                disabled
+                                                disabled // Email cannot be changed easily
                                             />
                                         </div>
                                         <div>
@@ -585,6 +693,7 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
                                                 value={profileForm.phone}
                                                 onChange={e => setProfileForm({...profileForm, phone: e.target.value})}
                                                 disabled={!isEditingProfile}
+                                                placeholder="(00) 00000-0000"
                                             />
                                         </div>
                                         <div>
@@ -595,644 +704,903 @@ SELECT 'Tabela Competitors recriada com sucesso (V11.0)' as status;
                                                 value={profileForm.cpf}
                                                 onChange={e => setProfileForm({...profileForm, cpf: e.target.value})}
                                                 disabled={!isEditingProfile}
+                                                placeholder="000.000.000-00"
                                             />
                                         </div>
                                     </div>
-                                    
-                                    {isEditingProfile && (
-                                        <div className="mt-6 flex justify-end gap-3">
-                                            <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">Cancelar</button>
-                                            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-sm">Salvar Alterações</button>
-                                        </div>
-                                    )}
                                 </form>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* 3. TEAM TAB */}
-                {activeTab === 'team' && isAdmin && (
-                    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                            <SectionTitle title="Convidar Membro" subtitle="Adicione novos usuários à sua organização" />
-                            <form onSubmit={handleAddMember} className="flex flex-col md:flex-row gap-4 items-end mt-4">
-                                <div className="flex-1 w-full">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.name} onChange={(e) => setNewMember({...newMember, name: e.target.value})} required />
+                {/* --- ORGANIZATION TAB --- */}
+                {activeTab === 'organization' && currentOrganization && (
+                    <div className="max-w-3xl mx-auto animate-fade-in">
+                        <SectionTitle title="Organização" subtitle="Dados da empresa e assinatura" />
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-6">
+                            <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-700 pb-6">
+                                <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400">
+                                    <Building2 size={32}/>
                                 </div>
-                                <div className="flex-1 w-full">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
-                                    <input type="email" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.email} onChange={(e) => setNewMember({...newMember, email: e.target.value})} required />
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">{currentOrganization.name}</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Plano: <span className="font-bold text-blue-600 dark:text-blue-400">{currentOrganization.plan}</span></p>
                                 </div>
-                                <div className="w-full md:w-48">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função</label>
-                                    <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newMember.role} onChange={(e) => setNewMember({...newMember, role: e.target.value as Role})}>
-                                        {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                                    </select>
-                                </div>
-                                <button type="submit" className="w-full md:w-auto bg-blue-600 text-white px-6 py-2.5 rounded font-bold hover:bg-blue-700 flex items-center justify-center gap-2">
-                                    <Plus size={18}/> Convidar
-                                </button>
-                            </form>
-                        </div>
+                            </div>
 
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                            <SectionTitle title="Membros da Equipe" subtitle={`Total: ${usersList.filter(u => u.role !== 'client').length} usuários`} />
-                            <div className="overflow-x-auto mt-4">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
-                                        <tr>
-                                            <th className="p-3">Nome</th>
-                                            <th className="p-3">Email</th>
-                                            <th className="p-3">Função</th>
-                                            <th className="p-3 text-center">Status</th>
-                                            <th className="p-3 text-right">Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                        {usersList.filter(u => u.role !== 'client').map(user => (
-                                            <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                                <td className="p-3 font-medium text-slate-900 dark:text-white">{user.name}</td>
-                                                <td className="p-3 text-slate-600 dark:text-slate-300">{user.email}</td>
-                                                <td className="p-3"><Badge>{ROLE_NAMES[user.role]}</Badge></td>
-                                                <td className="p-3 text-center">
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {user.active ? 'Ativo' : 'Inativo'}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 text-right flex justify-end gap-2">
-                                                    <button 
-                                                        onClick={() => user.active ? adminUpdateUser(user.id, { active: false }) : handleOpenApproval(user)} 
-                                                        className={`hover:bg-blue-50 dark:hover:bg-blue-900/30 p-1.5 rounded transition ${user.active ? 'text-slate-400 hover:text-red-500' : 'text-blue-600 animate-pulse'}`} 
-                                                        title={user.active ? "Desativar" : "Aprovar Entrada"}
-                                                    >
-                                                        {user.active ? <ToggleRight size={18}/> : <ToggleLeft size={18}/>}
-                                                    </button>
-                                                    <button onClick={() => adminDeleteUser(user.id)} className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded" title="Remover">
-                                                        <Trash2 size={18}/>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome da Empresa</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white" value={currentOrganization.name} readOnly />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Identificador (Slug)</label>
+                                    <div className="flex">
+                                        <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-500 text-sm">nexus.com/</span>
+                                        <input type="text" className="flex-1 border border-slate-300 dark:border-slate-600 rounded-r-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white" value={currentOrganization.slug} readOnly />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                <h4 className="font-bold text-yellow-800 dark:text-yellow-500 text-sm mb-1">Status da Assinatura</h4>
+                                <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                                    Licença válida até: {currentOrganization.licenseExpiresAt ? new Date(currentOrganization.licenseExpiresAt).toLocaleDateString() : 'Indefinido'}
+                                </p>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* 4. PERMISSIONS TAB */}
-                {activeTab === 'permissions' && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in max-w-6xl mx-auto">
-                        <SectionTitle title="Matriz de Permissões" subtitle="Controle de acesso granular por módulo e função (RBAC). Apenas Administradores podem alterar." />
-                        <div className="overflow-x-auto mt-4">
-                            <table className="w-full text-sm border-collapse">
-                                <thead>
+                {/* --- TEAM TAB --- */}
+                {activeTab === 'team' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="Equipe" subtitle="Gerencie usuários e acessos" />
+                            <button onClick={() => setIsTeamModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2">
+                                <Plus size={18}/> Novo Membro
+                            </button>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
                                     <tr>
-                                        <th className="p-3 border-b border-slate-200 dark:border-slate-700 text-left bg-slate-50 dark:bg-slate-900 text-slate-50 dark:text-slate-400 sticky left-0 z-10 w-48">Módulo</th>
-                                        {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => (
-                                            <th key={role} className="p-3 border-b border-slate-200 dark:border-slate-700 text-center bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white font-bold min-w-[120px]">
-                                                {ROLE_NAMES[role]}
-                                            </th>
-                                        ))}
+                                        <th className="p-4">Usuário</th>
+                                        <th className="p-4">Função</th>
+                                        <th className="p-4">Status</th>
+                                        <th className="p-4 text-right">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                    {MODULE_CONFIG.map(modConf => (
-                                        <tr key={modConf.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                                            <td className="p-3 font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 sticky left-0 z-10 capitalize border-r border-slate-100 dark:border-slate-700 flex items-center gap-2">
-                                                {modConf.label}
+                                    {usersList?.filter(u => u.role !== 'client').map(user => (
+                                        <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300">
+                                                        {user.avatar?.length === 1 ? user.avatar : user.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-900 dark:text-white">{user.name}</p>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                                                    </div>
+                                                </div>
                                             </td>
-                                            {Object.keys(ROLE_NAMES).filter(r => r !== 'client').map(role => {
-                                                const viewAccess = permissionMatrix[role]?.[modConf.id]?.view;
-                                                const editAccess = permissionMatrix[role]?.[modConf.id]?.edit;
-                                                const isSuper = role === 'admin' || role === 'executive';
-
-                                                return (
-                                                    <td key={`${role}-${modConf.id}`} className="p-3 text-center border-l border-slate-100 dark:border-slate-700">
-                                                        <div className="flex justify-center gap-2">
-                                                            {/* View Toggle */}
-                                                            <button 
-                                                                onClick={() => !isSuper && updatePermission(role as Role, modConf.id, 'view', !viewAccess)}
-                                                                className={`p-1.5 rounded transition ${viewAccess ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-700'} ${isSuper ? 'cursor-not-allowed opacity-50' : ''}`}
-                                                                title="Visualizar"
-                                                                disabled={isSuper}
-                                                            >
-                                                                {viewAccess ? <Eye size={16}/> : <EyeOff size={16}/>}
-                                                            </button>
-
-                                                            {/* Edit Toggle */}
-                                                            <button 
-                                                                onClick={() => !isSuper && updatePermission(role as Role, modConf.id, 'edit', !editAccess)}
-                                                                className={`p-1.5 rounded transition ${editAccess ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-700'} ${isSuper ? 'cursor-not-allowed opacity-50' : ''}`}
-                                                                title="Editar (Criar/Alterar/Excluir)"
-                                                                disabled={isSuper}
-                                                            >
-                                                                <Edit2 size={16}/>
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                );
-                                            })}
+                                            <td className="p-4">
+                                                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-bold uppercase">
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                {user.active ? (
+                                                    <span className="text-green-600 dark:text-green-400 text-xs font-bold flex items-center gap-1"><CheckCircle size={12}/> Ativo</span>
+                                                ) : (
+                                                    <button onClick={() => handleOpenApproval(user)} className="text-orange-600 dark:text-orange-400 text-xs font-bold flex items-center gap-1 hover:underline cursor-pointer"><AlertTriangle size={12}/> Pendente</button>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <button onClick={() => { if(confirm("Remover usuário?")) adminDeleteUser(user.id); }} className="p-2 text-slate-400 hover:text-red-600 transition">
+                                                    <Trash2 size={16}/>
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                        <p className="text-xs text-slate-400 mt-4 italic">* Admins e Executivos possuem acesso total por padrão e não podem ser restritos aqui.</p>
+                    </div>
+                )}
+
+                {/* --- PERMISSIONS TAB --- */}
+                {activeTab === 'permissions' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <SectionTitle title="Permissões (RBAC)" subtitle="Controle de acesso por função" />
+                        
+                        <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+                            {Object.keys(ROLE_NAMES).filter(r => r !== 'admin').map(role => (
+                                <button 
+                                    key={role}
+                                    onClick={() => setSelectedRoleForPerms(role as Role)}
+                                    className={`px-4 py-2 rounded-lg font-bold text-sm transition whitespace-nowrap ${selectedRoleForPerms === role ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                                >
+                                    {ROLE_NAMES[role] || role}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4">Módulo</th>
+                                        <th className="p-4 text-center">Visualizar</th>
+                                        <th className="p-4 text-center">Criar</th>
+                                        <th className="p-4 text-center">Editar</th>
+                                        <th className="p-4 text-center">Excluir</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {Object.keys(permissionMatrix[selectedRoleForPerms] || {}).map(module => (
+                                        <tr key={module} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="p-4 font-medium text-slate-700 dark:text-slate-300 capitalize">{module.replace('-', ' ')}</td>
+                                            {['view', 'create', 'edit', 'delete'].map(action => (
+                                                <td key={action} className="p-4 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={permissionMatrix[selectedRoleForPerms]?.[module]?.[action as PermissionAction] || false}
+                                                        onChange={(e) => updatePermission(selectedRoleForPerms, module, action as PermissionAction, e.target.checked)}
+                                                        className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                    />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- PRODUCTS TAB --- */}
+                {activeTab === 'products' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="Produtos & Serviços" subtitle="Catálogo de itens comercializáveis" />
+                            <div className="flex gap-2">
+                                <button onClick={refreshData} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Recarregar"><RefreshCw size={18} className={isSyncing ? "animate-spin" : ""}/></button>
+                                <button onClick={() => { setEditingProductId(null); setNewProduct({ active: true, category: 'Subscription', price: 0, costCenterId: '' }); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2">
+                                    <Plus size={18}/> Novo Produto
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {products && products.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {products.map(product => (
+                                    <div key={product.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition relative group">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <Badge color={product.active ? 'green' : 'gray'}>{product.active ? 'Ativo' : 'Inativo'}</Badge>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                                <button onClick={() => handleEditProduct(product)} className="p-1.5 text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
+                                                <button onClick={() => handleDeleteProduct(product)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                                            </div>
+                                        </div>
+                                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{product.name}</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 line-clamp-2 h-10">{product.description}</p>
+                                        
+                                        {/* Display Cost Center */}
+                                        <div className="text-xs text-slate-400 dark:text-slate-500 mb-2">
+                                            Centro de Custo: {financialCategories.find(c => c.id === product.costCenterId)?.name || 'N/A'}
+                                        </div>
+
+                                        <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+                                            <span className="text-xs font-bold text-slate-400 uppercase">{product.category}</span>
+                                            {/* PROTECTION: Use nullish coalescing to prevent crash if price is null */}
+                                            <span className="text-lg font-bold text-slate-800 dark:text-white">R$ {(product.price || 0).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 border-dashed">
+                                <Package size={48} className="mx-auto mb-2 opacity-50"/>
+                                <p>Nenhum produto cadastrado.</p>
+                                <button onClick={() => setIsProductModalOpen(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline mt-2">Criar o primeiro</button>
+                            </div>
+                        )}
                     </div>
                 )}
                 
-                {/* 5. PORTAL CONFIG TAB */}
-                {activeTab === 'portal_config' && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in max-w-4xl mx-auto">
+                {/* --- FINANCIAL CONFIG TAB --- */}
+                {activeTab === 'financial' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="Plano de Contas (DRE)" subtitle="Categorias para organização financeira (Receita / Despesa)" />
+                             <button onClick={refreshData} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Recarregar"><RefreshCw size={18} className={isSyncing ? "animate-spin" : ""}/></button>
+                        </div>
+                        
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mb-6">
+                             <form onSubmit={handleSaveFinancialCategory} className="flex gap-4 items-end flex-wrap">
+                                <div className="w-32">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Código</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newFinCatForm.code} onChange={e => setNewFinCatForm({...newFinCatForm, code: e.target.value})} placeholder="1.01" />
+                                </div>
+                                <div className="flex-1 min-w-[200px]">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome da Categoria</label>
+                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newFinCatForm.name} onChange={e => setNewFinCatForm({...newFinCatForm, name: e.target.value})} placeholder="Ex: Vendas, Aluguel" />
+                                </div>
+                                <div className="w-40">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Tipo (DRE)</label>
+                                    <select 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none cursor-pointer"
+                                        value={newFinCatForm.type}
+                                        onChange={e => setNewFinCatForm({...newFinCatForm, type: e.target.value as any})}
+                                    >
+                                        <option value="Revenue">Receita (+)</option>
+                                        <option value="Expense">Despesa (-)</option>
+                                    </select>
+                                </div>
+                                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">Adicionar</button>
+                             </form>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4 w-24">Código</th>
+                                        <th className="p-4">Nome da Conta</th>
+                                        <th className="p-4">Tipo</th>
+                                        <th className="p-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {financialCategories && financialCategories.length > 0 ? (
+                                        financialCategories
+                                        .sort((a, b) => (a.code || '').localeCompare(b.code || ''))
+                                        .map(cat => (
+                                            <tr key={cat.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                <td className="p-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{cat.code || '-'}</td>
+                                                <td className="p-4 font-bold text-slate-800 dark:text-white">{cat.name}</td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${cat.type === 'Revenue' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                                                        {cat.type === 'Revenue' ? 'Receita' : 'Despesa'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => deleteFinancialCategory(cat.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhuma categoria cadastrada.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* --- PORTAL CONFIG TAB --- */}
+                {activeTab === 'portal_config' && (
+                     <div className="space-y-6 animate-fade-in">
                         <SectionTitle title="Configuração do Portal do Cliente" subtitle="Personalize a experiência dos seus clientes" />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
-                            <div className="space-y-4">
+                        
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Portal</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={portalForm.portalName} onChange={(e) => setPortalForm({...portalForm, portalName: e.target.value})} />
+                                    <input 
+                                        type="text" 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                                        value={portalForm.portalName}
+                                        onChange={e => setPortalForm({...portalForm, portalName: e.target.value})}
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Cor Primária</label>
-                                    <div className="flex items-center gap-2">
-                                        <input type="color" className="w-10 h-10 border border-slate-300 dark:border-slate-600 rounded cursor-pointer" value={portalForm.primaryColor} onChange={(e) => setPortalForm({...portalForm, primaryColor: e.target.value})} />
-                                        <input type="text" className="flex-1 border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white uppercase" value={portalForm.primaryColor} onChange={(e) => setPortalForm({...portalForm, primaryColor: e.target.value})} />
+                                    <div className="flex gap-2 items-center">
+                                        <input 
+                                            type="color" 
+                                            className="w-10 h-10 rounded cursor-pointer border-0 p-0"
+                                            value={portalForm.primaryColor}
+                                            onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})}
+                                        />
+                                        <input 
+                                            type="text" 
+                                            className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white uppercase"
+                                            value={portalForm.primaryColor}
+                                            onChange={e => setPortalForm({...portalForm, primaryColor: e.target.value})}
+                                        />
                                     </div>
                                 </div>
-                                <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700">
-                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white">Funcionalidades</h4>
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={portalForm.allowInvoiceDownload} onChange={(e) => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})} />
-                                        <span className="text-sm text-slate-700 dark:text-slate-300">Permitir download de faturas</span>
-                                    </label>
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={portalForm.allowTicketCreation} onChange={(e) => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})} />
-                                        <span className="text-sm text-slate-700 dark:text-slate-300">Permitir abertura de chamados</span>
-                                    </label>
-                                </div>
-                                <button onClick={handleSavePortal} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 mt-4 flex items-center gap-2">
-                                    <Save size={18}/> Salvar Configurações
-                                </button>
                             </div>
                             
-                            {/* Preview */}
-                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex flex-col h-80 bg-slate-50 dark:bg-slate-900">
-                                <div className="h-14 flex items-center px-4 text-white font-bold shadow-sm" style={{backgroundColor: portalForm.primaryColor}}>
-                                    {portalForm.portalName}
+                            <div className="mt-6 space-y-4">
+                                <h4 className="font-bold text-slate-800 dark:text-white">Funcionalidades Disponíveis</h4>
+                                <div className="flex items-center gap-3">
+                                    <input 
+                                        type="checkbox" 
+                                        id="allowInvoice"
+                                        checked={portalForm.allowInvoiceDownload}
+                                        onChange={e => setPortalForm({...portalForm, allowInvoiceDownload: e.target.checked})}
+                                        className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="allowInvoice" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Permitir download de faturas</label>
                                 </div>
-                                <div className="p-4 flex-1 flex flex-col gap-3 opacity-80 pointer-events-none">
-                                    <div className="h-24 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
-                                        <div className="w-1/3 h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
-                                        <div className="w-1/2 h-3 bg-slate-100 dark:bg-slate-800 rounded"></div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="h-20 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700"></div>
-                                        <div className="h-20 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                
-                {/* 6. PRODUCTS TAB */}
-                {activeTab === 'products' && isAdmin && (
-                    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
-                        <div className="flex justify-between items-center mb-4">
-                             <SectionTitle title="Catálogo de Produtos" subtitle="Gerencie serviços e produtos disponíveis" />
-                             <button onClick={() => { setNewProduct({ active: true, category: 'Subscription', price: 0 }); setEditingProductId(null); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2">
-                                 <Plus size={18}/> Novo Produto
-                             </button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {products.map(product => (
-                                <div key={product.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition group">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className={`px-2 py-0.5 text-xs font-bold rounded uppercase ${product.category === 'Subscription' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{product.category}</span>
-                                        <span className={`w-2 h-2 rounded-full ${product.active ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                    </div>
-                                    <h3 className="font-bold text-slate-900 dark:text-white mb-1">{product.name}</h3>
-                                    <p className="text-slate-500 dark:text-slate-400 text-sm mb-3 line-clamp-2 h-10">{product.description}</p>
-                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
-                                        <span className="font-bold text-slate-800 dark:text-white">R$ {product.price.toLocaleString()}</span>
-                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                                            <button onClick={() => handleEditProduct(product)} className="text-blue-600 dark:text-blue-400 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"><Edit2 size={16}/></button>
-                                            <button onClick={() => handleDeleteProduct(product)} className="text-red-600 dark:text-red-400 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"><Trash2 size={16}/></button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                
-                {/* 7. INTEGRATIONS / BRIDGE TAB */}
-                {(activeTab === 'integrations' || activeTab === 'bridge') && isAdmin && (
-                    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
-                        
-                        {/* SUPABASE CONFIG */}
-                        {activeTab === 'integrations' && (
-                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-3 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
-                                        <Database size={24}/>
-                                    </div>
-                                    <div className="flex-1">
-                                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Conexão com Banco de Dados</h3>
-                                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Configuração do Supabase (URL e API Key).</p>
-                                        
-                                        <form onSubmit={handleSaveSupabase} className="space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Project URL</label>
-                                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={supabaseForm.url} onChange={e => setSupabaseForm({...supabaseForm, url: e.target.value})} placeholder="https://xyz.supabase.co" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Anon Key</label>
-                                                    <input type="password" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={supabaseForm.key} onChange={e => setSupabaseForm({...supabaseForm, key: e.target.value})} placeholder="eyJ..." />
-                                                </div>
-                                            </div>
-                                            
-                                            {connectionStatus === 'error' && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-2 rounded">{statusMessage}</p>}
-                                            {connectionStatus === 'success' && <p className="text-green-600 text-sm bg-green-50 dark:bg-green-900/20 p-2 rounded font-bold flex items-center gap-2"><CheckCircle size={14}/> {statusMessage}</p>}
-                                            
-                                            <button type="submit" disabled={connectionStatus === 'testing'} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-slate-800 dark:hover:bg-slate-600 flex items-center gap-2 disabled:opacity-70">
-                                                {connectionStatus === 'testing' ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
-                                                {connectionStatus === 'testing' ? 'Testando...' : 'Salvar e Conectar'}
-                                            </button>
-                                        </form>
-                                    </div>
+                                <div className="flex items-center gap-3">
+                                    <input 
+                                        type="checkbox" 
+                                        id="allowTicket"
+                                        checked={portalForm.allowTicketCreation}
+                                        onChange={e => setPortalForm({...portalForm, allowTicketCreation: e.target.checked})}
+                                        className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="allowTicket" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Permitir abertura de chamados</label>
                                 </div>
                             </div>
-                        )}
-                        
-                        {/* BRIDGE CONFIG */}
-                        {activeTab === 'bridge' && (
-                            <div className="space-y-6">
-                                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg"><Zap size={24}/></div>
-                                            <div>
-                                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Nexus Bridge</h3>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400">Gateway local para WhatsApp e SMTP.</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={handleManualBridgeCheck} className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline">
-                                            <RefreshCw size={12} className={loadingBridge ? "animate-spin" : ""}/> Verificar Status
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {/* WHATSAPP CARD */}
-                                        <div className="p-5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 flex flex-col items-center justify-center text-center min-h-[200px]">
-                                            <div className="mb-3">
-                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-xl shadow-sm ${bridgeStatus.whatsapp === 'READY' ? 'bg-green-500' : 'bg-slate-400'}`}>
-                                                    <MessageCircle size={24}/>
-                                                </div>
-                                            </div>
-                                            <h4 className="font-bold text-slate-800 dark:text-white">WhatsApp</h4>
-                                            <p className={`text-xs font-bold uppercase mb-4 ${bridgeStatus.whatsapp === 'READY' ? 'text-green-600' : 'text-slate-500'}`}>
-                                                {bridgeStatus.whatsapp === 'READY' ? 'Conectado' : bridgeStatus.whatsapp === 'QR_READY' ? 'Aguardando Leitura' : 'Desconectado'}
-                                            </p>
-                                            
-                                            {bridgeStatus.whatsapp === 'QR_READY' && bridgeQr ? (
-                                                <div className="bg-white p-2 rounded-lg shadow-sm">
-                                                    <img src={bridgeQr} alt="QR Code" className="w-32 h-32"/>
-                                                </div>
-                                            ) : bridgeStatus.whatsapp === 'READY' ? (
-                                                <div className="flex items-center gap-2 text-green-600 text-sm font-bold bg-green-100 dark:bg-green-900/30 px-3 py-1 rounded-full">
-                                                    <CheckCircle size={14}/> Online
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-slate-400 max-w-[200px]">Certifique-se que o servidor bridge está rodando na porta 3001.</p>
-                                            )}
-                                        </div>
-                                        
-                                        {/* SMTP CARD */}
-                                        <div className="p-5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50">
-                                            <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                                                <Mail size={16}/> Configuração SMTP
-                                            </h4>
-                                            <form onSubmit={handleSaveSmtp} className="space-y-3">
-                                                <input type="text" placeholder="Host (smtp.gmail.com)" className="w-full border rounded p-2 text-xs" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})} />
-                                                <input type="number" placeholder="Porta (587)" className="w-full border rounded p-2 text-xs" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})} />
-                                                <input type="email" placeholder="Email (User)" className="w-full border rounded p-2 text-xs" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})} />
-                                                <input type="password" placeholder="Senha de App" className="w-full border rounded p-2 text-xs" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})} />
-                                                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded text-xs font-bold hover:bg-blue-700">Salvar SMTP</button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                    
-                                    {bridgeError && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs rounded border border-red-200 dark:border-red-800 flex items-center gap-2"><AlertTriangle size={14}/> {bridgeError}</div>}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
 
-                {/* 8. CUSTOM FIELDS */}
-                {activeTab === 'custom_fields' && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-4xl mx-auto">
-                        <SectionTitle title="Campos Personalizados" subtitle="Estenda o modelo de dados de Leads e Clientes." />
-                        
-                        <form onSubmit={handleSaveCustomField} className="flex gap-3 items-end mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                            <div className="flex-1">
-                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Rótulo</label>
-                                <input required type="text" className="w-full border rounded p-2 text-sm" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value, key: e.target.value.toLowerCase().replace(/\s+/g, '_')})} placeholder="Ex: Data de Nascimento"/>
+                            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+                                <button onClick={handleSavePortal} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-sm">
+                                    Salvar Configurações
+                                </button>
                             </div>
-                            <div className="w-32">
-                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Tipo</label>
-                                <select className="w-full border rounded p-2 text-sm" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
-                                    <option value="text">Texto</option>
-                                    <option value="number">Número</option>
-                                    <option value="date">Data</option>
-                                    <option value="select">Seleção</option>
-                                    <option value="boolean">Sim/Não</option>
-                                </select>
-                            </div>
-                            <div className="w-32">
-                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Módulo</label>
-                                <select className="w-full border rounded p-2 text-sm" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
-                                    <option value="leads">Leads</option>
-                                    <option value="clients">Clientes</option>
-                                </select>
-                            </div>
-                            <button type="submit" className="bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 h-[38px] w-[38px] flex items-center justify-center">
-                                <Plus size={20}/>
-                            </button>
-                        </form>
-                        
-                        {newFieldForm.type === 'select' && (
-                            <div className="mb-4">
-                                <label className="block text-xs font-bold uppercase mb-1 text-slate-500">Opções (separadas por vírgula)</label>
-                                <input type="text" className="w-full border rounded p-2 text-sm" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)} placeholder="Opção A, Opção B, Opção C"/>
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            {customFields.map(field => (
-                                <div key={field.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                    <div>
-                                        <p className="font-bold text-sm text-slate-800 dark:text-white">{field.label}</p>
-                                        <p className="text-xs text-slate-500">Chave: {field.key} • Tipo: {field.type} • Módulo: {field.module}</p>
-                                    </div>
-                                    <button onClick={() => deleteCustomField(field.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
-                                </div>
-                            ))}
-                            {customFields.length === 0 && <p className="text-center text-slate-400 py-4">Nenhum campo personalizado.</p>}
-                        </div>
-                    </div>
-                )}
-
-                {/* 9. WEBHOOKS */}
-                {activeTab === 'webhooks' && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-4xl mx-auto">
-                        <SectionTitle title="Webhooks & API" subtitle="Integre o Nexus com outras plataformas." />
-                        
-                        <form onSubmit={handleSaveWebhook} className="mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700 space-y-3">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div><label className="text-xs font-bold uppercase text-slate-500">Nome</label><input required className="w-full border rounded p-2 text-sm" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})}/></div>
-                                <div><label className="text-xs font-bold uppercase text-slate-500">URL de Destino</label><input required type="url" className="w-full border rounded p-2 text-sm" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})}/></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-xs font-bold uppercase text-slate-500">Evento Gatilho</label>
-                                    <select className="w-full border rounded p-2 text-sm" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as TriggerType})}>
-                                        <option value="lead_created">Novo Lead</option>
-                                        <option value="deal_won">Venda Ganha</option>
-                                        <option value="deal_lost">Venda Perdida</option>
-                                        <option value="ticket_created">Ticket Criado</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold uppercase text-slate-500">Método</label>
-                                    <select className="w-full border rounded p-2 text-sm" value={newWebhookForm.method} onChange={e => setNewWebhookForm({...newWebhookForm, method: e.target.value as any})}>
-                                        <option value="POST">POST</option>
-                                        <option value="GET">GET</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded text-sm font-bold hover:bg-slate-700">Adicionar Webhook</button>
-                        </form>
-
-                        <div className="space-y-2">
-                            {webhooks.map(hook => (
-                                <div key={hook.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                    <div>
-                                        <p className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                                            {hook.name} <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{hook.triggerEvent}</span>
-                                        </p>
-                                        <p className="text-xs text-slate-500 font-mono mt-1 truncate max-w-md">{hook.url}</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => updateWebhook({...hook, active: !hook.active})} className={`text-xs font-bold px-2 py-1 rounded ${hook.active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>{hook.active ? 'Ativo' : 'Pausado'}</button>
-                                        <button onClick={() => deleteWebhook(hook.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* 10. AUDIT LOG */}
-                {activeTab === 'audit' && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col h-[600px]">
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700">
-                            <SectionTitle title="Logs de Auditoria" subtitle="Rastreamento de ações dos usuários" />
-                        </div>
-                        <div className="flex-1 overflow-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 sticky top-0">
-                                    <tr>
-                                        <th className="p-3">Data/Hora</th>
-                                        <th className="p-3">Usuário</th>
-                                        <th className="p-3">Ação</th>
-                                        <th className="p-3">Módulo</th>
-                                        <th className="p-3">Detalhes</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                    {displayLogs.map(log => (
-                                        <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-300">
-                                            <td className="p-3 whitespace-nowrap text-xs font-mono">{new Date(log.timestamp).toLocaleString()}</td>
-                                            <td className="p-3 font-bold">{log.userName}</td>
-                                            <td className="p-3"><span className="bg-slate-100 dark:bg-slate-600 px-2 py-0.5 rounded text-xs font-medium">{log.action}</span></td>
-                                            <td className="p-3 text-xs uppercase text-slate-500">{log.module}</td>
-                                            <td className="p-3 text-xs truncate max-w-xs" title={log.details}>{log.details}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-                
-                {/* 11. DATABASE DIAGNOSTICS */}
-                {activeTab === 'database' && isAdmin && (
-                     <div className="space-y-6">
-                        <div className="flex justify-between items-center">
-                            <SectionTitle title="Diagnóstico de Banco de Dados" subtitle="Contagem de registros e status de sincronização." />
-                            <button onClick={() => setShowSqlModal(true)} className="text-blue-600 hover:underline text-sm font-bold flex items-center gap-1"><Code size={14}/> Ver Script SQL</button>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {Object.entries(cloudCounts).map(([table, count]) => (
-                                <div key={table} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
-                                    <p className="text-xs text-slate-400 uppercase font-bold mb-1">{table}</p>
-                                    {loadingCounts ? <Loader2 className="animate-spin mx-auto text-blue-500" size={20}/> : <p className="text-2xl font-bold text-slate-800 dark:text-white">{count}</p>}
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-200">
-                            <p className="font-bold flex items-center gap-2 mb-2"><Database size={16}/> Sincronização Local vs Cloud</p>
-                            <p>Os dados são armazenados localmente para performance e sincronizados em segundo plano com o Supabase. Se houver divergência, clique em "Forçar Sincronização" no menu lateral.</p>
                         </div>
                      </div>
                 )}
 
-                {/* 12. ORGANIZATION INFO */}
-                {activeTab === 'organization' && currentOrganization && isAdmin && (
-                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl mx-auto">
-                        <div className="text-center mb-6">
-                            <div className="w-16 h-16 bg-slate-900 text-white rounded-lg flex items-center justify-center text-3xl font-bold mx-auto mb-3 shadow-lg">
-                                {currentOrganization.name.charAt(0)}
-                            </div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{currentOrganization.name}</h2>
-                            <p className="text-slate-500 dark:text-slate-400 font-mono text-sm bg-slate-100 dark:bg-slate-700 inline-block px-3 py-1 rounded-full mt-2">ID: {currentOrganization.id}</p>
+                {/* --- CUSTOM FIELDS TAB --- */}
+                {activeTab === 'custom_fields' && (
+                     <div className="space-y-6 animate-fade-in">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="Campos Personalizados" subtitle="Estenda os dados de Leads e Clientes" />
+                            <button onClick={refreshData} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Recarregar"><RefreshCw size={18} className={isSyncing ? "animate-spin" : ""}/></button>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-6 border-t border-slate-100 dark:border-slate-700 pt-6">
-                            <div className="text-center">
-                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Plano Atual</p>
-                                <Badge color="purple">{currentOrganization.plan}</Badge>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Status da Assinatura</p>
-                                <span className={`text-sm font-bold ${currentOrganization.subscription_status === 'active' ? 'text-green-600' : 'text-red-500'}`}>
-                                    {currentOrganization.subscription_status?.toUpperCase() || 'ATIVO'}
-                                </span>
-                            </div>
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mb-6">
+                            <form onSubmit={handleSaveCustomField} className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Rótulo (Label)</label>
+                                        <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newFieldForm.label} onChange={e => setNewFieldForm({...newFieldForm, label: e.target.value, key: (e.target.value || '').toLowerCase().replace(/\s+/g, '_')})} placeholder="Ex: Data de Aniversário" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Tipo</label>
+                                        <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newFieldForm.type} onChange={e => setNewFieldForm({...newFieldForm, type: e.target.value as any})}>
+                                            <option value="text">Texto</option>
+                                            <option value="number">Número</option>
+                                            <option value="date">Data</option>
+                                            <option value="select">Seleção (Lista)</option>
+                                            <option value="boolean">Sim/Não</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Módulo</label>
+                                        <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newFieldForm.module} onChange={e => setNewFieldForm({...newFieldForm, module: e.target.value as any})}>
+                                            <option value="leads">Leads</option>
+                                            <option value="clients">Clientes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                {newFieldForm.type === 'select' && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Opções (separadas por vírgula)</label>
+                                        <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={fieldOptionsInput} onChange={e => setFieldOptionsInput(e.target.value)} placeholder="Opção A, Opção B, Opção C" />
+                                    </div>
+                                )}
+                                <div className="flex justify-end">
+                                    <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">Adicionar Campo</button>
+                                </div>
+                            </form>
                         </div>
 
-                        {isSuperAdmin && (
-                            <div className="mt-8 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                                <h4 className="font-bold text-sm text-slate-700 dark:text-white mb-2">Zona de Perigo</h4>
-                                <button className="w-full border border-red-200 text-red-600 hover:bg-red-50 py-2 rounded text-sm font-bold transition">
-                                    Encerrar Conta da Organização
-                                </button>
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4">Label</th>
+                                        <th className="p-4">Chave (API)</th>
+                                        <th className="p-4">Tipo</th>
+                                        <th className="p-4">Módulo</th>
+                                        <th className="p-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {customFields && customFields.length > 0 ? (
+                                        customFields.map(field => (
+                                            <tr key={field.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                <td className="p-4 font-bold text-slate-800 dark:text-white">{field.label}</td>
+                                                {/* PROTECTION: Ensure key is not null */}
+                                                <td className="p-4 font-mono text-xs text-slate-500">{field.key || '-'}</td>
+                                                <td className="p-4"><span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs">{field.type}</span></td>
+                                                <td className="p-4 capitalize">{field.module}</td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => deleteCustomField(field.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhum campo personalizado.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                     </div>
+                )}
+
+                {/* --- WEBHOOKS TAB --- */}
+                {activeTab === 'webhooks' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <SectionTitle title="Webhooks & API" subtitle="Integrações externas" />
+                        
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mb-6">
+                             <form onSubmit={handleSaveWebhook} className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome</label>
+                                        <input type="text" required className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newWebhookForm.name} onChange={e => setNewWebhookForm({...newWebhookForm, name: e.target.value})} placeholder="Integração Zapier" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Evento Gatilho</label>
+                                        <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newWebhookForm.triggerEvent} onChange={e => setNewWebhookForm({...newWebhookForm, triggerEvent: e.target.value as any})}>
+                                            <option value="lead_created">Lead Criado</option>
+                                            <option value="deal_won">Venda Ganha</option>
+                                            <option value="ticket_created">Ticket Criado</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">URL de Destino</label>
+                                    <input type="url" required className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-mono text-sm" value={newWebhookForm.url} onChange={e => setNewWebhookForm({...newWebhookForm, url: e.target.value})} placeholder="https://hooks.zapier.com/..." />
+                                </div>
+                                <div className="flex justify-end">
+                                    <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded font-bold hover:bg-purple-700">Criar Webhook</button>
+                                </div>
+                             </form>
+                        </div>
+
+                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4">Nome</th>
+                                        <th className="p-4">Evento</th>
+                                        <th className="p-4">URL</th>
+                                        <th className="p-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {webhooks && webhooks.length > 0 ? (
+                                        webhooks.map(hook => (
+                                            <tr key={hook.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                <td className="p-4 font-bold text-slate-800 dark:text-white">{hook.name}</td>
+                                                <td className="p-4"><Badge color="purple">{hook.triggerEvent}</Badge></td>
+                                                {/* PROTECTION: Ensure url is not null */}
+                                                <td className="p-4 font-mono text-xs text-slate-500 truncate max-w-[200px]">{hook.url || '-'}</td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => deleteWebhook(hook.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhum webhook configurado.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* --- AUDIT TAB --- */}
+                {activeTab === 'audit' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <SectionTitle title="Auditoria" subtitle="Registro de atividades do sistema" />
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4">Data/Hora</th>
+                                        <th className="p-4">Usuário</th>
+                                        <th className="p-4">Ação</th>
+                                        <th className="p-4">Detalhes</th>
+                                        <th className="p-4">Módulo</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {displayLogs && displayLogs.length > 0 ? (
+                                        displayLogs.map(log => (
+                                            <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                {/* PROTECTION: Safe date parsing */}
+                                                <td className="p-4 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                                                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}
+                                                </td>
+                                                <td className="p-4 font-bold text-slate-700 dark:text-white">{log.userName}</td>
+                                                <td className="p-4"><span className="bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-slate-200 px-2 py-1 rounded text-xs font-bold">{log.action}</span></td>
+                                                <td className="p-4 text-slate-600 dark:text-slate-300 truncate max-w-xs" title={log.details}>{log.details}</td>
+                                                <td className="p-4 text-slate-500 dark:text-slate-400 text-xs uppercase">{log.module}</td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* --- SAAS ADMIN TAB --- */}
+                {activeTab === 'saas_admin' && isSuperAdmin && (
+                    <div className="space-y-6 animate-fade-in">
+                        <SectionTitle title="Administração SaaS" subtitle="Gestão Multi-tenant" />
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold border-b border-slate-200 dark:border-slate-600">
+                                    <tr>
+                                        <th className="p-4">Organização</th>
+                                        <th className="p-4">Slug</th>
+                                        <th className="p-4">Plano</th>
+                                        <th className="p-4">Status</th>
+                                        <th className="p-4 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                    {saasOrgs && saasOrgs.length > 0 ? (
+                                        saasOrgs.map(org => (
+                                            <tr key={org.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                                <td className="p-4 font-bold text-slate-800 dark:text-white">{org.name}</td>
+                                                <td className="p-4 text-slate-500 dark:text-slate-400">{org.slug}</td>
+                                                <td className="p-4"><Badge color="blue">{org.plan}</Badge></td>
+                                                <td className="p-4">
+                                                    {org.status === 'pending' ? <span className="text-orange-500 font-bold text-xs">Pendente</span> : <span className="text-green-500 font-bold text-xs">Ativo</span>}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    {org.status === 'pending' && (
+                                                        <button onClick={() => approveOrganization(org.id)} className="bg-green-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-green-700">Aprovar</button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhuma organização encontrada.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* --- DATABASE DIAGNOSTICS TAB --- */}
+                {activeTab === 'database' && (
+                    <div className="space-y-6">
+                        <SectionTitle title="Diagnóstico de Banco de Dados" subtitle="Status da sincronização e integridade" />
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {Object.entries(cloudCounts).map(([table, count]) => (
+                                <div key={table} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">{table}</p>
+                                    <p className="text-2xl font-bold text-slate-800 dark:text-white">
+                                        {loadingCounts ? <Loader2 className="animate-spin" size={20}/> : count}
+                                    </p>
+                                    <p className="text-[10px] text-green-500 mt-1 flex items-center gap-1"><CheckCircle size={10}/> Sincronizado</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex flex-col md:flex-row justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
+                            <button onClick={handleHardReset} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-red-700 transition">
+                                <Power size={16}/> Resetar Cache e Reiniciar
+                            </button>
+                            <button onClick={() => { setShowSqlModal(true); }} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+                                <Terminal size={16}/> Executar SQL de Correção
+                            </button>
+                        </div>
+
+                         {/* SQL Modal */}
+                         {showSqlModal && (
+                            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+                                <div className="bg-white dark:bg-slate-800 w-full max-w-2xl p-6 rounded-xl shadow-2xl">
+                                    <h3 className="font-bold text-lg mb-4 dark:text-white">Script de Correção Completa (Supabase)</h3>
+                                    <p className="text-sm text-slate-500 mb-2">Este script desativa o RLS (Row Level Security) para garantir que você veja os dados.</p>
+                                    <textarea readOnly className="w-full h-64 bg-slate-900 text-green-400 font-mono text-xs p-4 rounded-lg" value={sqlRepairScript} />
+                                    <div className="flex justify-end mt-4 gap-2">
+                                        <button onClick={() => setShowSqlModal(false)} className="px-4 py-2 border rounded text-slate-500">Fechar</button>
+                                        <button onClick={() => { navigator.clipboard.writeText(sqlRepairScript); alert("Copiado!"); }} className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Copiar SQL</button>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
                 )}
                 
-            </main>
+                {/* --- BRIDGE TAB --- */}
+                {activeTab === 'bridge' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <SectionTitle title="Nexus Bridge" subtitle="Integração WhatsApp e SMTP Local" />
+                        
+                        {/* --- SERVER STATUS INDICATOR --- */}
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-4 rounded-full ${getServerStatusColor()}`}>
+                                        <Server size={32} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                            Servidor Local (Node.js)
+                                            <span className={`text-xs px-2 py-0.5 rounded uppercase ${
+                                                bridgeStatus.server === 'ONLINE' ? 
+                                                    (bridgeStatus.smtp === 'MISSING_CREDENTIALS' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700') 
+                                                    : 'bg-red-100 text-red-700'
+                                            }`}>
+                                                {getServerStatusText()}
+                                            </span>
+                                        </h4>
+                                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                                            {bridgeStatus.server === 'ONLINE' 
+                                                ? 'O Nexus Bridge está ativo na porta 3001. E-mails e WhatsApp funcionais.' 
+                                                : 'O frontend não consegue acessar http://127.0.0.1:3001.'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={handleManualBridgeCheck} 
+                                        className="px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-200 font-bold transition flex items-center gap-2"
+                                    >
+                                        {loadingBridge ? <Loader2 className="animate-spin" size={18}/> : <RefreshCw size={18}/>}
+                                        Verificar Conexão
+                                    </button>
+                                    <button
+                                        onClick={runDiagnostics}
+                                        className="px-6 py-3 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg font-bold transition flex items-center gap-2 border border-indigo-200 dark:border-indigo-800"
+                                    >
+                                        <Wifi size={18}/> Diagnóstico de Rede
+                                    </button>
+                                </div>
+                            </div>
 
-            {/* SQL Modal */}
-            {showSqlModal && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl border border-slate-700 flex flex-col max-h-[80vh]">
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                            <h3 className="text-white font-bold flex items-center gap-2"><Code size={18} className="text-emerald-400"/> Schema SQL (Full Update V11.0)</h3>
-                            <button onClick={() => setShowSqlModal(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
+                            {/* Troubleshooting Box if Offline */}
+                            {bridgeStatus.server !== 'ONLINE' && (
+                                <div className="mt-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-start gap-3">
+                                    <AlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-1" size={20}/>
+                                    <div>
+                                        <h5 className="font-bold text-amber-800 dark:text-amber-300 text-sm">Como iniciar o servidor:</h5>
+                                        <div className="mt-2 bg-slate-900 text-green-400 p-3 rounded font-mono text-xs shadow-inner">
+                                            cd server<br/>
+                                            npm install<br/>
+                                            node index.js
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                             {/* Debug Output */}
+                             {debugInfo && (
+                                <div className="mt-4 p-4 bg-slate-900 text-green-400 font-mono text-xs rounded-lg overflow-x-auto whitespace-pre-wrap border border-slate-700 shadow-inner">
+                                    <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                                        <span className="font-bold text-white">LOG DE DIAGNÓSTICO</span>
+                                        <button onClick={() => setDebugInfo('')} className="text-slate-400 hover:text-white"><X size={14}/></button>
+                                    </div>
+                                    {debugInfo}
+                                </div>
+                            )}
                         </div>
-                        <div className="p-4 flex-1 overflow-auto bg-black custom-scrollbar">
-                            <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap select-text">
-                                {sqlScript}
-                            </pre>
+                        
+                        {/* CONFIG SECTIONS */}
+                        <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity ${bridgeStatus.server !== 'ONLINE' ? 'opacity-70' : 'opacity-100'}`}>
+                            {/* WhatsApp Config */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Smartphone size={20} className="text-green-500"/> WhatsApp Web</h4>
+                                <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                                    <div className={`w-3 h-3 rounded-full ${bridgeStatus.whatsapp === 'READY' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Status: {bridgeStatus.whatsapp}</span>
+                                </div>
+                                {bridgeQr ? (
+                                    <div className="flex flex-col items-center p-4 border border-slate-200 rounded-lg">
+                                        <img src={bridgeQr} alt="QR Code" className="w-48 h-48 mb-2" />
+                                        <p className="text-xs text-slate-500">Escaneie com seu WhatsApp</p>
+                                    </div>
+                                ) : bridgeStatus.whatsapp === 'READY' ? (
+                                    <div className="text-center p-8 text-green-600 bg-green-50 rounded-lg border border-green-100">
+                                        <CheckCircle size={48} className="mx-auto mb-2"/>
+                                        <p className="font-bold">WhatsApp Conectado!</p>
+                                    </div>
+                                ) : (
+                                    <div className="text-center p-8 text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                                        <Loader2 size={32} className="mx-auto mb-2 animate-spin"/>
+                                        <p className="text-sm">Aguardando QR Code...</p>
+                                        <button onClick={handleManualBridgeCheck} className="mt-4 text-xs text-blue-600 font-bold hover:underline">Tentar Novamente</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* SMTP Config */}
+                            <div className={`bg-white dark:bg-slate-800 p-6 rounded-xl border ${bridgeStatus.smtp === 'MISSING_CREDENTIALS' ? 'border-yellow-400 dark:border-yellow-600 ring-2 ring-yellow-100 dark:ring-yellow-900/20' : 'border-slate-200 dark:border-slate-700'}`}>
+                                <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Mail size={20} className="text-blue-500"/> Configuração SMTP (Email)</h4>
+                                
+                                {bridgeStatus.smtp === 'MISSING_CREDENTIALS' && (
+                                    <div className="mb-4 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 p-3 rounded text-sm flex items-center gap-2 border border-yellow-200 dark:border-yellow-800">
+                                        <AlertCircle size={16}/> Preencha os dados abaixo e clique em Salvar para ativar o envio.
+                                    </div>
+                                )}
+
+                                <form onSubmit={handleSaveSmtp} className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Host</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={smtpForm.host} onChange={e => setSmtpForm({...smtpForm, host: e.target.value})}/></div>
+                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Porta</label><input type="number" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={smtpForm.port} onChange={e => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}/></div>
+                                    </div>
+                                    <div><label className="text-xs font-bold text-slate-500 uppercase">Usuário (E-mail)</label><input type="text" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={smtpForm.user} onChange={e => setSmtpForm({...smtpForm, user: e.target.value})}/></div>
+                                    <div><label className="text-xs font-bold text-slate-500 uppercase">Senha (App Password)</label><input type="password" className="w-full border rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={smtpForm.pass} onChange={e => setSmtpForm({...smtpForm, pass: e.target.value})}/></div>
+                                    
+                                    {smtpStatusMsg && (
+                                        <div className={`p-2 rounded text-xs flex items-center gap-2 ${smtpStatusMsg.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {smtpStatusMsg.type === 'success' ? <CheckCircle size={12}/> : <AlertCircle size={12}/>}
+                                            {smtpStatusMsg.text}
+                                        </div>
+                                    )}
+
+                                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition shadow-sm flex items-center justify-center gap-2">
+                                        {loadingBridge ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>}
+                                        Salvar Credenciais
+                                    </button>
+                                </form>
+                            </div>
                         </div>
-                        <div className="p-4 border-t border-slate-700 text-right bg-slate-800 rounded-b-xl">
-                            <button onClick={() => { navigator.clipboard.writeText(sqlScript); alert("Copiado!"); }} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition flex items-center gap-2 ml-auto shadow-lg"><Copy size={16}/> Copiar Script</button>
+
+                        {/* SMTP Test */}
+                        <div className={`bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm ${bridgeStatus.server !== 'ONLINE' ? 'opacity-70' : ''}`}>
+                            <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                <Send size={18} className="text-orange-500"/> Teste de Disparo Real
+                            </h4>
+                            <div className="flex gap-3 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">E-mail de Destino</label>
+                                    <input 
+                                        type="email" 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="seu@email.com"
+                                        value={testSmtpEmail}
+                                        onChange={(e) => setTestSmtpEmail(e.target.value)}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={handleTestSmtpEmail}
+                                    disabled={!testSmtpEmail || sendingSmtpTest}
+                                    className="bg-orange-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-orange-700 transition flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-md"
+                                >
+                                    {sendingSmtpTest ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>} Testar Envio
+                                </button>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                                Envia um e-mail de teste utilizando as credenciais SMTP configuradas acima através do servidor Node.js local.
+                            </p>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* PRODUCT MODAL */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-900 dark:text-white">{editingProductId ? 'Editar Produto' : 'Novo Produto'}</h3>
-                            <button onClick={() => setIsProductModalOpen(false)}><X className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"/></button>
-                        </div>
-                        <form onSubmit={handleSaveProduct} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Produto</label>
-                                <input required type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+                )}
+                
+                {/* --- INTEGRATIONS TAB --- */}
+                {activeTab === 'integrations' && (
+                    <div className="space-y-6">
+                        <SectionTitle title="Configuração de Banco de Dados" subtitle="Conecte ao seu projeto Supabase" />
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <form onSubmit={handleSaveSupabase} className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Preço</label>
-                                    <input required type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Project URL</label>
+                                    <input 
+                                        type="url" 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                                        value={supabaseForm.url}
+                                        onChange={e => setSupabaseForm({...supabaseForm, url: e.target.value})}
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Categoria</label>
-                                    <select className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.category || 'Service'} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
-                                        <option value="Service">Serviço</option>
-                                        <option value="Product">Produto Físico</option>
-                                        <option value="Subscription">Assinatura</option>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">API Key (Anon/Public)</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                                        value={supabaseForm.key}
+                                        onChange={e => setSupabaseForm({...supabaseForm, key: e.target.value})}
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {connectionStatus === 'testing' && <span className="text-yellow-600 text-sm flex items-center gap-1"><Loader2 className="animate-spin" size={14}/> Testando...</span>}
+                                        {connectionStatus === 'success' && <span className="text-green-600 text-sm flex items-center gap-1"><CheckCircle size={14}/> Conectado</span>}
+                                        {connectionStatus === 'error' && <span className="text-red-600 text-sm flex items-center gap-1"><AlertTriangle size={14}/> Falha</span>}
+                                        {statusMessage && <span className="text-xs text-slate-500 ml-2">({statusMessage})</span>}
+                                    </div>
+                                    <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition">Salvar e Conectar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
+                            <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                <Send size={18} className="text-purple-500"/> Teste de Disparo (API Cloud)
+                            </h4>
+                            <div className="flex gap-3 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">E-mail de Destino</label>
+                                    <input 
+                                        type="email" 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                                        placeholder="seu@email.com"
+                                        value={testApiEmail}
+                                        onChange={(e) => setTestApiEmail(e.target.value)}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={handleTestApiEmail}
+                                    disabled={!testApiEmail || sendingApiTest}
+                                    className="bg-purple-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-purple-700 transition flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-md"
+                                >
+                                    {sendingApiTest ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>} Testar Envio
+                                </button>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                                Testa o envio via Supabase Edge Function e API Resend.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- MODAL: NEW MEMBER --- */}
+                {isTeamModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                        <div className="bg-white dark:bg-slate-800 w-full max-w-md p-6 rounded-xl shadow-2xl animate-scale-in">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Adicionar Membro</h3>
+                            <form onSubmit={handleAddMember} className="space-y-4">
+                                <input required type="text" placeholder="Nome" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
+                                <input required type="email" placeholder="Email" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})} />
+                                <select className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value as Role})}>
+                                    {Object.entries(ROLE_NAMES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                </select>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" onClick={() => setIsTeamModalOpen(false)} className="px-4 py-2 border rounded text-slate-500">Cancelar</button>
+                                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Adicionar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+                
+                {/* --- MODAL: NEW PRODUCT --- */}
+                {isProductModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                         <div className="bg-white dark:bg-slate-800 w-full max-w-md p-6 rounded-xl shadow-2xl animate-scale-in">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">{editingProductId ? 'Editar' : 'Novo'} Produto</h3>
+                            <form onSubmit={handleSaveProduct} className="space-y-4">
+                                <input required type="text" placeholder="Nome do Produto" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
+                                <textarea placeholder="Descrição" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input required type="number" placeholder="Preço (R$)" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
+                                    <select className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={newProduct.category || 'Service'} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}><option value="Service">Serviço</option><option value="Product">Produto</option><option value="Subscription">Assinatura</option></select>
+                                </div>
+                                {/* Cost Center Selection */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Centro de Custo Vinculado</label>
+                                    <select 
+                                        className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none"
+                                        value={newProduct.costCenterId || ''}
+                                        onChange={e => setNewProduct({...newProduct, costCenterId: e.target.value})}
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {financialCategories.map(cat => (
+                                            <option key={cat.id} value={cat.id}>{cat.name} ({cat.code})</option>
+                                        ))}
                                     </select>
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Descrição</label>
-                                <textarea className="w-full border border-slate-300 dark:border-slate-600 rounded p-2 h-20 resize-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
-                            </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 shadow-md">Salvar Produto</button>
-                        </form>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" onClick={() => setIsProductModalOpen(false)} className="px-4 py-2 border rounded text-slate-500">Cancelar</button>
+                                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Salvar</button>
+                                </div>
+                            </form>
+                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* APPROVAL MODAL (The requested feature) */}
-            {isApprovalModalOpen && memberToApprove && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in overflow-hidden border border-slate-200 dark:border-slate-700">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <UserCheck size={20} className="text-green-600"/> Aprovar Membro
-                            </h3>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600 dark:text-slate-300">
-                                Selecione a função para <strong>{memberToApprove.name}</strong> ({memberToApprove.email}).
-                            </p>
-                            
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Função (Role)</label>
-                                <select 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-green-500 transition" 
-                                    value={approvalRole} 
-                                    onChange={(e) => setApprovalRole(e.target.value as Role)}
-                                >
-                                    {Object.entries(ROLE_NAMES).filter(([k]) => k !== 'client').map(([key, label]) => (
-                                        <option key={key} value={key}>{label}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="flex gap-3 pt-2">
-                                <button 
-                                    onClick={() => { setIsApprovalModalOpen(false); setMemberToApprove(null); }}
-                                    className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    onClick={handleConfirmApproval}
-                                    className="flex-1 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md transition"
-                                >
-                                    Confirmar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )}
+            </main>
         </div>
     );
 };

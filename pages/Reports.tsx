@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, ComposedChart, Area, AreaChart, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, ComposedChart, Area, AreaChart, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LabelList } from 'recharts';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { LeadStatus, Lead, TicketStatus, TicketPriority } from '../types';
@@ -9,7 +9,7 @@ import {
     BarChart2, TrendingUp, BrainCircuit, Target, PieChart as PieIcon, 
     Activity, Users, AlertCircle, DollarSign, Calendar, CheckCircle, 
     Briefcase, Search, Filter, Phone, Mail, MessageSquare, Clock, Settings, Sparkles, Send, CalendarDays,
-    LayoutTemplate, Plus, GripVertical, Trash2, FileDown, FileSpreadsheet, Download, X
+    LayoutTemplate, Plus, GripVertical, Trash2, FileDown, FileSpreadsheet, Download, X, Megaphone
 } from 'lucide-react';
 import { analyzeBusinessData } from '../services/geminiService';
 import * as XLSX from 'xlsx';
@@ -128,6 +128,17 @@ export const Reports: React.FC = () => {
     const totalNewClients = clients.filter(c => filterByDate(c.since)).length;
     const cac = totalNewClients > 0 ? totalSpend / totalNewClients : 0;
 
+    // Campaigns ROI - Assuming campaigns have data, filtering by date if startDate falls in range
+    const filteredCampaigns = campaigns.filter(c => filterByDate(c.startDate));
+    const campaignRoiData = useMemo(() => {
+        return filteredCampaigns.map(c => {
+             const revenue = c.salesGenerated * 1000; // Mock revenue per sale
+             const roi = c.spend > 0 ? ((revenue - c.spend) / c.spend) * 100 : 0;
+             return { name: c.name, ROI: Math.round(roi) };
+        });
+    }, [filteredCampaigns]);
+
+
     // ==========================================
     // 3. ATIVIDADES E SUPORTE (ACTIVITY DATA)
     // ==========================================
@@ -138,13 +149,22 @@ export const Reports: React.FC = () => {
     const activityData = useMemo(() => {
         const counts = { Call: 0, Meeting: 0, Email: 0, Task: 0 };
         filteredActivities.forEach(a => {
-            if (counts[a.type] !== undefined) counts[a.type]++;
+            if (counts[a.type] !== undefined) counts[a.type as keyof typeof counts]++;
         });
         return [
             { name: 'Ligações', value: counts.Call, fill: '#3b82f6', icon: Phone },
             { name: 'Reuniões', value: counts.Meeting, fill: '#8b5cf6', icon: Users },
             { name: 'E-mails', value: counts.Email, fill: '#f59e0b', icon: Mail },
             { name: 'Tarefas', value: counts.Task, fill: '#10b981', icon: CheckCircle },
+        ];
+    }, [filteredActivities]);
+
+    const activityCompletionData = useMemo(() => {
+        const completed = filteredActivities.filter(a => a.completed).length;
+        const pending = filteredActivities.length - completed;
+        return [
+            { name: 'Concluídas', value: completed, fill: '#10b981' },
+            { name: 'Pendentes', value: pending, fill: '#f59e0b' }
         ];
     }, [filteredActivities]);
 
@@ -244,18 +264,43 @@ export const Reports: React.FC = () => {
         setIsAnalyzing(true);
 
         try {
+            // CÁLCULOS BASEADOS NO FILTRO DE TEMPO ATUAL (filteredLeads, filteredInvoices, etc.)
+            
+            // 1. Financeiro do Período
+            const periodInvoices = invoices.filter(i => filterByDate(i.dueDate));
+            const periodRevenue = periodInvoices 
+                .filter(i => i.status === 'Pago')
+                .reduce((acc, curr) => acc + curr.amount, 0);
+
+            // 2. Vendas do Período
+            const periodWonLeads = filteredLeads.filter(l => l.status === LeadStatus.CLOSED_WON);
+            const periodSalesVolume = periodWonLeads.length;
+            const periodSalesValue = periodWonLeads.reduce((acc, l) => acc + l.value, 0);
+            const periodTicketAvg = periodSalesVolume > 0 ? periodSalesValue / periodSalesVolume : 0;
+            const periodNewLeads = filteredLeads.length; // Total criado no período
+            
+            // 3. Taxa de Conversão do Período (Ganho / Total Criado)
+            const periodConversionRate = periodNewLeads > 0 ? ((periodSalesVolume / periodNewLeads) * 100).toFixed(1) + '%' : '0%';
+
             const contextData = {
-                metrics: {
-                    totalLeads, winRate, totalWonValue, currentMRR,
-                    activeClients: clients.filter(c => c.status === 'Active').length,
-                    churnRisk: clients.filter(c => c.status === 'Churn Risk').length,
-                    openTickets: ticketStats.open + ticketStats.progress,
-                    criticalTickets: ticketStats.critical
+                periodo_selecionado: timeRange === 'year' ? 'Último Ano' : `Últimos ${timeRange.replace('d', '')} dias`,
+                metricas_financeiras: {
+                    receita_realizada: `R$ ${periodRevenue.toLocaleString()}`,
+                    mrr_total_atual: `R$ ${currentMRR.toLocaleString()}` // MRR é snapshot atual
                 },
-                topSegments: profitabilityData.slice(0, 3),
-                topChannels: leadSourceData.slice(0, 3),
-                recentActivities: activities.length,
-                pipeline: funnelData.map(f => ({ stage: f.name, count: f.value }))
+                metricas_vendas: {
+                    leads_gerados: periodNewLeads,
+                    vendas_fechadas: periodSalesVolume,
+                    valor_vendas: `R$ ${periodSalesValue.toLocaleString()}`,
+                    ticket_medio: `R$ ${periodTicketAvg.toLocaleString()}`,
+                    taxa_conversao: periodConversionRate
+                },
+                metricas_suporte: {
+                    tickets_abertos_periodo: filteredTickets.length,
+                    criticos: ticketStats.critical
+                },
+                top_segmentos: profitabilityData.slice(0, 3).map(s => `${s.name}: R$ ${s.value.toLocaleString()}`),
+                top_canais: leadSourceData.slice(0, 3).map(s => `${s.name}: ${s.value} leads`)
             };
 
             const response = await analyzeBusinessData(contextData, userMsg);
@@ -664,15 +709,20 @@ export const Reports: React.FC = () => {
                                 <SectionTitle title="Relatório de Pipeline" subtitle="Funil de oportunidades em cada estágio" />
                                 <div className="h-64 mt-4">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={funnelData} layout="vertical" margin={{left: 20}}>
-                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9"/>
+                                        <BarChart 
+                                            data={funnelData} 
+                                            layout="vertical" 
+                                            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0"/>
                                             <XAxis type="number" hide />
                                             <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12, fill: '#94a3b8'}} />
-                                            <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} />
-                                            <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={30}>
+                                            <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} formatter={(value: number) => [value, 'Leads']} />
+                                            <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
                                                 {funnelData.map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.fill} />
                                                 ))}
+                                                <LabelList dataKey="value" position="right" fill="#64748b" fontSize={12} fontWeight="bold" />
                                             </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
@@ -704,7 +754,117 @@ export const Reports: React.FC = () => {
                     </div>
                 )}
 
-                {/* ... (Other Tabs Marketing, Activities, Financial - maintained but filtering applied) ... */}
+                {/* === ABA MARKETING === */}
+                {activeTab === 'marketing' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <KPICard title="Total Gasto" value={`R$ ${totalSpend.toLocaleString()}`} icon={DollarSign} color="bg-red-500" trend="Investimento" trendUp={true}/>
+                            <KPICard title="CAC" value={`R$ ${cac.toFixed(0)}`} icon={Users} color="bg-orange-500" trend="Custo/Aquisição" trendUp={false}/>
+                            <KPICard title="Leads Gerados" value={totalLeads.toString()} icon={Target} color="bg-blue-500" trend="Volume" trendUp={true}/>
+                            <KPICard title="Campanhas Ativas" value={campaigns.filter(c => c.status === 'Active').length.toString()} icon={Megaphone} color="bg-purple-500" trend="Em andamento" trendUp={true}/>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Lead Source */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[350px]">
+                                <SectionTitle title="Origem dos Leads" subtitle="Canais de aquisição" />
+                                <div className="h-64 mt-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={leadSourceData}
+                                                cx="50%" cy="50%"
+                                                innerRadius={60} outerRadius={80}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                            >
+                                                {leadSourceData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} />
+                                            <Legend verticalAlign="bottom" height={36}/>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Campaign ROI */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[350px]">
+                                <SectionTitle title="ROI por Campanha" subtitle="Retorno sobre investimento (%)" />
+                                <div className="h-64 mt-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={campaignRoiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/>
+                                            <XAxis dataKey="name" tick={{fontSize: 10, fill: '#94a3b8'}} />
+                                            <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} />
+                                            <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} />
+                                            <Bar dataKey="ROI" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={40}>
+                                                {campaignRoiData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.ROI >= 0 ? '#10b981' : '#ef4444'} />
+                                                ))}
+                                                <LabelList dataKey="ROI" position="top" fill="#64748b" fontSize={10} formatter={(val: number) => `${val}%`} />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* === ABA ATIVIDADES === */}
+                {activeTab === 'activities' && (
+                    <div className="space-y-6 animate-fade-in">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Tipos de Atividade */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[350px]">
+                                <SectionTitle title="Distribuição de Atividades" subtitle="Volume por tipo de interação" />
+                                <div className="h-64 mt-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={activityData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/>
+                                            <XAxis dataKey="name" tick={{fontSize: 12, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{fontSize: 12, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                                            <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} />
+                                            <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50}>
+                                                {activityData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Status de Conclusão */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[350px]">
+                                <SectionTitle title="Status de Execução" subtitle="Concluídas vs Pendentes" />
+                                <div className="h-64 mt-4 flex items-center justify-center">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={activityCompletionData}
+                                                cx="50%" cy="50%"
+                                                innerRadius={60} outerRadius={80}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                            >
+                                                {activityCompletionData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} />
+                                            <Legend verticalAlign="bottom" height={36}/>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* === ABA FINANCEIRO === */}
                 {activeTab === 'financial' && (
                     <div className="space-y-6 animate-fade-in">
                         {/* Relatório de Metas */}

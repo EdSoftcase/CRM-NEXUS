@@ -6,40 +6,26 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { Server } = require('socket.io');
+const cors = require('cors'); 
 
 const app = express();
 const server = http.createServer(app);
 
 const PORT = 3001;
 
-// --- MIDDLEWARE DE SEGURANÇA (CORS REFLETIVO - PROOF OF BULLET) ---
-// Para satisfazer o Chrome/Edge em redes locais (PNA), precisamos de:
-// 1. O header 'Access-Control-Allow-Private-Network'.
-// 2. CORS permissivo.
+// --- CONFIGURAÇÃO DE SEGURANÇA (CORS ROBUSTO) ---
+// Substitui middleware manual para evitar problemas de preflight
+app.use(cors({
+    origin: '*', // Permite todas as origens (Front na porta 3000, 5173, etc)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Access-Control-Allow-Private-Network'],
+    credentials: false // Simplifica conexão local
+}));
+
+// Header adicional para Chrome (Private Network Access)
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-
-    // Estratégia Híbrida:
-    // Se tem origem definida, reflete ela para permitir credenciais se necessário.
-    // Se não tem (ex: Postman ou Proxy server-side), libera geral (*).
-    if (origin) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Private-Network', 'true'); // Essencial para Chrome PNA
-
-    // Responder imediatamente ao Preflight
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    
-    console.log(`[IN] ${req.method} ${req.url} | Origin: ${origin || 'Unknown/Proxy'}`);
-    
+    res.header("Access-Control-Allow-Private-Network", "true");
+    console.log(`[REQUEST] ${req.method} ${req.url} - IP: ${req.ip}`);
     next();
 });
 
@@ -47,8 +33,7 @@ app.use(express.json());
 
 const io = new Server(server, {
   cors: { 
-    origin: true,
-    credentials: true,
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -71,21 +56,24 @@ let smtpConfig = {
 if (fs.existsSync(CONFIG_FILE)) {
     try {
         smtpConfig = JSON.parse(fs.readFileSync(CONFIG_FILE));
-    } catch (err) {}
+        console.log(`📧 SMTP Config Loaded: ${smtpConfig.auth.user}`);
+    } catch (err) {
+        console.error('Erro config SMTP:', err);
+    }
 }
 
 const saveSmtpConfig = () => {
     try {
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(smtpConfig, null, 2));
     } catch (err) {
-        console.error('Erro ao salvar config:', err);
+        console.error('Erro salvar config:', err);
     }
 };
 
 // --- WHATSAPP ---
 const initializeWhatsApp = () => {
     try {
-        console.log('Iniciando cliente WhatsApp...');
+        console.log('Iniciando WhatsApp...');
         whatsappClient = new Client({
             authStrategy: new LocalAuth(),
             puppeteer: {
@@ -95,7 +83,7 @@ const initializeWhatsApp = () => {
         });
 
         whatsappClient.on('qr', (qr) => {
-            console.log('👉 QR Code Gerado!');
+            console.log('👉 QR Code Novo Gerado!');
             qrCodeData = qr;
             whatsappStatus = 'QR_READY';
             io.emit('wa_status', { status: whatsappStatus, qr: qrCodeData });
@@ -123,7 +111,7 @@ const initializeWhatsApp = () => {
 
         whatsappClient.initialize();
     } catch (e) {
-        console.error("Erro fatal init WA:", e);
+        console.error("Erro fatal WA:", e);
     }
 };
 
@@ -131,11 +119,17 @@ initializeWhatsApp();
 
 // --- ROTAS ---
 
+// Rota de Diagnóstico (Importante para testes simples)
+app.get('/', (req, res) => {
+    res.json({ status: 'Online', service: 'Nexus Bridge Server' });
+});
+
 app.get('/status', (req, res) => {
     res.json({ 
         whatsapp: whatsappStatus,
         smtp: smtpConfig.auth.user ? 'CONFIGURED' : 'MISSING_CREDENTIALS',
-        server: 'ONLINE'
+        server: 'ONLINE',
+        mode: 'HYBRID_MODE'
     });
 });
 
@@ -146,19 +140,21 @@ app.get('/qr', async (req, res) => {
             const imgUrl = await qrcodeLib.toDataURL(qrCodeData);
             res.json({ qrImage: imgUrl });
         } catch (err) {
-            res.status(500).json({ error: 'Erro ao gerar imagem do QR' });
+            res.status(500).json({ error: 'Erro geração QR' });
         }
     } else {
         if(whatsappStatus === 'READY') {
-             res.json({ status: 'CONNECTED', message: 'WhatsApp já conectado' });
+             res.json({ status: 'CONNECTED', message: 'WhatsApp conectado' });
         } else {
-             res.status(404).json({ error: 'QR Code ainda não gerado. Aguarde...' });
+             // Retorna 200 com status vazio para evitar erro no front
+             res.json({ status: 'WAITING', message: 'Aguardando QR Code...' });
         }
     }
 });
 
 app.post('/config/smtp', (req, res) => {
     const { host, port, user, pass } = req.body;
+    console.log(`[CONFIG] Atualizando SMTP: ${user}`);
     smtpConfig = { host, port, secure: port === 465, auth: { user, pass } };
     saveSmtpConfig();
     res.json({ success: true });
@@ -168,7 +164,7 @@ app.post('/send-whatsapp', async (req, res) => {
     if (whatsappStatus !== 'READY') return res.status(400).json({ error: 'WhatsApp Offline' });
     const { number, message } = req.body;
     
-    if(!number || !message) return res.status(400).json({ error: 'Número e mensagem obrigatórios' });
+    if(!number || !message) return res.status(400).json({ error: 'Dados incompletos' });
 
     let cleanNumber = number.replace(/\D/g, '');
     if (cleanNumber.length <= 11 && !cleanNumber.startsWith('55')) cleanNumber = '55' + cleanNumber;
@@ -177,7 +173,7 @@ app.post('/send-whatsapp', async (req, res) => {
     
     try {
         await whatsappClient.sendMessage(chatId, message);
-        console.log(`Msg enviada para ${cleanNumber}`);
+        console.log(`Msg WA -> ${cleanNumber}`);
         res.json({ success: true });
     } catch (error) {
         console.error("Erro envio WA:", error);
@@ -187,59 +183,49 @@ app.post('/send-whatsapp', async (req, res) => {
 
 app.post('/send-email', async (req, res) => {
     const { to, subject, html, fromName } = req.body;
-    if (!smtpConfig.auth.user) return res.status(400).json({ error: 'SMTP Offline / Não configurado' });
+    console.log(`[SMTP] Enviando para: ${to}`);
+
+    if (!smtpConfig.auth.user || !smtpConfig.auth.pass) {
+        return res.status(400).json({ error: 'SMTP não configurado no servidor.' });
+    }
 
     const transporter = nodemailer.createTransport(smtpConfig);
+    
     try {
+        await transporter.verify();
         await transporter.sendMail({
-            from: `"${fromName || 'Nexus'}" <${smtpConfig.auth.user}>`,
+            from: `"${fromName || 'Nexus CRM'}" <${smtpConfig.auth.user}>`,
             to, subject, html
         });
-        console.log(`Email enviada para ${to}`);
+        
+        console.log(`[SMTP] ✅ Sucesso para ${to}`);
         res.json({ success: true });
     } catch (error) {
-        console.error("Erro envio Email:", error);
+        console.error("[SMTP] ❌ Erro:", error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// --- TRATAMENTO DE ERROS DE SERVIDOR ---
+// Fallback para rotas não encontradas
+app.use((req, res) => {
+    res.status(404).json({ error: 'Rota não encontrada no Bridge Server' });
+});
+
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
-    console.error('\x1b[31m%s\x1b[0m', `
-    =========================================================
-    ❌ ERRO CRÍTICO: A PORTA ${PORT} JÁ ESTÁ SENDO USADA!
-    =========================================================
-    Parece que você já tem uma instância do servidor rodando.
-    
-    SOLUÇÃO:
-    1. Feche outros terminais abertos.
-    2. Se persistir, abra o Gerenciador de Tarefas e feche "Node.js".
-    3. Tente rodar 'npm start' novamente.
-    `);
+    console.error(`❌ Porta ${PORT} ocupada! O servidor já está rodando ou outro processo está usando a porta.`);
+    console.error(`   Tente 'killall node' ou feche outros terminais.`);
     process.exit(1);
-  } else {
-    console.error('Erro no servidor:', e);
   }
 });
 
-// Graceful Shutdown
-process.on('SIGINT', () => {
-    console.log('Encerrando servidor...');
-    server.close(() => {
-        console.log('Porta liberada.');
-        process.exit(0);
-    });
-});
-
-// ESCUTAR EM TODAS AS INTERFACES
 server.listen(PORT, '0.0.0.0', () => {
-    console.clear();
-    console.log('\x1b[32m%s\x1b[0m', `
-    =====================================================
-       ✅ NEXUS BRIDGE ONLINE (MODO HÍBRIDO)
-    =====================================================
-    `);
-    console.log(`📡 Backend pronto: http://127.0.0.1:${PORT}`);
-    console.log(`🛡️  Segurança PNA: Ativada.`);
+    console.log(`
+===============================================
+   ✅ NEXUS BRIDGE ONLINE (V3.2 STABLE)
+===============================================
+   📡 URL: http://127.0.0.1:${PORT}
+   🛡️  CORS: Habilitado (Todas as origens)
+===============================================
+`);
 });

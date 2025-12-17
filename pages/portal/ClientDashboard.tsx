@@ -1,7 +1,8 @@
+
 import React, { useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { DollarSign, FileText, LifeBuoy, AlertCircle, CheckCircle, Wallet } from 'lucide-react';
+import { DollarSign, FileText, LifeBuoy, AlertCircle, CheckCircle, Wallet, ArrowRight, Clock } from 'lucide-react';
 import { InvoiceStatus, TicketStatus } from '../../types';
 
 interface ClientDashboardProps {
@@ -50,14 +51,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
 
   // Métricas
   const pendingInvoices = myInvoices.filter(i => i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.SENT || i.status === InvoiceStatus.OVERDUE);
+  const totalPendingAmount = pendingInvoices.reduce((acc, curr) => acc + curr.amount, 0);
+  
   const pendingProposals = myProposals.filter(p => p.status === 'Sent');
   const openTickets = myTickets.filter(t => t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED);
   
-  // Total Contratado (Aprovado)
-  const totalContractedMonthly = myProposals
-      .filter(p => p.status === 'Accepted')
-      .reduce((acc, curr) => acc + (curr.monthlyCost || 0), 0);
-
   const primaryColor = portalSettings.primaryColor || '#4f46e5';
 
   if (!currentClient) {
@@ -70,127 +68,134 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
   }
 
   return (
-    <div className="space-y-8">
-      {/* Welcome Section with Dynamic Gradient */}
+    <div className="space-y-8 animate-fade-in">
+      {/* Welcome Section */}
       <div 
-        className="rounded-2xl p-8 text-white shadow-xl relative overflow-hidden transition-colors duration-300"
-        style={{ background: `linear-gradient(to right, ${primaryColor}, #1e293b)` }}
+        className="rounded-2xl p-8 text-white shadow-xl relative overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${primaryColor}, #1e293b)` }}
       >
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-        <div className="relative z-10">
-            <h1 className="text-3xl font-bold mb-2">Olá, {currentUser?.name?.split(' ')[0]}!</h1>
-            <p className="text-white/90 max-w-xl text-lg leading-relaxed">
-                {portalSettings.welcomeMessage || `Bem-vindo ao portal da ${currentClient.name}. Acompanhe seus projetos e solicitações em tempo real.`}
-            </p>
-        </div>
+          <div className="relative z-10">
+              <h1 className="text-3xl font-bold mb-2">Olá, {currentClient.contactPerson.split(' ')[0]}!</h1>
+              <p className="text-blue-100 max-w-xl">
+                  Bem-vindo ao portal da <strong>{currentClient.name}</strong>. Aqui você pode acompanhar seus serviços, faturas e solicitações em tempo real.
+              </p>
+          </div>
+          <div className="absolute right-0 top-0 h-full w-1/3 bg-white/10 skew-x-12 transform translate-x-10"></div>
       </div>
 
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {portalSettings.allowInvoiceDownload && (
-              <div onClick={() => onNavigate('portal-financial')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
-                  <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition">
-                          <DollarSign size={24} />
-                      </div>
-                      <span className="text-xs font-bold text-slate-400 uppercase">Financeiro</span>
-                  </div>
-                  <h3 className="text-2xl font-bold text-slate-900 mb-1">{pendingInvoices.length} Pendentes</h3>
-                  <p className="text-sm text-slate-500">Faturas em aberto.</p>
-              </div>
-          )}
-
-          <div onClick={() => onNavigate('portal-proposals')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
-              <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition">
-                      <FileText size={24} />
-                  </div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Propostas</span>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">{pendingProposals.length} Aguardando</h3>
-              <p className="text-sm text-slate-500">Propostas para sua aprovação.</p>
-          </div>
-
-          {portalSettings.allowTicketCreation && (
-              <div onClick={() => onNavigate('portal-tickets')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
-                  <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition">
-                          <LifeBuoy size={24} />
-                      </div>
-                      <span className="text-xs font-bold text-slate-400 uppercase">Suporte</span>
-                  </div>
-                  <h3 className="text-2xl font-bold text-slate-900 mb-1">{openTickets.length} Abertos</h3>
-                  <p className="text-sm text-slate-500">Chamados em andamento.</p>
-              </div>
-          )}
-          
-          {/* NEW: Total Contracted Value */}
-          <div onClick={() => onNavigate('portal-financial')} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group">
-              <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-amber-50 text-amber-600 rounded-lg group-hover:bg-amber-600 group-hover:text-white transition">
+      {/* Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Financeiro */}
+          <div 
+            onClick={() => portalSettings.allowInvoiceDownload && onNavigate('portal-financial')}
+            className={`bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden ${!portalSettings.allowInvoiceDownload ? 'opacity-50 pointer-events-none' : ''}`}
+          >
+              <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-lg bg-emerald-50 text-emerald-600`}>
                       <Wallet size={24} />
                   </div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Total Contratado</span>
+                  {pendingInvoices.length > 0 && <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">{pendingInvoices.length} pendentes</span>}
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-1 truncate">R$ {totalContractedMonthly.toLocaleString()}</h3>
-              <p className="text-sm text-slate-500">Valor mensal recorrente.</p>
+              <h3 className="text-slate-500 text-sm font-medium uppercase mb-1">Faturas em Aberto</h3>
+              <p className="text-2xl font-bold text-slate-800">R$ {totalPendingAmount.toLocaleString()}</p>
+              <div className="mt-4 flex items-center text-sm text-emerald-600 font-medium group-hover:underline">
+                  Ver detalhes <ArrowRight size={16} className="ml-1"/>
+              </div>
+          </div>
+
+          {/* Propostas */}
+          <div 
+            onClick={() => onNavigate('portal-proposals')}
+            className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group"
+          >
+              <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-lg bg-blue-50 text-blue-600`}>
+                      <FileText size={24} />
+                  </div>
+                  {pendingProposals.length > 0 && <span className="bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded-full">{pendingProposals.length} novas</span>}
+              </div>
+              <h3 className="text-slate-500 text-sm font-medium uppercase mb-1">Propostas Pendentes</h3>
+              <p className="text-2xl font-bold text-slate-800">{pendingProposals.length}</p>
+              <div className="mt-4 flex items-center text-sm text-blue-600 font-medium group-hover:underline">
+                  Analisar propostas <ArrowRight size={16} className="ml-1"/>
+              </div>
+          </div>
+
+          {/* Suporte */}
+          <div 
+            onClick={() => portalSettings.allowTicketCreation && onNavigate('portal-tickets')}
+            className={`bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer group ${!portalSettings.allowTicketCreation ? 'opacity-50 pointer-events-none' : ''}`}
+          >
+              <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-lg bg-amber-50 text-amber-600`}>
+                      <LifeBuoy size={24} />
+                  </div>
+                  {openTickets.length > 0 && <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-1 rounded-full">{openTickets.length} em andamento</span>}
+              </div>
+              <h3 className="text-slate-500 text-sm font-medium uppercase mb-1">Chamados Abertos</h3>
+              <p className="text-2xl font-bold text-slate-800">{openTickets.length}</p>
+              <div className="mt-4 flex items-center text-sm text-amber-600 font-medium group-hover:underline">
+                  Acompanhar suporte <ArrowRight size={16} className="ml-1"/>
+              </div>
           </div>
       </div>
 
-      {/* Urgent Actions Row */}
+      {/* Recent Activity Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Faturas Vencidas */}
-          {portalSettings.allowInvoiceDownload && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 bg-red-50 flex items-center justify-between">
-                      <h3 className="font-bold text-red-900 flex items-center gap-2"><AlertCircle size={18}/> Atenção Necessária</h3>
-                  </div>
-                  <div className="p-0 flex-1">
-                      {pendingInvoices.filter(i => i.status === InvoiceStatus.OVERDUE).length > 0 ? (
-                          pendingInvoices.filter(i => i.status === InvoiceStatus.OVERDUE).map(inv => (
-                              <div key={inv.id} className="p-4 border-b border-slate-100 flex justify-between items-center last:border-0 hover:bg-red-50/30 transition">
-                                  <div>
-                                      <p className="font-bold text-slate-800">{inv.description}</p>
-                                      <p className="text-xs text-red-600 font-bold">Venceu: {new Date(inv.dueDate).toLocaleDateString()}</p>
-                                  </div>
-                                  <span className="font-bold text-slate-900">R$ {inv.amount.toLocaleString()}</span>
-                              </div>
-                          ))
-                      ) : (
-                          <div className="p-8 text-center text-slate-400">
-                              <CheckCircle size={32} className="mx-auto mb-2 text-green-500 opacity-50"/>
-                              <p className="text-sm">Nenhuma pendência crítica.</p>
-                          </div>
-                      )}
-                  </div>
+          {/* Recent Invoices */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800">Faturas Recentes</h3>
               </div>
-          )}
-
-          {/* Últimas Propostas */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-slate-100 bg-slate-50">
-                  <h3 className="font-bold text-slate-800">Propostas Recentes</h3>
-              </div>
-              <div className="p-0 flex-1">
-                  {myProposals.slice(0, 3).map(prop => (
-                      <div key={prop.id} className="p-4 border-b border-slate-100 flex justify-between items-center last:border-0 hover:bg-slate-50 transition">
+              <div className="divide-y divide-slate-100">
+                  {myInvoices.slice(0, 3).map(inv => (
+                      <div key={inv.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition">
                           <div>
-                              <p className="font-bold text-slate-800">{prop.title}</p>
-                              <p className="text-xs text-slate-500">Validade: {new Date(prop.validUntil).toLocaleDateString()}</p>
+                              <p className="font-medium text-slate-800 text-sm">{inv.description}</p>
+                              <p className="text-xs text-slate-500">{new Date(inv.dueDate).toLocaleDateString()}</p>
                           </div>
                           <div className="text-right">
-                              <span className={`text-xs font-bold px-2 py-1 rounded ${prop.status === 'Sent' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                  {prop.status === 'Sent' ? 'Aguardando' : 'Aprovada'}
+                              <p className="font-bold text-slate-800 text-sm">R$ {inv.amount.toLocaleString()}</p>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                  inv.status === 'Pago' ? 'bg-green-100 text-green-700' : 
+                                  inv.status === 'Atrasado' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                  {inv.status}
                               </span>
                           </div>
                       </div>
                   ))}
-                  {myProposals.length === 0 && (
-                      <div className="p-8 text-center text-slate-400 text-sm">Sem propostas recentes.</div>
-                  )}
+                  {myInvoices.length === 0 && <p className="p-6 text-center text-slate-400 text-sm">Nenhuma fatura encontrada.</p>}
+              </div>
+          </div>
+
+          {/* Recent Tickets */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800">Últimos Chamados</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                  {myTickets.slice(0, 3).map(ticket => (
+                      <div key={ticket.id} className="p-4 hover:bg-slate-50 transition">
+                          <div className="flex justify-between items-start mb-1">
+                              <p className="font-medium text-slate-800 text-sm line-clamp-1">{ticket.subject}</p>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                  ticket.status === 'Resolvido' ? 'bg-green-100 text-green-700' : 
+                                  ticket.status === 'Fechado' ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                  {ticket.status}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs text-slate-500">
+                              <span>#{ticket.id}</span>
+                              <span className="flex items-center gap-1"><Clock size={10}/> {new Date(ticket.created_at).toLocaleDateString()}</span>
+                          </div>
+                      </div>
+                  ))}
+                  {myTickets.length === 0 && <p className="p-6 text-center text-slate-400 text-sm">Nenhum chamado recente.</p>}
               </div>
           </div>
       </div>
     </div>
   );
-};
+}

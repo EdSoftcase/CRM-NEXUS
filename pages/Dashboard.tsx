@@ -38,8 +38,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   // Permission Check for Financials
   const canSeeFinancials = hasPermission('finance', 'view');
 
-  const maskValue = (value: string | number, type: 'currency' | 'number' | 'percent' = 'number') => {
+  const maskValue = (value: string | number | null | undefined, type: 'currency' | 'number' | 'percent' = 'number') => {
       if (!privacyMode) {
+          // CORRECTION: Handle null/undefined values safely
+          if (value === null || value === undefined) return '0';
+          
           if (type === 'currency' && typeof value === 'number') return `R$ ${value.toLocaleString()}`;
           return value.toString();
       }

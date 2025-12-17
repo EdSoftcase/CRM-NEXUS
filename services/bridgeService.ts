@@ -1,57 +1,69 @@
 
 // Serviço de Ponte com Backend Local
-// Usa Fallback: Proxy -> Direto
+// Estratégia: Prioridade Proxy (evita CORS/HTTPS mixto) -> Fallback Direto
 
 const PROXY_URL = '/api-bridge';
 const DIRECT_URL = 'http://127.0.0.1:3001';
 
-// Função auxiliar para fetch com tratamento de erro
+// Função auxiliar para fetch com tratamento de erro e TIMEOUT
 const fetchBridge = async (endpoint: string, options: RequestInit = {}) => {
-    // Configurações base
+    const controller = new AbortController();
+    // Timeout curto para não travar a interface se o servidor não responder
+    const timeoutId = setTimeout(() => controller.abort(), 3000); 
+
     const defaultOptions: RequestInit = {
         ...options,
-        mode: 'cors',
-        // credentials: 'omit', // Removido para testar permissividade total
-        cache: 'no-store',
+        signal: controller.signal,
         headers: {
             'Content-Type': 'application/json',
             ...(options.headers || {})
         }
     };
 
-    // 1. Tentativa via Proxy (Vite - Localhost)
-    // Tenta usar o proxy configurado no vite.config.ts para contornar CORS
+    // 1. TENTATIVA VIA PROXY (Preferencial para evitar erros de CORS no navegador)
     try {
-        // Usar 'same-origin' ajuda se o proxy estiver funcionando corretamente
-        const resProxy = await fetch(`${PROXY_URL}${endpoint}`, { ...defaultOptions, mode: 'same-origin' });
-        if (resProxy.ok) return await resProxy.json();
-    } catch (e) {
-        // Silencioso: Proxy falhou, tentar direto
+        const resProxy = await fetch(`${PROXY_URL}${endpoint}`, defaultOptions);
+        clearTimeout(timeoutId);
+
+        if (resProxy.ok) {
+            return await resProxy.json();
+        }
+    } catch (proxyError: any) {
+        // Falha silenciosa no proxy, tenta a conexão direta
+        clearTimeout(timeoutId); 
     }
 
-    // 2. Tentativa Direta (Fallback)
-    // Se o proxy falhar (ex: em produção build ou erro de config), tenta bater direto no IP
-    // Nota: Isso geralmente requer que o backend aceite CORS/PNA
+    // 2. TENTATIVA DIRETA (Fallback Local - caso o proxy do Vite não esteja ativo)
     try {
-        const resDirect = await fetch(`${DIRECT_URL}${endpoint}`, defaultOptions);
-        if (!resDirect.ok) {
-            // Se respondeu mas com erro (ex: 500), lança
-            throw new Error(`Erro HTTP: ${resDirect.status}`);
+        const controllerDirect = new AbortController();
+        const timeoutDirect = setTimeout(() => controllerDirect.abort(), 2000); // 2s timeout
+        
+        const resDirect = await fetch(`${DIRECT_URL}${endpoint}`, {
+            ...options,
+            signal: controllerDirect.signal,
+            mode: 'cors' 
+        });
+        
+        clearTimeout(timeoutDirect);
+
+        if (resDirect.ok) {
+            return await resDirect.json();
         }
-        return await resDirect.json();
-    } catch (e: any) {
-        console.warn("Falha na conexão Bridge:", e.message);
-        // Retorna um erro formatado para a UI não quebrar totalmente
+    } catch (directError: any) {
+        // Se ambos falharem, lançamos um erro genérico tratado
+        // Isso evita o spam de "Critical Failure" no console do navegador
         throw new Error("Bridge desconectado");
     }
+
+    throw new Error("Bridge desconectado");
 };
 
 export const checkBridgeStatus = async () => {
-    // Adiciona timestamp para evitar cache agressivo do navegador em caso de erro anterior
     try {
+        // Timestamp evita cache do navegador
         return await fetchBridge(`/status?t=${Date.now()}`);
     } catch (error) {
-        // Retorna status offline padrão se falhar
+        // Retorna status offline graciosamente para a UI
         return { whatsapp: 'OFFLINE', smtp: 'OFFLINE', server: 'OFFLINE' };
     }
 };

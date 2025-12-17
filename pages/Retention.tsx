@@ -129,7 +129,7 @@ export const Retention: React.FC = () => {
                                                 <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                                                     <span className="truncate">{client.contactPerson}</span>
                                                     <span className="hidden sm:inline text-slate-300 dark:text-slate-600">•</span>
-                                                    <span className="font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">LTV: R$ {client.ltv.toLocaleString()}</span>
+                                                    <span className="font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">LTV: R$ {(client.ltv || 0).toLocaleString()}</span>
                                                 </div>
                                             </div>
                                         </div>

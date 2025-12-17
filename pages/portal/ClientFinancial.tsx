@@ -35,9 +35,9 @@ export const ClientFinancial: React.FC = () => {
       const overdue = myInvoices.filter(i => i.status === InvoiceStatus.OVERDUE);
       
       return {
-          openAmount: open.reduce((acc, curr) => acc + curr.amount, 0),
+          openAmount: open.reduce((acc, curr) => acc + (curr.amount || 0), 0),
           openCount: open.length,
-          overdueAmount: overdue.reduce((acc, curr) => acc + curr.amount, 0),
+          overdueAmount: overdue.reduce((acc, curr) => acc + (curr.amount || 0), 0),
           overdueCount: overdue.length
       };
   }, [myInvoices]);
@@ -179,7 +179,7 @@ export const ClientFinancial: React.FC = () => {
                                         {new Date(inv.dueDate).toLocaleDateString()}
                                     </td>
                                     <td className="p-4 font-bold text-slate-700">
-                                        R$ {inv.amount.toLocaleString()}
+                                        R$ {(inv.amount || 0).toLocaleString()}
                                     </td>
                                     <td className="p-4 text-center">
                                         <Badge color={

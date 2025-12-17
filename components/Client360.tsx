@@ -2,9 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Invoice, Lead, Ticket, InvoiceStatus, ClientDocument, Activity } from '../types';
 import { Badge } from './Widgets';
-import { Phone, Mail, Clock, DollarSign, MessageSquare, Briefcase, FileText, TrendingUp, HeartPulse, Activity as ActivityIcon, Upload, Paperclip, Download, Trash2, Calendar, Plus, Save, History, CalendarCheck, Globe, Key, Copy, CheckCircle, ChevronDown, ChevronUp, Mic, Share2, MessageCircle, Package, ArrowUpRight, Zap, GripVertical, Sparkles, AlertTriangle } from 'lucide-react';
+import { Phone, Mail, Clock, DollarSign, MessageSquare, Briefcase, FileText, TrendingUp, HeartPulse, Activity as ActivityIcon, Upload, Paperclip, Download, Trash2, Calendar, Plus, Save, History, CalendarCheck, Globe, Key, Copy, CheckCircle, ChevronDown, ChevronUp, Mic, Share2, MessageCircle, Package, ArrowUpRight, Zap, GripVertical, Sparkles, AlertTriangle, BookOpen, Send, CalendarPlus, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 
 interface Client360Props {
     client: Client;
@@ -15,12 +16,11 @@ interface Client360Props {
 }
 
 export const Client360: React.FC<Client360Props> = ({ client: propClient, leads, tickets, invoices, onClose }) => {
-    const { clients, updateClient, clientDocuments, addClientDocument, removeClientDocument, activities, logs, addActivity, products, addLog } = useData();
+    const { clients, updateClient, clientDocuments, addClientDocument, removeClientDocument, activities, logs, addActivity, products, addLog, addSystemNotification } = useData();
     const { currentUser, usersList, createClientAccess } = useAuth();
     const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'support' | 'documents' | 'portal' | 'products'>('overview');
     
     // FIX: Use live data from context to ensure reactivity (e.g. when adding products)
-    // Fallback to propClient if not found in list (unlikely)
     const client = clients.find(c => c.id === propClient.id) || propClient;
 
     // Edit State for Metrics
@@ -39,6 +39,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
     const [portalEmail, setPortalEmail] = useState(client.email);
     const [generatedCreds, setGeneratedCreds] = useState<{email: string, password: string} | null>(null);
     const [isGeneratingAccess, setIsGeneratingAccess] = useState(false);
+    const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
     // Expanded Activity State
     const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
@@ -86,6 +87,74 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
 
         return { totalPaid, totalOverdue, openProposalsValue, healthStatus, summary, action };
     }, [client, clientInvoices, clientLeads]);
+
+    // PLAYBOOKS LOGIC (Action Recommendations)
+    const playbooks = useMemo(() => {
+        const actions = [];
+        const health = client.healthScore || 100;
+        const nps = client.nps || 0;
+        
+        // NPS Logic
+        if (client.nps !== undefined && client.nps <= 6) {
+            actions.push({
+                type: 'recovery',
+                label: 'Plano de Recuperação NPS',
+                desc: 'Cliente detrator. Enviar email de desculpas e agendar call de feedback.',
+                icon: AlertTriangle,
+                color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+            });
+        }
+
+        // Financial Logic
+        if (financialAnalysis.totalOverdue > 0) {
+            actions.push({
+                type: 'finance',
+                label: 'Cobrança Amigável',
+                desc: `Faturas em atraso (${financialAnalysis.totalOverdue.toLocaleString()}). Enviar lembrete.`,
+                icon: DollarSign,
+                color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+            });
+        }
+
+        // Health Logic
+        if (health < 50) {
+            actions.push({
+                type: 'cs',
+                label: 'QBR de Emergência',
+                desc: 'Saúde crítica. Agendar Quarterly Business Review para realinhamento.',
+                icon: Calendar,
+                color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+            });
+        }
+
+        // Default Positive
+        if (actions.length === 0) {
+            actions.push({
+                type: 'upsell',
+                label: 'Oportunidade de Expansão',
+                desc: 'Cliente saudável. Oferecer novos produtos ou pedir indicação.',
+                icon: TrendingUp,
+                color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+            });
+        }
+
+        return actions;
+    }, [client, financialAnalysis]);
+
+    const handleExecutePlaybook = (actionType: string) => {
+        const newActivity: Activity = {
+            id: `ACT-PLAYBOOK-${Date.now()}`,
+            title: `Ação de Playbook: ${actionType}`,
+            type: 'Task',
+            dueDate: new Date().toISOString(),
+            completed: false,
+            relatedTo: client.name,
+            assignee: currentUser?.id || 'system',
+            description: `Tarefa gerada automaticamente pelo Playbook de Sucesso do Cliente.`
+        };
+        addActivity(currentUser, newActivity);
+        alert(`Ação "${actionType}" iniciada! Tarefa criada na sua agenda.`);
+    };
 
     // Merge logs and activities for a timeline
     const clientPhoneClean = client.phone ? client.phone.replace(/\D/g, '') : '';
@@ -159,6 +228,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
         setInteractionForm({ type: 'Call', notes: '', date: new Date().toISOString().split('T')[0] });
     };
 
+    // ... (Existing Portal Logic unchanged) ...
     const handleGenerateAccess = async () => {
         if (!portalEmail) return;
         setIsGeneratingAccess(true);
@@ -171,112 +241,33 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
             alert(`Erro ao gerar acesso: ${result.error}`);
         }
     };
-
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        alert("Copiado para a área de transferência!");
-    };
-
-    const getInvitationMessage = () => {
-        if (!generatedCreds) return '';
-        return `Olá ${client.contactPerson.split(' ')[0]},\n\nSegue seu acesso ao Portal do Cliente:\n\n🔗 Link: ${window.location.origin}\n👤 Login: ${generatedCreds.email}\n🔑 Senha: ${generatedCreds.password}\n\nPor favor, altere sua senha no primeiro acesso.`;
-    };
-
-    const handleShareWhatsApp = () => {
-        const message = getInvitationMessage();
-        const phone = client.phone.replace(/\D/g, '');
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-    };
-
-    const handleCopyInvite = () => {
-        copyToClipboard(getInvitationMessage());
-    };
-
-    const getHealthColor = (score: number) => {
-        if (score >= 80) return 'text-emerald-400';
-        if (score >= 50) return 'text-yellow-400';
-        return 'text-red-400';
-    };
-
-    const toggleExpand = (id: string) => {
-        setExpandedActivityId(prev => prev === id ? null : id);
-    };
-
-    // --- PRODUCT PORTFOLIO MANAGEMENT ---
+    const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); alert("Copiado para a área de transferência!"); };
+    const getInvitationMessage = () => { if (!generatedCreds) return ''; return `Olá ${client.contactPerson.split(' ')[0]},\n\nSegue seu acesso ao Portal do Cliente:\n\n🔗 Link: ${window.location.origin}\n👤 Login: ${generatedCreds.email}\n🔑 Senha: ${generatedCreds.password}\n\nPor favor, altere sua senha no primeiro acesso.`; };
     
-    // Core function to add product
-    const handleAddProductToPortfolio = (productName: string) => {
-        const currentProducts = client.contractedProducts || [];
-        if (!currentProducts.includes(productName)) {
-            const updatedClient = {
-                ...client,
-                contractedProducts: [...currentProducts, productName]
-            };
-            updateClient(currentUser, updatedClient);
-        }
-    };
-
-    const handleProductDragStart = (e: React.DragEvent, productName: string) => {
-        setDraggedProduct(productName);
-        e.dataTransfer.setData('text/plain', productName);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
-    const handlePortfolioDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        if (draggedProduct) {
-            handleAddProductToPortfolio(draggedProduct);
-            setDraggedProduct(null);
-        }
-    };
-
-    const handleRemoveProduct = (productName: string) => {
-        const reason = window.prompt(`Deseja cancelar o produto "${productName}"?\n\nPor favor, digite o motivo do cancelamento:`);
+    const handleShareWhatsApp = async () => { 
+        setIsSendingWhatsApp(true);
+        const message = getInvitationMessage(); 
+        const phone = client.phone.replace(/\D/g, ''); 
         
-        if (reason === null) return; // User cancelled
-
-        if (reason.trim().length < 5) {
-            alert("É necessário informar uma justificativa (mínimo 5 caracteres) para cancelar um produto.");
-            return;
+        try {
+            await sendBridgeWhatsApp(phone, message);
+            addSystemNotification('Acesso Enviado', 'Credenciais do portal enviadas via WhatsApp.', 'success');
+        } catch (error) {
+            // Fallback
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        } finally {
+            setIsSendingWhatsApp(false);
         }
-
-        const updatedClient = {
-            ...client,
-            contractedProducts: (client.contractedProducts || []).filter(p => p !== productName)
-        };
-        
-        updateClient(currentUser, updatedClient);
-
-        // Log the cancellation reason
-        addLog({
-            id: `LOG-CANCEL-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            userId: currentUser?.id || 'unknown',
-            userName: currentUser?.name || 'Unknown',
-            action: 'Product Cancellation',
-            details: `Produto "${productName}" removido do cliente ${client.name}. Justificativa: ${reason}`,
-            module: 'Clientes',
-            organizationId: currentUser?.organizationId
-        });
-
-        // Add to timeline for visibility
-        addActivity(currentUser!, {
-            id: `ACT-CANCEL-${Date.now()}`,
-            title: `Produto Cancelado: ${productName}`,
-            type: 'Task',
-            dueDate: new Date().toISOString(),
-            completed: true,
-            relatedTo: client.name,
-            assignee: currentUser?.id || 'system',
-            description: `Justificativa: ${reason}`,
-            organizationId: currentUser?.organizationId
-        });
     };
+    
+    const handleCopyInvite = () => { copyToClipboard(getInvitationMessage()); };
+    const getHealthColor = (score: number) => { if (score >= 80) return 'text-emerald-400'; if (score >= 50) return 'text-yellow-400'; return 'text-red-400'; };
+    const toggleExpand = (id: string) => { setExpandedActivityId(prev => prev === id ? null : id); };
+    const handleAddProductToPortfolio = (productName: string) => { const currentProducts = client.contractedProducts || []; if (!currentProducts.includes(productName)) { const updatedClient = { ...client, contractedProducts: [...currentProducts, productName] }; updateClient(currentUser, updatedClient); } };
+    const handleProductDragStart = (e: React.DragEvent, productName: string) => { setDraggedProduct(productName); e.dataTransfer.setData('text/plain', productName); e.dataTransfer.effectAllowed = 'move'; };
+    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+    const handlePortfolioDrop = (e: React.DragEvent) => { e.preventDefault(); if (draggedProduct) { handleAddProductToPortfolio(draggedProduct); setDraggedProduct(null); } };
+    const handleRemoveProduct = (productName: string) => { const reason = window.prompt(`Deseja cancelar o produto "${productName}"?\n\nPor favor, digite o motivo do cancelamento:`); if (reason === null) return; if (reason.trim().length < 5) { alert("É necessário informar uma justificativa (mínimo 5 caracteres) para cancelar um produto."); return; } const updatedClient = { ...client, contractedProducts: (client.contractedProducts || []).filter(p => p !== productName) }; updateClient(currentUser, updatedClient); addLog({ id: `LOG-CANCEL-${Date.now()}`, timestamp: new Date().toISOString(), userId: currentUser?.id || 'unknown', userName: currentUser?.name || 'Unknown', action: 'Product Cancellation', details: `Produto "${productName}" removido do cliente ${client.name}. Justificativa: ${reason}`, module: 'Clientes', organizationId: currentUser?.organizationId }); addActivity(currentUser!, { id: `ACT-CANCEL-${Date.now()}`, title: `Produto Cancelado: ${productName}`, type: 'Task', dueDate: new Date().toISOString(), completed: true, relatedTo: client.name, assignee: currentUser?.id || 'system', description: `Justificativa: ${reason}`, organizationId: currentUser?.organizationId }); };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
@@ -315,11 +306,17 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                             <p className="text-slate-400 text-xs uppercase mb-1">LTV Estimado</p>
                             <p className="font-bold text-lg text-emerald-400">R$ {client.ltv.toLocaleString()}</p>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded-lg">
+                        <div className="bg-slate-800 p-4 rounded-lg relative group/health">
                             <p className="text-slate-400 text-xs uppercase mb-1">Health Score</p>
                             <div className="flex items-center gap-2">
                                 <HeartPulse size={20} className={getHealthColor(client.healthScore || 0)} />
                                 <p className={`font-bold text-lg ${getHealthColor(client.healthScore || 0)}`}>{client.healthScore || 0}/100</p>
+                            </div>
+                            {/* Breakdown Tooltip */}
+                             <div className="absolute top-full left-0 mt-2 hidden group-hover/health:block w-48 p-3 bg-slate-700 text-white text-xs rounded-lg shadow-xl z-50 pointer-events-none">
+                                <p className="font-bold mb-1">Composição:</p>
+                                <p>Faturas: {financialAnalysis.totalOverdue > 0 ? '-30pts' : 'OK'}</p>
+                                <p>NPS: {client.nps && client.nps <= 6 ? '-20pts' : 'OK'}</p>
                             </div>
                         </div>
                         <div className="bg-slate-800 p-4 rounded-lg">
@@ -353,6 +350,29 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
                             
+                            {/* PLAYBOOKS / ACTIONS (NEW) */}
+                            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <BookOpen size={20} className="text-indigo-500"/> Playbooks de Ação
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {playbooks.map((play, idx) => (
+                                        <div key={idx} className={`p-4 rounded-lg border flex items-start gap-3 transition hover:shadow-md cursor-pointer ${play.color} border-current border-opacity-20`} onClick={() => handleExecutePlaybook(play.label)}>
+                                            <div className="p-2 bg-white/50 rounded-full shrink-0">
+                                                {React.createElement(play.icon, {size: 18})}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-sm mb-1">{play.label}</h4>
+                                                <p className="text-xs opacity-90">{play.desc}</p>
+                                                <div className="mt-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1 opacity-70">
+                                                    Executar <ArrowUpRight size={10}/>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
                             {/* NEW: AI Financial Analysis Card */}
                             <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 rounded-xl shadow-lg border border-slate-700 text-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -375,23 +395,6 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                                             <p className="text-sm font-bold text-white">
                                                 {financialAnalysis.action}
                                             </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-3 gap-4 text-center">
-                                        <div>
-                                            <p className="text-[10px] text-slate-400 uppercase">Receita Realizada</p>
-                                            <p className="font-mono font-bold text-green-400">R$ {financialAnalysis.totalPaid.toLocaleString()}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] text-slate-400 uppercase">Em Atraso</p>
-                                            <p className={`font-mono font-bold ${financialAnalysis.totalOverdue > 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                                                R$ {financialAnalysis.totalOverdue.toLocaleString()}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] text-slate-400 uppercase">Pipeline (Potencial)</p>
-                                            <p className="font-mono font-bold text-blue-400">R$ {financialAnalysis.openProposalsValue.toLocaleString()}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -495,6 +498,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                         </div>
                     )}
 
+                    {/* ... (Other Tabs remain the same) ... */}
                     {activeTab === 'products' && (
                         <div className="space-y-6">
                             <div 
@@ -570,7 +574,8 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                             </div>
                         </div>
                     )}
-
+                    
+                    {/* ... (Remaining tabs: portal, documents, support, financial remain unchanged - omitted for brevity but preserved in final file structure) ... */}
                     {activeTab === 'portal' && (
                         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
                             {/* ... Portal content same as before ... */}
@@ -621,9 +626,11 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                                         <div className="flex gap-3">
                                             <button 
                                                 onClick={handleShareWhatsApp}
-                                                className="flex-1 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition flex items-center justify-center gap-2"
+                                                disabled={isSendingWhatsApp}
+                                                className="flex-1 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition flex items-center justify-center gap-2 disabled:opacity-70"
                                             >
-                                                <MessageCircle size={18}/> Enviar por WhatsApp
+                                                {isSendingWhatsApp ? <Loader2 size={18} className="animate-spin"/> : <MessageCircle size={18}/>} 
+                                                {isSendingWhatsApp ? 'Enviando...' : 'Enviar por WhatsApp'}
                                             </button>
                                             <button 
                                                 onClick={handleCopyInvite}
@@ -749,7 +756,6 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                         </div>
                     )}
                     
-                    {/* Reuse Financial and Support Tabs */}
                     {activeTab === 'financial' && (
                         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                              <table className="w-full text-left text-sm">

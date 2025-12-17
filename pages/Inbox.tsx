@@ -3,10 +3,11 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { InboxConversation, InboxMessage } from '../types';
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, CheckCircle, Clock, MessageCircle, Mail, MessageSquare, Archive, Trash2, User } from 'lucide-react';
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, CheckCircle, Clock, MessageCircle, Mail, MessageSquare, Archive, Trash2, User, Loader2 } from 'lucide-react';
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 
 export const Inbox: React.FC = () => {
-    const { inboxConversations, tickets, activities } = useData();
+    const { inboxConversations, tickets, activities, clients, leads, addSystemNotification, addActivity } = useData();
     const { currentUser } = useAuth();
     
     // UI State
@@ -14,6 +15,7 @@ export const Inbox: React.FC = () => {
     const [filterType, setFilterType] = useState<'All' | 'WhatsApp' | 'Email' | 'Ticket'>('All');
     const [searchTerm, setSearchTerm] = useState('');
     const [messageInput, setMessageInput] = useState('');
+    const [isSending, setIsSending] = useState(false);
 
     // --- AGGREGATE DATA SOURCE ---
     // In a real app, this would query a dedicated conversations table.
@@ -55,15 +57,77 @@ export const Inbox: React.FC = () => {
         aggregatedConversations.find(c => c.id === selectedConversationId), 
     [aggregatedConversations, selectedConversationId]);
 
-    const handleSendMessage = (e: React.FormEvent) => {
+    const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!messageInput.trim() || !selectedConversation) return;
 
-        // In a real app, this would call an API (WhatsApp, Email, or internal ticket update)
-        alert(`Mensagem enviada para ${selectedConversation.contactName}: ${messageInput}`);
-        setMessageInput('');
-        
-        // Optimistic update logic would go here
+        setIsSending(true);
+
+        // --- WHATSAPP BRIDGE INTEGRATION ---
+        if (selectedConversation.type === 'WhatsApp') {
+            try {
+                // Try to find the phone number from the contact name (Client or Lead)
+                const client = clients.find(c => c.name === selectedConversation.contactName);
+                const lead = leads.find(l => l.name === selectedConversation.contactName);
+                const phone = client?.phone || lead?.phone || selectedConversation.contactIdentifier;
+
+                if (!phone) {
+                    alert("Número de telefone não encontrado para este contato.");
+                    setIsSending(false);
+                    return;
+                }
+
+                const result = await sendBridgeWhatsApp(phone, messageInput);
+                
+                if (result.success) {
+                    // Update Local State (Optimistic)
+                    selectedConversation.messages.push({
+                        id: `msg-${Date.now()}`,
+                        text: messageInput,
+                        sender: 'agent',
+                        timestamp: new Date().toISOString()
+                    });
+                    selectedConversation.lastMessage = messageInput;
+                    selectedConversation.lastMessageAt = new Date().toISOString();
+                    
+                    // Log Activity
+                    addActivity(currentUser, {
+                        id: `ACT-CHAT-${Date.now()}`,
+                        title: 'Mensagem WhatsApp Enviada',
+                        type: 'Call',
+                        dueDate: new Date().toISOString(),
+                        completed: true,
+                        relatedTo: selectedConversation.contactName,
+                        assignee: currentUser?.id || 'admin',
+                        description: messageInput
+                    });
+
+                    setMessageInput('');
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error: any) {
+                console.error(error);
+                addSystemNotification('Erro de Envio', 'Não foi possível enviar a mensagem pelo Bridge.', 'alert');
+            } finally {
+                setIsSending(false);
+            }
+        } else {
+            // Mock behavior for other types (Email/Ticket) for now, as Ticket has its own logic in Support page
+            // In a full implementation, this would call the API/SMTP service too.
+            setTimeout(() => {
+                selectedConversation.messages.push({
+                    id: `msg-${Date.now()}`,
+                    text: messageInput,
+                    sender: 'agent',
+                    timestamp: new Date().toISOString()
+                });
+                selectedConversation.lastMessage = messageInput;
+                selectedConversation.lastMessageAt = new Date().toISOString();
+                setMessageInput('');
+                setIsSending(false);
+            }, 500);
+        }
     };
 
     const getTypeIcon = (type: string) => {
@@ -180,14 +244,14 @@ export const Inbox: React.FC = () => {
                         {selectedConversation.messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] p-3 rounded-xl shadow-sm text-sm ${
-                                    msg.sender === 'user' 
+                                    msg.sender === 'user' || msg.sender === 'agent' 
                                         ? 'bg-blue-600 text-white rounded-br-none' 
                                         : msg.sender === 'system'
                                             ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800 text-center w-full max-w-full'
                                             : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 rounded-bl-none'
                                 }`}>
                                     <p className="whitespace-pre-wrap">{msg.text}</p>
-                                    <p className={`text-[10px] mt-1 text-right ${msg.sender === 'user' ? 'text-blue-200' : 'text-slate-400'}`}>
+                                    <p className={`text-[10px] mt-1 text-right ${msg.sender === 'user' || msg.sender === 'agent' ? 'text-blue-200' : 'text-slate-400'}`}>
                                         {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                     </p>
                                 </div>
@@ -218,10 +282,10 @@ export const Inbox: React.FC = () => {
                             </div>
                             <button 
                                 type="submit" 
-                                disabled={!messageInput.trim()}
+                                disabled={!messageInput.trim() || isSending}
                                 className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                             >
-                                <Send size={20}/>
+                                {isSending ? <Loader2 size={20} className="animate-spin"/> : <Send size={20}/>}
                             </button>
                         </form>
                     </div>

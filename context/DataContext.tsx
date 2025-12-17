@@ -4,14 +4,14 @@ import {
     Campaign, MarketingContent, Workflow, ClientDocument, PortalSettings, 
     AuditLog, SystemNotification, ToastMessage, Competitor, MarketTrend, 
     ProspectingHistoryItem, CustomFieldDefinition, WebhookConfig, InboxConversation,
-    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal
+    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory
 } from '../types';
 import { 
     MOCK_LEADS, MOCK_CLIENTS, MOCK_TICKETS, MOCK_ISSUES, MOCK_INVOICES, 
     MOCK_ACTIVITIES, MOCK_PRODUCTS, MOCK_PROJECTS, MOCK_CAMPAIGNS, 
     MOCK_CONTENTS, MOCK_WORKFLOWS, MOCK_DOCUMENTS, MOCK_LOGS, 
     MOCK_COMPETITORS, MOCK_MARKET_TRENDS, MOCK_CUSTOM_FIELDS, MOCK_WEBHOOKS,
-    MOCK_CONVERSATIONS, MOCK_PROPOSALS
+    MOCK_CONVERSATIONS, MOCK_PROPOSALS, MOCK_CATEGORIES
 } from '../constants';
 import { getSupabase } from '../services/supabaseClient';
 
@@ -40,6 +40,7 @@ interface DataContextType {
   webhooks: WebhookConfig[];
   inboxConversations: InboxConversation[];
   proposals: Proposal[];
+  financialCategories: FinancialCategory[];
   
   isSyncing: boolean;
   lastSyncTime: Date | null;
@@ -130,6 +131,9 @@ interface DataContextType {
   addProposal: (user: User | null, proposal: Proposal) => void;
   updateProposal: (user: User | null, proposal: Proposal) => void;
   removeProposal: (user: User | null, id: string, reason: string) => void;
+
+  addFinancialCategory: (category: FinancialCategory) => void;
+  deleteFinancialCategory: (id: string) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -163,6 +167,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [portalSettings, setPortalSettings] = useState<PortalSettings>(() => JSON.parse(localStorage.getItem('nexus_portal_settings') || JSON.stringify(defaultPortalSettings)));
     const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>(() => JSON.parse(localStorage.getItem('nexus_custom_fields') || JSON.stringify(MOCK_CUSTOM_FIELDS)));
     const [webhooks, setWebhooks] = useState<WebhookConfig[]>(() => JSON.parse(localStorage.getItem('nexus_webhooks') || JSON.stringify(MOCK_WEBHOOKS)));
+    const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>(() => JSON.parse(localStorage.getItem('nexus_financial_categories') || JSON.stringify(MOCK_CATEGORIES)));
     
     const [notifications, setNotifications] = useState<SystemNotification[]>([]);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -178,7 +183,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const mapToApp = (data: any[]) => {
         return data.map(item => {
             const newItem = { ...item };
-            // Reverse mapping for reading from DB
+            // Common
             if (newItem.organization_id) { newItem.organizationId = newItem.organization_id; delete newItem.organization_id; }
             if (newItem.created_at) { newItem.createdAt = newItem.created_at; delete newItem.created_at; }
             
@@ -194,15 +199,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (newItem.due_date) { newItem.dueDate = newItem.due_date; delete newItem.due_date; }
             if (newItem.related_to) { newItem.relatedTo = newItem.related_to; delete newItem.related_to; }
             
-            // Invoices (Fix for date mapping)
+            // Invoices (Fix for date mapping and missing Type)
             if (newItem.due_date) { newItem.dueDate = newItem.due_date; delete newItem.due_date; }
+            if (newItem.cost_center_id) { newItem.costCenterId = newItem.cost_center_id; delete newItem.cost_center_id; }
+            // Default type if missing and it looks like an invoice (has amount)
+            if (!newItem.type && newItem.amount !== undefined) { newItem.type = 'Income'; }
 
             // Projects (Fix for date mapping)
             if (newItem.start_date) { newItem.startDate = newItem.start_date; delete newItem.start_date; }
-            if (newItem.install_address) { newItem.installAddress = newItem.install_address; delete newItem.install_address; }
-            if (newItem.client_name) { newItem.clientName = newItem.client_name; delete newItem.client_name; }
-            if (newItem.completed_at) { newItem.completedAt = newItem.completed_at; delete newItem.completed_at; }
-            if (newItem.installation_notes) { newItem.installationNotes = newItem.installation_notes; delete newItem.installation_notes; }
 
             // Competitors
             if (newItem.last_analysis) { newItem.lastAnalysis = newItem.last_analysis; delete newItem.last_analysis; }
@@ -212,7 +216,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // Proposals
             if (newItem.lead_id) { newItem.leadId = newItem.lead_id; delete newItem.lead_id; }
-            if (newItem.client_id) { newItem.clientId = newItem.client_id; delete newItem.client_id; }
             if (newItem.client_name) { newItem.clientName = newItem.client_name; delete newItem.client_name; }
             if (newItem.company_name) { newItem.companyName = newItem.company_name; delete newItem.company_name; }
             if (newItem.created_date) { newItem.createdDate = newItem.created_date; delete newItem.created_date; }
@@ -224,66 +227,51 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Audit Logs
             if (newItem.user_id) { newItem.userId = newItem.user_id; delete newItem.user_id; }
             if (newItem.user_name) { newItem.userName = newItem.user_name; delete newItem.user_name; }
-
-            // FIX: Handle prospecting history 'results' being a string (from DB) vs object
-            if (newItem.results && typeof newItem.results === 'string') {
-                try {
-                    newItem.results = JSON.parse(newItem.results);
-                } catch (e) {
-                    console.error("Error parsing prospecting results:", e);
-                    newItem.results = [];
-                }
-            }
-
+            
             return newItem;
         });
     };
 
     const mapToDb = (data: any) => {
         const payload = { ...data };
+        // Common
+        if (payload.organizationId) { payload.organization_id = payload.organizationId; delete payload.organizationId; }
+        if (payload.createdAt) { payload.created_at = payload.createdAt; delete payload.createdAt; }
         
-        // Helper to securely swap keys and remove old one
-        const swap = (oldKey: string, newKey: string) => {
-            if (oldKey in payload) {
-                payload[newKey] = payload[oldKey];
-                delete payload[oldKey];
-            }
-        };
-
-        swap('organizationId', 'organization_id');
-        swap('createdAt', 'created_at');
-        swap('contactPerson', 'contact_person');
-        swap('healthScore', 'health_score');
-        swap('contractedProducts', 'contracted_products');
-        swap('lastContact', 'last_contact');
-        swap('dueDate', 'due_date');
-        swap('relatedTo', 'related_to');
-        swap('startDate', 'start_date');
-        swap('installAddress', 'install_address');
-        swap('clientName', 'client_name');
-        swap('completedAt', 'completed_at');
-        swap('installationNotes', 'installation_notes');
-        swap('lastAnalysis', 'last_analysis');
-        swap('triggerEvent', 'trigger_event');
-        swap('leadId', 'lead_id');
+        // Clients
+        if (payload.contactPerson) { payload.contact_person = payload.contactPerson; delete payload.contactPerson; }
+        if (payload.healthScore) { payload.health_score = payload.healthScore; delete payload.healthScore; }
+        if (payload.contractedProducts) { payload.contracted_products = payload.contractedProducts; delete payload.contractedProducts; }
         
-        if ('clientId' in payload) {
-            payload.client_id = payload.clientId || null;
-            delete payload.clientId;
-        }
+        // Leads
+        if (payload.lastContact) { payload.last_contact = payload.lastContact; delete payload.lastContact; }
+        
+        // Activities & Invoices
+        if (payload.dueDate) { payload.due_date = payload.dueDate; delete payload.dueDate; }
+        if (payload.relatedTo) { payload.related_to = payload.relatedTo; delete payload.relatedTo; }
+        if (payload.costCenterId) { payload.cost_center_id = payload.costCenterId; delete payload.costCenterId; }
+        
+        // Projects
+        if (payload.startDate) { payload.start_date = payload.startDate; delete payload.startDate; }
 
-        swap('companyName', 'company_name');
-        swap('createdDate', 'created_date');
-        swap('validUntil', 'valid_until');
-        swap('signedAt', 'signed_at');
-        swap('signedByIp', 'signed_by_ip');
-        swap('setupCost', 'setup_cost');
-        swap('monthlyCost', 'monthly_cost');
-        swap('consultantName', 'consultant_name');
-        swap('consultantEmail', 'consultant_email');
-        swap('consultantPhone', 'consultant_phone');
-        swap('userId', 'user_id');
-        swap('userName', 'user_name');
+        // Competitors
+        if (payload.lastAnalysis) { payload.last_analysis = payload.lastAnalysis; delete payload.lastAnalysis; }
+
+        // Webhooks
+        if (payload.triggerEvent) { payload.trigger_event = payload.triggerEvent; delete payload.triggerEvent; }
+
+        // Proposals
+        if (payload.leadId) { payload.lead_id = payload.leadId; delete payload.leadId; }
+        if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
+        if (payload.companyName) { payload.company_name = payload.companyName; delete payload.companyName; }
+        if (payload.createdDate) { payload.created_date = payload.createdDate; delete payload.createdDate; }
+        if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.validUntil; }
+        if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signedAt; }
+        if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signedByIp; }
+
+        // Audit Logs
+        if (payload.userId) { payload.user_id = payload.userId; delete payload.userId; }
+        if (payload.userName) { payload.user_name = payload.userName; delete payload.userName; }
         
         return payload;
     };
@@ -315,26 +303,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => { localStorage.setItem('nexus_webhooks', JSON.stringify(webhooks)); }, [webhooks]);
     useEffect(() => { localStorage.setItem('nexus_prospecting_history', JSON.stringify(prospectingHistory)); }, [prospectingHistory]);
     useEffect(() => { localStorage.setItem('nexus_disqualified_prospects', JSON.stringify(disqualifiedProspects)); }, [disqualifiedProspects]);
+    useEffect(() => { localStorage.setItem('nexus_financial_categories', JSON.stringify(financialCategories)); }, [financialCategories]);
 
     const dbUpsert = async (table: string, data: any) => {
         const supabase = getSupabase();
         if (supabase) {
             try {
                 const payload = mapToDb(data);
-                const { error } = await supabase.from(table).upsert(payload);
-                if (error) {
-                    console.error(`Error upserting ${table}:`, error);
-                    // Improved Error Logging for User - Extract message safely
-                    let errorDetails = 'Erro desconhecido';
-                    if (typeof error === 'object' && error !== null) {
-                         // @ts-ignore
-                         errorDetails = error.message || error.details || error.hint || JSON.stringify(error);
-                    } else {
-                         errorDetails = String(error);
-                    }
-                    addToast({title: 'Erro de Salvamento', message: `Erro ao salvar em ${table}: ${errorDetails}`, type: 'alert'});
-                }
-            } catch (e: any) {
+                await supabase.from(table).upsert(payload);
+            } catch (e) {
                 console.warn(`Failed to sync ${table} to cloud`, e);
             }
         }
@@ -344,8 +321,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const supabase = getSupabase();
         if (supabase) {
             try {
-                const { error } = await supabase.from(table).delete().eq('id', id);
-                if (error) console.error(`Error deleting from ${table}:`, error);
+                await supabase.from(table).delete().eq('id', id);
             } catch (e) {
                 console.warn(`Failed to delete from ${table}`, e);
             }
@@ -431,7 +407,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 supabase.from('custom_fields').select('*'),
                 supabase.from('webhooks').select('*'),
                 supabase.from('proposals').select('*'),
-                supabase.from('prospecting_history').select('*').order('timestamp', { ascending: false })
+                supabase.from('prospecting_history').select('*').order('timestamp', { ascending: false }),
+                supabase.from('financial_categories').select('*')
             ]);
 
             // Helper to extract data or log error
@@ -469,6 +446,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             processResult(results[11], setWebhooks, 'webhooks');
             processResult(results[12], setProposals, 'proposals');
             processResult(results[13], setProspectingHistory, 'prospecting_history');
+            processResult(results[14], setFinancialCategories, 'financial_categories');
 
             setLastSyncTime(new Date());
         } catch (error) {
@@ -805,6 +783,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logAction(user, 'Delete Proposal', `Deleted proposal ${id}. Reason: ${reason}`, 'Propostas');
     };
 
+    const addFinancialCategory = (category: FinancialCategory) => {
+        setFinancialCategories(prev => [...prev, category]);
+        dbUpsert('financial_categories', category);
+    };
+
+    const deleteFinancialCategory = (id: string) => {
+        setFinancialCategories(prev => prev.filter(c => c.id !== id));
+        dbDelete('financial_categories', id);
+    };
+
     const syncLocalToCloud = async () => {
         await refreshData();
     };
@@ -839,6 +827,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             campaigns, marketingContents, workflows, clientDocuments, portalSettings, 
             logs, notifications, toasts, competitors, marketTrends, prospectingHistory,
             disqualifiedProspects, customFields, webhooks, inboxConversations, proposals,
+            financialCategories,
             isSyncing, lastSyncTime, theme, pushEnabled,
             
             refreshData, syncLocalToCloud, toggleTheme, togglePushNotifications, restoreDefaults,
@@ -864,7 +853,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addProspectingHistory, clearProspectingHistory, disqualifyProspect,
             addCustomField, deleteCustomField,
             addWebhook, updateWebhook, deleteWebhook,
-            addProposal, updateProposal, removeProposal
+            addProposal, updateProposal, removeProposal,
+            addFinancialCategory, deleteFinancialCategory
         }}>
             {children}
         </DataContext.Provider>
