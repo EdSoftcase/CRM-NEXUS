@@ -1,4 +1,3 @@
-
 export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client';
 
 export enum LeadStatus {
@@ -44,6 +43,8 @@ export interface Organization {
   licenseExpiresAt?: string;
   subscription_status?: 'active' | 'blocked' | 'trial' | 'expired';
   status?: 'pending' | 'active' | 'suspended'; 
+  // FIX: Added created_at property to match Supabase database schema for raw data usage in Settings.tsx
+  created_at?: string;
 }
 
 export interface PortalSettings {
@@ -280,6 +281,7 @@ export interface Issue {
   progress: number;
   notes: Note[];
   organizationId?: string;
+  proposalId?: string;
 }
 
 export interface Invoice {
@@ -292,6 +294,8 @@ export interface Invoice {
   description: string;
   costCenterId?: string;
   organizationId?: string;
+  // Added metadata property to Invoice interface to fix TypeScript error in Finance.tsx
+  metadata?: Record<string, any>;
 }
 
 export interface Proposal {
@@ -316,6 +320,7 @@ export interface Proposal {
   signedAt?: string;
   signedByIp?: string;
   unit?: string; // Nova propriedade para Unidade/Filial
+  includesDevelopment?: boolean; // Flag para desenvolvimento
   
   // Consultant / User Data snapshot
   consultantName?: string;
@@ -390,7 +395,7 @@ export interface MarketingContent {
     organizationId?: string;
 }
 
-export type TriggerType = 'lead_created' | 'deal_won' | 'deal_lost' | 'ticket_created' | 'client_churn_risk';
+export type TriggerType = 'lead_created' | 'deal_won' | 'deal_lost' | 'ticket_created' | 'client_churn_risk' | 'project_stagnated';
 export type ActionType = 'send_email' | 'create_task' | 'notify_slack' | 'update_field';
 
 export interface WorkflowAction {
@@ -472,11 +477,20 @@ export interface ProjectNote {
     stage: string;
 }
 
+export interface ProjectStageEntry {
+    stage: string;
+    enteredAt: string;
+    exitedAt?: string;
+    durationDays?: number;
+}
+
 export interface Project {
     id: string;
     title: string;
     clientName: string;
     status: 'Planning' | 'Kitting' | 'Assembly' | 'Execution' | 'Review' | 'Completed';
+    statusUpdatedAt?: string;
+    stageHistory?: ProjectStageEntry[]; // NOVO: Log de todas as fases
     progress: number;
     startDate: string;
     deadline: string;
@@ -491,6 +505,7 @@ export interface Project {
     completedAt?: string; 
     products?: string[]; 
     installationNotes?: string; 
+    proposalId?: string;
 }
 
 export interface KPIMetric {

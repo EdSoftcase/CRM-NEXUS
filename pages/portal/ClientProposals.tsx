@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Proposal, Project, ProjectTask } from '../../types';
+import { Proposal, Project, ProjectTask, Issue } from '../../types';
 import { FileText, Download, CheckCircle, Clock, XCircle, Search, PenTool, X, Save, AlertCircle, CalendarClock, Loader2 } from 'lucide-react';
 import { Badge } from '../../components/Widgets';
 import { ProposalDocument } from '../../components/ProposalDocument';
@@ -10,7 +10,7 @@ import { SignaturePad } from '../../components/SignaturePad';
 
 export const ClientProposals: React.FC = () => {
   const { currentUser } = useAuth();
-  const { proposals, clients, updateProposal, addProject, addSystemNotification } = useData();
+  const { proposals, clients, updateProposal, addProject, addIssue, addSystemNotification } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null); // For PDF download (hidden)
   const [isDownloading, setIsDownloading] = useState(false);
@@ -101,39 +101,63 @@ export const ClientProposals: React.FC = () => {
           status: 'Accepted',
           signature: signatureBase64,
           signedAt: new Date().toISOString(),
-          signedByIp: 'Client Portal (IP Logged)' // Em produção, pegar IP real
+          signedByIp: 'Client Portal (IP Logged)' 
       };
 
       updateProposal(currentUser, updatedProposal);
       addSystemNotification('Proposta Assinada', `A proposta "${updatedProposal.title}" foi assinada digitalmente por ${currentClient?.name}.`, 'success');
 
-      // 2. AUTOMATION: Criar Projeto em Operações
-      // Mapeia o escopo da proposta para a descrição do projeto
+      // 2. AUTOMATION: Criar Projeto em Operações / Gestão de Projetos
       const scopeText = proposalToSign.scope && proposalToSign.scope.length > 0 
           ? `\n\n--- ESCOPO CONTRATADO ---\n- ${proposalToSign.scope.join('\n- ')}` 
           : '';
 
       const newProject: Project = {
-          id: `PROJ-${proposalToSign.id}-${Date.now()}`, // ID único baseado na proposta
+          id: `PROJ-${proposalToSign.id}-${Date.now()}`, 
           title: proposalToSign.title,
-          clientName: proposalToSign.companyName || proposalToSign.clientName, // Use company name if available
-          status: 'Planning', // Coluna "Proposta Aprovada" no Kanban de Operações
+          clientName: proposalToSign.companyName || proposalToSign.clientName, 
+          status: 'Planning', 
           progress: 0,
           startDate: new Date().toISOString(),
-          deadline: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), // Default 30 dias
-          manager: 'A Definir', // Será atribuído pelo gestor
+          deadline: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), 
+          manager: 'A Definir', 
           description: `${proposalToSign.introduction}${scopeText}`,
-          tasks: [] as ProjectTask[], // Começa sem tarefas ou pode-se gerar via IA depois
-          // CRÍTICO: Usar o ID da organização da PROPOSTA. Se a proposta não tiver, fallback para current user (que pode estar vazio se for cliente externo)
+          tasks: [] as ProjectTask[], 
           organizationId: proposalToSign.organizationId || currentUser.organizationId || 'org-1',
           archived: false,
-          products: proposalToSign.scope || [], // CORREÇÃO: Transfere o escopo/produtos para o projeto
-          installationNotes: 'Projeto criado automaticamente via assinatura no portal.'
+          products: proposalToSign.scope || [], 
+          installationNotes: 'Projeto criado automaticamente via assinatura no portal.',
+          proposalId: proposalToSign.id // TRACKING LINK
       };
 
-      console.log("Automação: Criando projeto...", newProject);
       addProject(currentUser, newProject);
       addSystemNotification('Produção Iniciada', `Projeto "${newProject.title}" enviado para o Painel de Produção.`, 'info');
+
+      // 3. AUTOMATION: Criar Issue em Desenvolvimento (se flag marcada)
+      if (proposalToSign.includesDevelopment) {
+          const newIssue: Issue = {
+              id: `DEV-${proposalToSign.id.slice(-4)}-${Date.now().toString().slice(-4)}`,
+              title: `Desenv: ${proposalToSign.title}`,
+              type: 'Feature',
+              status: 'Backlog',
+              points: 5,
+              assignee: 'A Definir',
+              sprint: 'Próxima Sprint',
+              project: proposalToSign.companyName || proposalToSign.clientName,
+              progress: 0,
+              notes: [{
+                  id: 'note-1',
+                  text: `Demanda de desenvolvimento vinculada à Proposta ${proposalToSign.id}.`,
+                  author: 'Sistema',
+                  created_at: new Date().toISOString()
+              }],
+              organizationId: proposalToSign.organizationId || currentUser.organizationId || 'org-1',
+              proposalId: proposalToSign.id // TRACKING LINK
+          };
+
+          addIssue(currentUser, newIssue);
+          addSystemNotification('Desenvolvimento Alertado', `Nova demanda de desenvolvimento criada no backlog para "${proposalToSign.companyName}".`, 'success');
+      }
       
       setIsSignModalOpen(false);
       setProposalToSign(null);
@@ -150,7 +174,6 @@ export const ClientProposals: React.FC = () => {
 
   return (
     <div className="space-y-6">
-        {/* Hidden PDF Container */}
         {selectedProposal && (
              <div className="fixed top-0 left-0 -z-50 opacity-0 pointer-events-none w-[210mm]" style={{ transform: 'translateX(-9999px)' }}>
                 <div id="client-proposal-pdf-content">
@@ -231,7 +254,6 @@ export const ClientProposals: React.FC = () => {
                         </div>
 
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
-                             {/* SIGNATURE BUTTON */}
                              {prop.status === 'Sent' && (
                                 <button 
                                     onClick={() => handleOpenSign(prop)}
@@ -274,14 +296,12 @@ export const ClientProposals: React.FC = () => {
                     </div>
                     
                     <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                        {/* Preview Document */}
                         <div className="flex-1 bg-slate-200 p-4 md:p-8 overflow-y-auto shadow-inner custom-scrollbar">
                             <div className="transform origin-top scale-[0.6] md:scale-[0.8] mb-10 bg-white shadow-lg mx-auto w-[210mm] min-h-[297mm] pointer-events-none">
                                 <ProposalDocument data={proposalToSign} />
                             </div>
                         </div>
 
-                        {/* Signature Area */}
                         <div className="w-full md:w-96 bg-white border-l p-6 flex flex-col gap-6 shrink-0 z-10 shadow-xl">
                              <div>
                                  <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><PenTool size={18}/> Assinatura</h4>

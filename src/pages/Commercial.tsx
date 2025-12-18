@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
@@ -7,7 +6,7 @@ import { Lead, LeadStatus } from '../types';
 import { 
     Users, Plus, Search, Filter, MessageCircle, Mail, 
     MoreVertical, Archive, Trash2, Edit2, Phone, X, 
-    CheckCircle, AlertCircle, Loader2, Send, Server 
+    CheckCircle, AlertCircle, Loader2, Send, Server, User 
 } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 import { SendEmailModal } from '../components/SendEmailModal';
@@ -242,7 +241,7 @@ export const Commercial: React.FC = () => {
                                                 <button onClick={() => openCancelModal(lead)} className="p-1 text-slate-400 hover:text-red-500" title="Arquivar/Cancelar"><Archive size={14}/></button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{lead.name}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1"><User size={10}/> {lead.name}</p>
                                         <p className="text-xs font-bold text-slate-700 dark:text-slate-300">R$ {lead.value.toLocaleString()}</p>
                                         
                                         {lead.lastContact && (

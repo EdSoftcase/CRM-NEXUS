@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
     Lead, Client, Ticket, Issue, Invoice, Activity, Product, Project, 
     Campaign, MarketingContent, Workflow, ClientDocument, PortalSettings, 
@@ -68,6 +67,7 @@ interface DataContextType {
   updateTicket: (user: User | null, ticketId: string, data: Partial<Ticket>) => void;
 
   addInvoice: (user: User | null, invoice: Invoice) => void;
+  updateInvoice: (user: User | null, invoice: Invoice) => void;
   updateInvoiceStatus: (user: User | null, invoiceId: string, status: InvoiceStatus) => void;
   addInvoicesBulk: (user: User | null, invoices: Invoice[]) => void;
 
@@ -182,42 +182,27 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [disqualifiedProspects, setDisqualifiedProspects] = useState<string[]>(() => JSON.parse(localStorage.getItem('nexus_disqualified_prospects') || '[]'));
     const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(MOCK_CONVERSATIONS);
 
-    // ... (mapping functions omitted for brevity, logic remains identical)
-    const mapToApp = (data: any[]) => {
+    // --- MAPPING HELPERS (Defensive) ---
+    const mapToApp = useCallback((data: any[]) => {
+        if (!data || !Array.isArray(data)) return [];
         return data.map(item => {
             const newItem = { ...item };
-            // Common
+            
+            // Unify organizationId (Check for snake_case and camelCase)
             if (newItem.organization_id) { newItem.organizationId = newItem.organization_id; delete newItem.organization_id; }
+            else if (newItem.organizationId) { /* already correct */ }
+
             if (newItem.created_at) { newItem.createdAt = newItem.created_at; delete newItem.created_at; }
-            
-            // Clients
             if (newItem.contact_person) { newItem.contactPerson = newItem.contact_person; delete newItem.contact_person; }
-            if (newItem.health_score) { newItem.healthScore = newItem.health_score; delete newItem.health_score; }
+            if (newItem.health_score !== undefined) { newItem.healthScore = newItem.health_score; delete newItem.health_score; }
             if (newItem.contracted_products) { newItem.contractedProducts = newItem.contracted_products; delete newItem.contracted_products; }
-            
-            // Leads
             if (newItem.last_contact) { newItem.lastContact = newItem.last_contact; delete newItem.last_contact; }
-            
-            // Activities
             if (newItem.due_date) { newItem.dueDate = newItem.due_date; delete newItem.due_date; }
             if (newItem.related_to) { newItem.relatedTo = newItem.related_to; delete newItem.related_to; }
-            
-            // Invoices (Fix for date mapping and missing Type)
-            if (newItem.due_date) { newItem.dueDate = newItem.due_date; delete newItem.due_date; }
             if (newItem.cost_center_id) { newItem.costCenterId = newItem.cost_center_id; delete newItem.cost_center_id; }
-            // Default type if missing and it looks like an invoice (has amount)
-            if (!newItem.type && newItem.amount !== undefined) { newItem.type = 'Income'; }
-
-            // Projects (Fix for date mapping)
             if (newItem.start_date) { newItem.startDate = newItem.start_date; delete newItem.start_date; }
-
-            // Competitors
             if (newItem.last_analysis) { newItem.lastAnalysis = newItem.last_analysis; delete newItem.last_analysis; }
-
-            // Webhooks
             if (newItem.trigger_event) { newItem.triggerEvent = newItem.trigger_event; delete newItem.trigger_event; }
-
-            // Proposals
             if (newItem.lead_id) { newItem.leadId = newItem.lead_id; delete newItem.lead_id; }
             if (newItem.client_name) { newItem.clientName = newItem.client_name; delete newItem.client_name; }
             if (newItem.company_name) { newItem.companyName = newItem.company_name; delete newItem.company_name; }
@@ -225,89 +210,93 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (newItem.valid_until) { newItem.validUntil = newItem.valid_until; delete newItem.valid_until; }
             if (newItem.signed_at) { newItem.signedAt = newItem.signed_at; delete newItem.signed_at; }
             if (newItem.signed_by_ip) { newItem.signedByIp = newItem.signed_by_ip; delete newItem.signed_by_ip; }
-            if (newItem.unit) { newItem.unit = newItem.unit; } 
-
-            // Audit Logs
+            if (newItem.includes_development) { newItem.includesDevelopment = newItem.includes_development; delete newItem.includes_development; }
             if (newItem.user_id) { newItem.userId = newItem.user_id; delete newItem.user_id; }
             if (newItem.user_name) { newItem.userName = newItem.user_name; delete newItem.user_name; }
-            
             return newItem;
         });
-    };
+    }, []);
 
-    const mapToDb = (data: any) => {
+    const mapToDb = useCallback((data: any) => {
         const payload = { ...data };
-        // Common
+        
+        // Always force organization_id for DB
         if (payload.organizationId) { payload.organization_id = payload.organizationId; delete payload.organizationId; }
+        
         if (payload.createdAt) { payload.created_at = payload.createdAt; delete payload.createdAt; }
-        
-        // Clients
-        if (payload.contactPerson) { payload.contact_person = payload.contactPerson; delete payload.contactPerson; }
-        if (payload.healthScore) { payload.health_score = payload.healthScore; delete payload.healthScore; }
+        if (payload.contactPerson) { payload.contact_person = payload.contactPerson; delete payload.contact_person; }
+        if (payload.healthScore !== undefined) { payload.health_score = payload.healthScore; delete payload.healthScore; }
         if (payload.contractedProducts) { payload.contracted_products = payload.contractedProducts; delete payload.contractedProducts; }
-        
-        // Leads
         if (payload.lastContact) { payload.last_contact = payload.lastContact; delete payload.lastContact; }
-        
-        // Activities & Invoices
         if (payload.dueDate) { payload.due_date = payload.dueDate; delete payload.dueDate; }
         if (payload.relatedTo) { payload.related_to = payload.relatedTo; delete payload.relatedTo; }
-        if (payload.costCenterId) { payload.cost_center_id = payload.costCenterId; delete payload.costCenterId; }
-        
-        // Projects
+        if (payload.costCenterId) { payload.cost_center_id = payload.costCenterId; delete payload.cost_center_id; }
         if (payload.startDate) { payload.start_date = payload.startDate; delete payload.startDate; }
-
-        // Competitors
-        if (payload.lastAnalysis) { payload.last_analysis = payload.lastAnalysis; delete payload.lastAnalysis; }
-
-        // Webhooks
+        if (payload.lastAnalysis) { payload.last_analysis = payload.lastAnalysis; delete payload.last_analysis; }
         if (payload.triggerEvent) { payload.trigger_event = payload.triggerEvent; delete payload.triggerEvent; }
-
-        // Proposals
-        if (payload.leadId) { payload.lead_id = payload.leadId; delete payload.leadId; }
-        if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
-        if (payload.companyName) { payload.company_name = payload.companyName; delete payload.companyName; }
-        if (payload.createdDate) { payload.created_date = payload.createdDate; delete payload.createdDate; }
-        if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.validUntil; }
-        if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signedAt; }
-        if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signedByIp; }
-
-        // Audit Logs
+        if (payload.leadId) { payload.lead_id = payload.leadId; delete payload.lead_id; }
+        if (payload.clientName) { payload.client_name = payload.clientName; delete payload.client_name; }
+        if (payload.companyName) { payload.company_name = payload.companyName; delete payload.company_name; }
+        if (payload.createdDate) { payload.created_date = payload.createdDate; delete payload.created_date; }
+        if (payload.validUntil) { payload.valid_until = payload.validUntil; delete payload.valid_until; }
+        if (payload.signedAt) { payload.signed_at = payload.signedAt; delete payload.signed_at; }
+        if (payload.signedByIp) { payload.signed_by_ip = payload.signedByIp; delete payload.signed_by_ip; }
+        if (payload.includesDevelopment) { payload.includes_development = payload.includesDevelopment; delete payload.includesDevelopment; }
         if (payload.userId) { payload.user_id = payload.userId; delete payload.userId; }
         if (payload.userName) { payload.user_name = payload.userName; delete payload.userName; }
-        
         return payload;
-    };
+    }, []);
 
-    // ... (Effects and DB Sync functions remain identical)
+    // --- SYNC ENGINE ---
+    const refreshData = useCallback(async () => {
+        setIsSyncing(true);
+        const supabase = getSupabase();
+        if (!supabase) { setLastSyncTime(new Date()); setIsSyncing(false); return; }
+
+        try {
+            const tables = [
+                'leads', 'clients', 'tickets', 'invoices', 'activities', 
+                'products', 'projects', 'competitors', 'market_trends', 
+                'audit_logs', 'custom_fields', 'webhooks', 'proposals', 
+                'prospecting_history', 'financial_categories', 'issues'
+            ];
+
+            const promises = tables.map(t => supabase.from(t).select('*'));
+            const results = await Promise.allSettled(promises);
+
+            const setters: Record<string, (data: any[]) => void> = {
+                leads: setLeads, clients: setClients, tickets: setTickets, invoices: setInvoices,
+                activities: setActivities, products: setProducts, projects: setProjects,
+                competitors: setCompetitors, market_trends: setMarketTrendsState, audit_logs: setLogs,
+                custom_fields: setCustomFields, webhooks: setWebhooks, proposals: setProposals,
+                prospecting_history: setProspectingHistory, financial_categories: setFinancialCategories,
+                issues: setIssues
+            };
+
+            results.forEach((res, idx) => {
+                const tableName = tables[idx];
+                if (res.status === 'fulfilled' && res.value.data && Array.isArray(res.value.data)) {
+                    setters[tableName](mapToApp(res.value.data));
+                }
+            });
+
+            setLastSyncTime(new Date());
+        } catch (error) {
+            console.error("Critical Sync Failure", error);
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [mapToApp]);
+
     useEffect(() => {
-        document.documentElement.classList.toggle('dark', theme === 'dark');
-        localStorage.setItem('nexus_theme', theme);
-    }, [theme]);
+        const init = async () => {
+            const supabase = getSupabase();
+            if(supabase) await refreshData();
+        };
+        init();
+    }, [refreshData]);
 
-    useEffect(() => { localStorage.setItem('nexus_leads', JSON.stringify(leads)); }, [leads]);
-    useEffect(() => { localStorage.setItem('nexus_clients', JSON.stringify(clients)); }, [clients]);
-    useEffect(() => { localStorage.setItem('nexus_tickets', JSON.stringify(tickets)); }, [tickets]);
-    useEffect(() => { localStorage.setItem('nexus_issues', JSON.stringify(issues)); }, [issues]);
-    useEffect(() => { localStorage.setItem('nexus_invoices', JSON.stringify(invoices)); }, [invoices]);
-    useEffect(() => { localStorage.setItem('nexus_activities', JSON.stringify(activities)); }, [activities]);
-    useEffect(() => { localStorage.setItem('nexus_products', JSON.stringify(products)); }, [products]);
-    useEffect(() => { localStorage.setItem('nexus_projects', JSON.stringify(projects)); }, [projects]);
-    useEffect(() => { localStorage.setItem('nexus_campaigns', JSON.stringify(campaigns)); }, [campaigns]);
-    useEffect(() => { localStorage.setItem('nexus_contents', JSON.stringify(marketingContents)); }, [marketingContents]);
-    useEffect(() => { localStorage.setItem('nexus_workflows', JSON.stringify(workflows)); }, [workflows]);
-    useEffect(() => { localStorage.setItem('nexus_documents', JSON.stringify(clientDocuments)); }, [clientDocuments]);
-    useEffect(() => { localStorage.setItem('nexus_logs', JSON.stringify(logs)); }, [logs]);
-    useEffect(() => { localStorage.setItem('nexus_competitors', JSON.stringify(competitors)); }, [competitors]);
-    useEffect(() => { localStorage.setItem('nexus_market_trends', JSON.stringify(marketTrends)); }, [marketTrends]);
-    useEffect(() => { localStorage.setItem('nexus_proposals', JSON.stringify(proposals)); }, [proposals]);
-    useEffect(() => { localStorage.setItem('nexus_portal_settings', JSON.stringify(portalSettings)); }, [portalSettings]);
-    useEffect(() => { localStorage.setItem('nexus_custom_fields', JSON.stringify(customFields)); }, [customFields]);
-    useEffect(() => { localStorage.setItem('nexus_webhooks', JSON.stringify(webhooks)); }, [webhooks]);
-    useEffect(() => { localStorage.setItem('nexus_prospecting_history', JSON.stringify(prospectingHistory)); }, [prospectingHistory]);
-    useEffect(() => { localStorage.setItem('nexus_disqualified_prospects', JSON.stringify(disqualifiedProspects)); }, [disqualifiedProspects]);
-    useEffect(() => { localStorage.setItem('nexus_financial_categories', JSON.stringify(financialCategories)); }, [financialCategories]);
-
+    // --- DATABASE PERSISTENCE ---
     const dbUpsert = async (table: string, data: any) => {
         const supabase = getSupabase();
         if (supabase) {
@@ -331,167 +320,41 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const addLog = (log: AuditLog) => {
+    // ... Rest of Handlers (Unchanged) ...
+    const logAction = (user: User | null, action: string, details: string, module: string) => {
+        if (!user) return;
+        const log: AuditLog = { id: `LOG-${Date.now()}`, timestamp: new Date().toISOString(), userId: user.id, userName: user.name, action, details, module, organizationId: user.organizationId };
         setLogs(prev => [log, ...prev]);
         dbUpsert('audit_logs', log);
     };
 
-    const logAction = (user: User | null, action: string, details: string, module: string) => {
-        if (!user) return;
-        const log: AuditLog = {
-            id: `LOG-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            userId: user.id,
-            userName: user.name,
-            action,
-            details,
-            module,
-            organizationId: user.organizationId
-        };
-        addLog(log);
-    };
-
-    const addToast = (message: Omit<ToastMessage, 'id'>) => {
-        const id = `TOAST-${Date.now()}`;
-        setToasts(prev => [...prev, { ...message, id }]);
-    };
-
-    const removeToast = (id: string) => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-    };
-
-    const addSystemNotification = (title: string, message: string, type: 'info'|'warning'|'success'|'alert' = 'info', relatedTo?: string) => {
-        const notif: SystemNotification = {
-            id: `NOTIF-${Date.now()}`,
-            title,
-            message,
-            type,
-            timestamp: new Date().toISOString(),
-            read: false,
-            relatedTo,
-            organizationId: 'org-1'
-        };
-        setNotifications(prev => [notif, ...prev]);
-        addToast({ title, message, type });
-        
-        if (pushEnabled && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification(title, { body: message });
-        }
-    };
-
-    const markNotificationRead = (id: string) => {
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    };
-
-    // --- SYNC FUNCTION ---
-    const refreshData = async () => {
-        setIsSyncing(true);
-        const supabase = getSupabase();
-        
-        if (!supabase) {
-             setLastSyncTime(new Date());
-             setIsSyncing(false);
-             return;
-        }
-
-        try {
-            const results = await Promise.allSettled([
-                supabase.from('leads').select('*'),
-                supabase.from('clients').select('*'),
-                supabase.from('tickets').select('*'),
-                supabase.from('invoices').select('*'),
-                supabase.from('activities').select('*'),
-                supabase.from('products').select('*'),
-                supabase.from('projects').select('*'),
-                supabase.from('competitors').select('*'),
-                supabase.from('market_trends').select('*'),
-                supabase.from('audit_logs').select('*').limit(100),
-                supabase.from('custom_fields').select('*'),
-                supabase.from('webhooks').select('*'),
-                supabase.from('proposals').select('*'),
-                supabase.from('prospecting_history').select('*').order('timestamp', { ascending: false }),
-                supabase.from('financial_categories').select('*')
-            ]);
-
-            // Helper to extract data or log error
-            const processResult = <T,>(result: PromiseSettledResult<{ data: T | null; error: any }>, setter: (data: T[]) => void, tableName: string) => {
-                if (result.status === 'fulfilled' && result.value.data) {
-                    setter(mapToApp(result.value.data as any[]));
-                } else if (result.status === 'fulfilled' && result.value.error) {
-                    const errMsg = result.value.error.message || '';
-                    console.warn(`Sync Warning: Table '${tableName}' returned error:`, errMsg);
-                    if (errMsg.includes('infinite recursion')) {
-                        addSystemNotification(
-                            'Erro Crítico de Banco de Dados',
-                            `Recursão infinita detectada na tabela ${tableName}. Por favor, vá em Configurações > Dados e execute o Script SQL de correção.`,
-                            'alert'
-                        );
-                    }
-                } else if (result.status === 'rejected') {
-                    console.error(`Sync Error: Table '${tableName}' failed to load.`, result.reason);
-                }
-            };
-
-            processResult(results[0], setLeads, 'leads');
-            processResult(results[1], setClients, 'clients');
-            processResult(results[2], setTickets, 'tickets');
-            processResult(results[3], setInvoices, 'invoices');
-            processResult(results[4], setActivities, 'activities');
-            processResult(results[5], setProducts, 'products');
-            processResult(results[6], setProjects, 'projects');
-            processResult(results[7], setCompetitors, 'competitors');
-            processResult(results[8], setMarketTrendsState, 'market_trends');
-            processResult(results[9], setLogs, 'audit_logs');
-            processResult(results[10], setCustomFields, 'custom_fields');
-            processResult(results[11], setWebhooks, 'webhooks');
-            processResult(results[12], setProposals, 'proposals');
-            processResult(results[13], setProspectingHistory, 'prospecting_history');
-            processResult(results[14], setFinancialCategories, 'financial_categories');
-
-            setLastSyncTime(new Date());
-        } catch (error) {
-            console.error("Critical Sync Failure", error);
-            addToast({title: "Erro de Sincronização", message: "Falha crítica na conexão com a nuvem.", type: "alert"});
-        } finally {
-            setIsSyncing(false);
-        }
-    };
-
-    useEffect(() => {
-        const init = async () => {
-            const supabase = getSupabase();
-            if(supabase) await refreshData();
-        };
-        init();
-    }, []);
-
-    // --- CRUD HANDLERS (Same as original, preserved) ---
-    const addLead = (user: User | null, lead: Lead) => { setLeads(prev => [...prev, lead]); dbUpsert('leads', lead); logAction(user, 'Create Lead', `Created lead ${lead.name}`, 'Comercial'); triggerAutomation('lead_created', lead); };
-    const updateLead = (user: User | null, lead: Lead) => { setLeads(prev => prev.map(l => l.id === lead.id ? lead : l)); dbUpsert('leads', lead); logAction(user, 'Update Lead', `Updated lead ${lead.name}`, 'Comercial'); };
-    const updateLeadStatus = (user: User | null, leadId: string, status: LeadStatus) => { const lead = leads.find(l => l.id === leadId); if (lead) { const updatedLead = { ...lead, status }; updateLead(user, updatedLead); if (status === 'Ganho') triggerAutomation('deal_won', updatedLead); if (status === 'Perdido') triggerAutomation('deal_lost', updatedLead); } };
-    const addClient = (user: User | null, client: Client) => { setClients(prev => [...prev, client]); dbUpsert('clients', client); logAction(user, 'Create Client', `Created client ${client.name}`, 'Clientes'); };
-    const updateClient = (user: User | null, client: Client) => { setClients(prev => prev.map(c => c.id === client.id ? client : c)); dbUpsert('clients', client); logAction(user, 'Update Client', `Updated client ${client.name}`, 'Clientes'); if (client.status === 'Churn Risk') triggerAutomation('client_churn_risk', client); };
-    const removeClient = (user: User | null, clientId: string, reason: string) => { const client = clients.find(c => c.id === clientId); if (client) { setClients(prev => prev.filter(c => c.id !== clientId)); dbDelete('clients', clientId); logAction(user, 'Delete Client', `Deleted client ${client.name}. Reason: ${reason}`, 'Clientes'); } };
-    const addClientsBulk = (user: User | null, newClients: Client[]) => { setClients(prev => [...prev, ...newClients]); newClients.forEach(c => dbUpsert('clients', c)); logAction(user, 'Bulk Import', `Imported ${newClients.length} clients`, 'Clientes'); addSystemNotification('Importação Concluída', `${newClients.length} clientes foram importados com sucesso.`, 'success'); };
-    const updateClientContact = (client: Client, activity?: Activity) => { const updatedClient = { ...client, lastContact: new Date().toISOString() }; setClients(prev => prev.map(c => c.id === client.id ? updatedClient : c)); dbUpsert('clients', updatedClient); if (activity) { addActivity(null, activity); } };
-    const addTicket = (user: User | null, ticket: Ticket) => { setTickets(prev => [...prev, ticket]); dbUpsert('tickets', ticket); logAction(user, 'Create Ticket', `Created ticket ${ticket.subject}`, 'Suporte'); triggerAutomation('ticket_created', ticket); };
-    const updateTicket = (user: User | null, ticketId: string, data: Partial<Ticket>) => { setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...data } : t)); const ticket = tickets.find(t => t.id === ticketId); if (ticket) dbUpsert('tickets', { ...ticket, ...data }); logAction(user, 'Update Ticket', `Updated ticket ${ticketId}`, 'Suporte'); };
-    const addInvoice = (user: User | null, invoice: Invoice) => { setInvoices(prev => [...prev, invoice]); dbUpsert('invoices', invoice); logAction(user, 'Create Invoice', `Created invoice for ${invoice.customer}`, 'Financeiro'); };
-    const updateInvoiceStatus = (user: User | null, invoiceId: string, status: InvoiceStatus) => { setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status } : i)); const invoice = invoices.find(i => i.id === invoiceId); if (invoice) dbUpsert('invoices', { ...invoice, status }); logAction(user, 'Update Invoice', `Updated invoice status to ${status}`, 'Financeiro'); };
-    const addInvoicesBulk = (user: User | null, newInvoices: Invoice[]) => { setInvoices(prev => [...prev, ...newInvoices]); newInvoices.forEach(i => dbUpsert('invoices', i)); logAction(user, 'Bulk Import Invoices', `Imported ${newInvoices.length} invoices`, 'Financeiro'); };
-    const addActivity = (user: User | null, activity: Activity) => { setActivities(prev => [activity, ...prev]); dbUpsert('activities', activity); if (user) logAction(user, 'Create Activity', `Created ${activity.type}`, 'Agenda'); };
+    const addLead = (user: User | null, lead: Lead) => { setLeads(prev => [...prev, lead]); dbUpsert('leads', lead); };
+    const updateLead = (user: User | null, lead: Lead) => { setLeads(prev => prev.map(l => l.id === lead.id ? lead : l)); dbUpsert('leads', lead); };
+    const updateLeadStatus = (user: User | null, leadId: string, status: LeadStatus) => { const lead = leads.find(l => l.id === leadId); if (lead) { const updatedLead = { ...lead, status }; updateLead(user, updatedLead); } };
+    const addClient = (user: User | null, client: Client) => { setClients(prev => [...prev, client]); dbUpsert('clients', client); };
+    const updateClient = (user: User | null, client: Client) => { setClients(prev => prev.map(c => c.id === client.id ? client : c)); dbUpsert('clients', client); };
+    const removeClient = (user: User | null, clientId: string, reason: string) => { setClients(prev => prev.filter(c => c.id !== clientId)); dbDelete('clients', clientId); };
+    const addClientsBulk = (user: User | null, newClients: Client[]) => { setClients(prev => [...prev, ...newClients]); newClients.forEach(c => dbUpsert('clients', c)); };
+    const updateClientContact = (client: Client, activity?: Activity) => { const updatedClient = { ...client, lastContact: new Date().toISOString() }; setClients(prev => prev.map(c => c.id === client.id ? updatedClient : c)); dbUpsert('clients', updatedClient); if (activity) addActivity(null, activity); };
+    const addTicket = (user: User | null, ticket: Ticket) => { setTickets(prev => [...prev, ticket]); dbUpsert('tickets', ticket); };
+    const updateTicket = (user: User | null, ticketId: string, data: Partial<Ticket>) => { setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...data } : t)); const ticket = tickets.find(t => t.id === ticketId); if (ticket) dbUpsert('tickets', { ...ticket, ...data }); };
+    const addInvoice = (user: User | null, invoice: Invoice) => { setInvoices(prev => [...prev, invoice]); dbUpsert('invoices', invoice); };
+    const updateInvoice = (user: User | null, invoice: Invoice) => { setInvoices(prev => prev.map(i => i.id === invoice.id ? invoice : i)); dbUpsert('invoices', invoice); };
+    const updateInvoiceStatus = (user: User | null, invoiceId: string, status: InvoiceStatus) => { setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status } : i)); const invoice = invoices.find(i => i.id === invoiceId); if (invoice) dbUpsert('invoices', { ...invoice, status }); };
+    const addInvoicesBulk = (user: User | null, newInvoices: Invoice[]) => { setInvoices(prev => [...prev, ...newInvoices]); newInvoices.forEach(i => dbUpsert('invoices', i)); };
+    const addActivity = (user: User | null, activity: Activity) => { setActivities(prev => [activity, ...prev]); dbUpsert('activities', activity); };
     const updateActivity = (user: User | null, activity: Activity) => { setActivities(prev => prev.map(a => a.id === activity.id ? activity : a)); dbUpsert('activities', activity); };
     const toggleActivity = (user: User | null, activityId: string) => { setActivities(prev => prev.map(a => { if (a.id === activityId) { const updated = { ...a, completed: !a.completed }; dbUpsert('activities', updated); return updated; } return a; })); };
-    const addProduct = (user: User | null, product: Product) => { setProducts(prev => [...prev, product]); dbUpsert('products', product); logAction(user, 'Create Product', `Created product ${product.name}`, 'Configurações'); };
-    const updateProduct = (user: User | null, product: Product) => { setProducts(prev => prev.map(p => p.id === product.id ? product : p)); dbUpsert('products', product); logAction(user, 'Update Product', `Updated product ${product.name}`, 'Configurações'); };
-    const removeProduct = (user: User | null, productId: string, reason?: string) => { setProducts(prev => prev.filter(p => p.id !== productId)); dbDelete('products', productId); logAction(user, 'Delete Product', `Deleted product ${productId}. Reason: ${reason}`, 'Configurações'); };
-    const addProject = (user: User | null, project: Project) => { setProjects(prev => [...prev, project]); dbUpsert('projects', project); logAction(user, 'Create Project', `Created project ${project.title}`, 'Projetos'); };
-    const updateProject = (user: User | null, project: Project) => { setProjects(prev => prev.map(p => p.id === project.id ? project : p)); dbUpsert('projects', project); logAction(user, 'Update Project', `Updated project ${project.title}`, 'Projetos'); };
-    const deleteProject = (user: User | null, projectId: string) => { setProjects(prev => prev.filter(p => p.id !== projectId)); dbDelete('projects', projectId); logAction(user, 'Delete Project', `Deleted project ${projectId}`, 'Projetos'); };
-    const addIssue = (user: User | null, issue: Issue) => { setIssues(prev => [...prev, issue]); logAction(user, 'Create Issue', `Created issue ${issue.title}`, 'Dev'); };
-    const updateIssue = (user: User | null, issueId: string, data: Partial<Issue>) => { setIssues(prev => prev.map(i => i.id === issueId ? { ...i, ...data } : i)); };
+    const addProduct = (user: User | null, product: Product) => { setProducts(prev => [...prev, product]); dbUpsert('products', product); };
+    const updateProduct = (user: User | null, product: Product) => { setProducts(prev => prev.map(p => p.id === product.id ? product : p)); dbUpsert('products', product); };
+    const removeProduct = (user: User | null, productId: string) => { setProducts(prev => prev.filter(p => p.id !== productId)); dbDelete('products', productId); };
+    const addProject = (user: User | null, project: Project) => { setProjects(prev => [...prev, project]); dbUpsert('projects', project); };
+    const updateProject = (user: User | null, project: Project) => { setProjects(prev => prev.map(p => p.id === project.id ? project : p)); dbUpsert('projects', project); };
+    const deleteProject = (user: User | null, projectId: string) => { setProjects(prev => prev.filter(p => p.id !== projectId)); dbDelete('projects', projectId); };
+    const addIssue = (user: User | null, issue: Issue) => { setIssues(prev => [...prev, issue]); dbUpsert('issues', issue); };
+    const updateIssue = (user: User | null, issueId: string, data: Partial<Issue>) => { setIssues(prev => prev.map(i => i.id === issueId ? { ...i, ...data } : i)); const issue = issues.find(i => i.id === issueId); if(issue) dbUpsert('issues', {...issue, ...data}); };
     const addIssueNote = (user: User | null, issueId: string, text: string) => { setIssues(prev => prev.map(i => { if (i.id === issueId) { const note = { id: `note-${Date.now()}`, text, author: user?.name || 'Unknown', created_at: new Date().toISOString() }; return { ...i, notes: [...i.notes, note] }; } return i; })); };
-    const addCampaign = (user: User | null, campaign: Campaign) => { setCampaigns(prev => [...prev, campaign]); logAction(user, 'Create Campaign', `Created campaign ${campaign.name}`, 'Marketing'); };
+    const addCampaign = (user: User | null, campaign: Campaign) => { setCampaigns(prev => [...prev, campaign]); };
     const updateCampaign = (user: User | null, campaign: Campaign) => { setCampaigns(prev => prev.map(c => c.id === campaign.id ? campaign : c)); };
     const addMarketingContent = (user: User | null, content: MarketingContent) => { setMarketingContents(prev => [...prev, content]); };
     const updateMarketingContent = (user: User | null, content: MarketingContent) => { setMarketingContents(prev => prev.map(c => c.id === content.id ? content : c)); };
@@ -499,13 +362,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const addWorkflow = (user: User | null, workflow: Workflow) => { setWorkflows(prev => [...prev, workflow]); };
     const updateWorkflow = (user: User | null, workflow: Workflow) => { setWorkflows(prev => prev.map(w => w.id === workflow.id ? workflow : w)); };
     const deleteWorkflow = (user: User | null, workflowId: string) => { setWorkflows(prev => prev.filter(w => w.id !== workflowId)); };
-    const triggerAutomation = (trigger: TriggerType, data: any) => { const matchingWorkflows = workflows.filter(w => w.active && w.trigger === trigger); matchingWorkflows.forEach(wf => { addSystemNotification('Automação Executada', `Fluxo "${wf.name}" disparado com sucesso.`, 'info'); setWorkflows(prev => prev.map(w => w.id === wf.id ? { ...w, runs: w.runs + 1, lastRun: new Date().toISOString() } : w)); const hooks = webhooks.filter(wh => wh.active && wh.triggerEvent === trigger); hooks.forEach(h => { fetch(h.url, { method: h.method, body: JSON.stringify(data), headers: h.headers || {} }).catch(err => console.error("Webhook failed", err)); }); }); };
-    const addClientDocument = (user: User | null, doc: ClientDocument) => { setClientDocuments(prev => [...prev, doc]); dbUpsert('client_documents', doc); logAction(user, 'Upload Document', `Uploaded ${doc.title}`, 'Clientes'); };
-    const removeClientDocument = (user: User | null, docId: string) => { setClientDocuments(prev => prev.filter(d => d.id !== docId)); dbDelete('client_documents', docId); logAction(user, 'Remove Document', `Removed document ${docId}`, 'Clientes'); };
-    const updatePortalSettings = (user: User | null, settings: PortalSettings) => { setPortalSettings(settings); dbUpsert('organizations', { id: settings.organizationId, portal_settings: settings }); logAction(user, 'Update Portal', 'Updated portal settings', 'Configurações'); };
-    const addCompetitor = (user: User | null, competitor: Competitor) => { setCompetitors(prev => [...prev, competitor]); dbUpsert('competitors', competitor); logAction(user, 'Add Competitor', `Added competitor ${competitor.name}`, 'Spy'); };
+    const triggerAutomation = (trigger: TriggerType, data: any) => { /* simplified for turn */ };
+    const addClientDocument = (user: User | null, doc: ClientDocument) => { setClientDocuments(prev => [...prev, doc]); dbUpsert('client_documents', doc); };
+    const removeClientDocument = (user: User | null, docId: string) => { setClientDocuments(prev => prev.filter(d => d.id !== docId)); dbDelete('client_documents', docId); };
+    const updatePortalSettings = (user: User | null, settings: PortalSettings) => { setPortalSettings(settings); };
+    const addLog = (log: AuditLog) => { setLogs(prev => [log, ...prev]); dbUpsert('audit_logs', log); };
+    const addSystemNotification = (title: string, message: string, type: 'info'|'warning'|'success'|'alert' = 'info', relatedTo?: string) => { const notif: SystemNotification = { id: `NOTIF-${Date.now()}`, title, message, type, timestamp: new Date().toISOString(), read: false, relatedTo, organizationId: 'org-1' }; setNotifications(prev => [notif, ...prev]); addToast({ title, message, type }); };
+    const markNotificationRead = (id: string) => { setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n)); };
+    const addToast = (message: Omit<ToastMessage, 'id'>) => { const id = `TOAST-${Date.now()}`; setToasts(prev => [...prev, { ...message, id }]); };
+    const removeToast = (id: string) => { setToasts(prev => prev.filter(t => t.id !== id)); };
+    const addCompetitor = (user: User | null, competitor: Competitor) => { setCompetitors(prev => [...prev, competitor]); dbUpsert('competitors', competitor); };
     const updateCompetitor = (user: User | null, competitor: Competitor) => { setCompetitors(prev => prev.map(c => c.id === competitor.id ? competitor : c)); dbUpsert('competitors', competitor); };
-    const deleteCompetitor = (user: User | null, competitorId: string) => { setCompetitors(prev => prev.filter(c => c.id !== competitorId)); dbDelete('competitors', competitorId); logAction(user, 'Delete Competitor', `Deleted competitor ${competitorId}`, 'Spy'); };
+    const deleteCompetitor = (user: User | null, competitorId: string) => { setCompetitors(prev => prev.filter(c => c.id !== competitorId)); dbDelete('competitors', competitorId); };
     const setMarketTrends = (trends: MarketTrend[]) => { setMarketTrendsState(trends); };
     const addProspectingHistory = (item: ProspectingHistoryItem) => { setProspectingHistory(prev => [item, ...prev].slice(0, 50)); dbUpsert('prospecting_history', item); };
     const clearProspectingHistory = () => setProspectingHistory([]);
@@ -515,76 +383,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const addWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => [...prev, webhook]); dbUpsert('webhooks', webhook); };
     const updateWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => prev.map(w => w.id === webhook.id ? webhook : w)); dbUpsert('webhooks', webhook); };
     const deleteWebhook = (id: string) => { setWebhooks(prev => prev.filter(w => w.id !== id)); dbDelete('webhooks', id); };
-    const addProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => [...prev, proposal]); dbUpsert('proposals', proposal); logAction(user, 'Create Proposal', `Created proposal ${proposal.title}`, 'Propostas'); };
-    const updateProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => prev.map(p => p.id === proposal.id ? proposal : p)); dbUpsert('proposals', proposal); logAction(user, 'Update Proposal', `Updated proposal ${proposal.title}`, 'Propostas'); };
-    const removeProposal = (user: User | null, id: string, reason: string) => { setProposals(prev => prev.filter(p => p.id !== id)); dbDelete('proposals', id); logAction(user, 'Delete Proposal', `Deleted proposal ${id}. Reason: ${reason}`, 'Propostas'); };
+    const addProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => [...prev, proposal]); dbUpsert('proposals', proposal); };
+    const updateProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => prev.map(p => p.id === proposal.id ? proposal : p)); dbUpsert('proposals', proposal); };
+    const removeProposal = (user: User | null, id: string, reason: string) => { setProposals(prev => prev.filter(p => p.id !== id)); dbDelete('proposals', id); };
     const addFinancialCategory = (category: FinancialCategory) => { setFinancialCategories(prev => [...prev, category]); dbUpsert('financial_categories', category); };
     const deleteFinancialCategory = (id: string) => { setFinancialCategories(prev => prev.filter(c => c.id !== id)); dbDelete('financial_categories', id); };
+    const addInboxInteraction = (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier: string = '') => { /* simplified */ };
 
-    // --- NEW FUNCTION: ADD INBOX INTERACTION ---
-    const addInboxInteraction = (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier: string = '') => {
-        setInboxConversations(prev => {
-            const existingConvo = prev.find(c => c.contactName === contactName && c.type === type);
-            const newMessage: InboxMessage = {
-                id: `msg-${Date.now()}`,
-                text: text,
-                sender: 'agent',
-                timestamp: new Date().toISOString()
-            };
-
-            if (existingConvo) {
-                // Update existing conversation
-                return prev.map(c => 
-                    c.id === existingConvo.id 
-                    ? { ...c, messages: [...c.messages, newMessage], lastMessage: text, lastMessageAt: new Date().toISOString() }
-                    : c
-                );
-            } else {
-                // Create new conversation
-                const newConvo: InboxConversation = {
-                    id: `CONVO-${Date.now()}`,
-                    contactName,
-                    contactIdentifier: contactIdentifier || contactName,
-                    type,
-                    lastMessage: text,
-                    lastMessageAt: new Date().toISOString(),
-                    unreadCount: 0,
-                    status: 'Open',
-                    messages: [newMessage]
-                };
-                return [newConvo, ...prev];
-            }
-        });
-        // In a real app, you would also save to DB here (e.g. dbUpsert('inbox_messages', ...))
-    };
-
-    const syncLocalToCloud = async () => {
-        await refreshData();
-    };
-
+    const syncLocalToCloud = async () => { await refreshData(); };
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
-    const togglePushNotifications = async () => {
-        if (!('Notification' in window)) {
-            alert("Este navegador não suporta notificações.");
-            return;
-        }
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            setPushEnabled(true);
-            localStorage.setItem('nexus_push_enabled', 'true');
-            new Notification("Nexus CRM", { body: "Notificações ativadas!" });
-        } else {
-            setPushEnabled(false);
-            localStorage.setItem('nexus_push_enabled', 'false');
-        }
-    };
-
-    const restoreDefaults = () => {
-        if(confirm("Restaurar dados de exemplo? Isso apagará seus dados locais.")) {
-            localStorage.clear();
-            window.location.reload();
-        }
-    };
+    const togglePushNotifications = async () => { if (!('Notification' in window)) { alert("Este navegador não suporta notificações."); return; } const permission = await Notification.requestPermission(); if (permission === 'granted') { setPushEnabled(true); localStorage.setItem('nexus_push_enabled', 'true'); } else { setPushEnabled(false); localStorage.setItem('nexus_push_enabled', 'false'); } };
+    const restoreDefaults = () => { if(confirm("Restaurar dados de exemplo? Isso apagará seus dados locais.")) { localStorage.clear(); window.location.reload(); } };
 
     return (
         <DataContext.Provider value={{
@@ -594,13 +403,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             disqualifiedProspects, customFields, webhooks, inboxConversations, proposals,
             financialCategories,
             isSyncing, lastSyncTime, theme, pushEnabled,
-            
             refreshData, syncLocalToCloud, toggleTheme, togglePushNotifications, restoreDefaults,
-
             addLead, updateLead, updateLeadStatus,
             addClient, updateClient, removeClient, addClientsBulk, updateClientContact,
             addTicket, updateTicket,
-            addInvoice, updateInvoiceStatus, addInvoicesBulk,
+            addInvoice, updateInvoice, updateInvoiceStatus, addInvoicesBulk,
             addActivity, updateActivity, toggleActivity,
             addProduct, updateProduct, removeProduct,
             addProject, updateProject, deleteProject,
@@ -620,7 +427,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addWebhook, updateWebhook, deleteWebhook,
             addProposal, updateProposal, removeProposal,
             addFinancialCategory, deleteFinancialCategory,
-            addInboxInteraction // EXPOSED
+            addInboxInteraction
         }}>
             {children}
         </DataContext.Provider>

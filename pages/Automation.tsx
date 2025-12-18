@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Workflow, TriggerType, ActionType, WorkflowAction } from '../types';
-import { Workflow as WorkflowIcon, Plus, Play, Pause, Trash2, Edit2, Zap, ArrowDown, Mail, Bell, CheckSquare, Settings, X, Save, Box, Activity, ChevronRight, AlertCircle } from 'lucide-react';
+import { Workflow as WorkflowIcon, Plus, Play, Pause, Trash2, Edit2, Zap, ArrowDown, Mail, Bell, CheckSquare, Settings, X, Save, Box, Activity, ChevronRight, AlertCircle, Timer } from 'lucide-react';
 
 export const Automation: React.FC = () => {
     const { workflows, addWorkflow, updateWorkflow, deleteWorkflow, triggerAutomation, addSystemNotification } = useData();
@@ -24,6 +24,7 @@ export const Automation: React.FC = () => {
         { value: 'deal_lost', label: 'Negócio Perdido', icon: Zap },
         { value: 'ticket_created', label: 'Ticket Aberto', icon: Zap },
         { value: 'client_churn_risk', label: 'Risco de Churn Detectado', icon: Zap },
+        { value: 'project_stagnated', label: 'Projeto Estagnado (3d+)', icon: Timer },
     ];
 
     const actionOptions: { value: ActionType; label: string; icon: any; desc: string }[] = [
@@ -113,7 +114,6 @@ export const Automation: React.FC = () => {
 
     return (
         <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-            {/* Header List */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -129,7 +129,6 @@ export const Automation: React.FC = () => {
                 </button>
             </div>
 
-            {/* Workflow Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {workflows.map(wf => (
                     <div key={wf.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden hover:shadow-md transition relative group">
@@ -173,10 +172,8 @@ export const Automation: React.FC = () => {
                 ))}
             </div>
 
-            {/* BUILDER MODAL (Visual Editor) */}
             {isBuilderOpen && (
                 <div className="fixed inset-0 bg-slate-100 dark:bg-slate-900 z-[100] flex flex-col animate-fade-in transition-colors">
-                    {/* Toolbar */}
                     <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 flex justify-between items-center shadow-sm shrink-0 z-20 transition-colors">
                         <div className="flex items-center gap-4">
                             <button onClick={() => setIsBuilderOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400"><X size={24}/></button>
@@ -199,16 +196,12 @@ export const Automation: React.FC = () => {
                     </div>
 
                     <div className="flex-1 flex overflow-hidden relative">
-                        {/* Background Grid Pattern */}
                         <div className="absolute inset-0 z-0 opacity-10 dark:opacity-20 pointer-events-none" 
                              style={{backgroundImage: 'radial-gradient(#64748b 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
                         </div>
 
-                        {/* FLOW CANVAS - CENTERED */}
                         <div className="flex-1 overflow-y-auto relative z-10 flex justify-center py-10">
                             <div className="w-full max-w-xl flex flex-col items-center pb-32">
-                                
-                                {/* START NODE (TRIGGER) */}
                                 <div className="w-64 bg-white dark:bg-slate-800 p-1 rounded-xl shadow-lg border-t-4 border-amber-500 flex flex-col mb-2 relative group hover:scale-105 transition-transform duration-200">
                                     <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
                                         <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg text-amber-600 dark:text-amber-400"><Zap size={20}/></div>
@@ -226,23 +219,15 @@ export const Automation: React.FC = () => {
                                             {triggerOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                         </select>
                                     </div>
-                                    {/* Output Connector */}
                                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-500 rounded-full border-2 border-white dark:border-slate-900 z-20"></div>
                                 </div>
-
-                                {/* CONNECTOR LINE */}
                                 <div className="h-8 w-0.5 bg-slate-300 dark:bg-slate-600 my-1"></div>
-
-                                {/* ACTIONS NODES */}
                                 {wfActions.map((action, index) => (
                                     <React.Fragment key={action.id}>
-                                        {/* Action Card */}
                                         <div className="w-80 bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 flex flex-col relative group animate-scale-in">
-                                            {/* Remove Button */}
                                             <button onClick={() => handleRemoveAction(action.id)} className="absolute -right-3 -top-3 bg-white dark:bg-slate-700 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-full shadow border border-slate-200 dark:border-slate-600 opacity-0 group-hover:opacity-100 transition z-20">
                                                 <X size={14}/>
                                             </button>
-
                                             <div className="p-4 flex items-start gap-3 border-b border-slate-50 dark:border-slate-700">
                                                 <div className="bg-indigo-50 dark:bg-indigo-900/30 p-2 rounded-lg text-indigo-600 dark:text-indigo-400 mt-1">
                                                     {actionOptions.find(a => a.value === action.type)?.icon ? React.createElement(actionOptions.find(a => a.value === action.type)!.icon, {size: 18}) : <Settings size={18}/>}
@@ -259,60 +244,29 @@ export const Automation: React.FC = () => {
                                                         {actionOptions.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                                                     </select>
                                                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{actionOptions.find(a => a.value === action.type)?.desc}</p>
-                                                    
-                                                    {/* Config Inputs */}
                                                     {action.type === 'create_task' && (
-                                                        <input 
-                                                            type="text" 
-                                                            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-indigo-400 outline-none text-slate-800 dark:text-white"
-                                                            placeholder="Título da Tarefa (Use {name} para variável)"
-                                                            value={action.config.template || ''}
-                                                            onChange={(e) => handleUpdateAction(action.id, 'template', e.target.value)}
-                                                        />
+                                                        <input type="text" className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 focus:border-indigo-400 outline-none text-slate-800 dark:text-white" placeholder="Título da Tarefa (Use {name} para variável)" value={action.config.template || ''} onChange={(e) => handleUpdateAction(action.id, 'template', e.target.value)} />
                                                     )}
                                                     {action.type === 'send_email' && (
-                                                        <textarea 
-                                                            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-indigo-400 outline-none resize-none h-16 text-slate-800 dark:text-white"
-                                                            placeholder="Corpo do Email..."
-                                                            value={action.config.template || ''}
-                                                            onChange={(e) => handleUpdateAction(action.id, 'template', e.target.value)}
-                                                        />
+                                                        <textarea className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 focus:border-indigo-400 outline-none resize-none h-16 text-slate-800 dark:text-white" placeholder="Corpo do Email..." value={action.config.template || ''} onChange={(e) => handleUpdateAction(action.id, 'template', e.target.value)} />
                                                     )}
                                                     {action.type === 'notify_slack' && (
-                                                        <input 
-                                                            type="text" 
-                                                            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-indigo-400 outline-none text-slate-800 dark:text-white"
-                                                            placeholder="#canal ou @usuario"
-                                                            value={action.config.target || ''}
-                                                            onChange={(e) => handleUpdateAction(action.id, 'target', e.target.value)}
-                                                        />
+                                                        <input type="text" className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded placeholder:text-slate-400 focus:border-indigo-400 outline-none text-slate-800 dark:text-white" placeholder="#canal ou @usuario" value={action.config.target || ''} onChange={(e) => handleUpdateAction(action.id, 'target', e.target.value)} />
                                                     )}
                                                 </div>
                                             </div>
                                         </div>
-
-                                        {/* Connector Line */}
                                         <div className="h-8 w-0.5 bg-slate-300 dark:bg-slate-600 my-1 relative group/line">
-                                            {/* Add Button on Line Hover */}
-                                            <button 
-                                                onClick={() => handleAddAction(index)}
-                                                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-600 dark:hover:border-indigo-400 shadow-sm opacity-0 group-hover/line:opacity-100 transition z-20"
-                                            >
+                                            <button onClick={() => handleAddAction(index)} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-300 hover:text-indigo-600 shadow-sm opacity-0 group-hover/line:opacity-100 transition z-20">
                                                 <Plus size={14}/>
                                             </button>
                                         </div>
                                     </React.Fragment>
                                 ))}
-
-                                {/* ADD END NODE */}
-                                <button 
-                                    onClick={() => handleAddAction()}
-                                    className="w-64 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-4 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition cursor-pointer gap-2 bg-white/50 dark:bg-slate-800/50"
-                                >
+                                <button onClick={() => handleAddAction()} className="w-64 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-4 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 hover:text-indigo-600 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition cursor-pointer gap-2 bg-white/50 dark:bg-slate-800/50">
                                     <div className="bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><Plus size={20}/></div>
                                     <span className="text-sm font-bold">Adicionar Ação</span>
                                 </button>
-
                             </div>
                         </div>
                     </div>

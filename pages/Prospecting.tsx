@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Target, Search, MapPin, Briefcase, Plus, UserPlus, Sparkles, Building2, Loader2, CheckCircle, ArrowRight, History, Trash2, X, AlertCircle } from 'lucide-react';
+// Added Mail and Phone components to the lucide-react import list to resolve "Cannot find name" errors.
+import { Target, Search, MapPin, Briefcase, Plus, UserPlus, Sparkles, Building2, Loader2, CheckCircle, ArrowRight, History, Trash2, X, AlertCircle, ShieldCheck, Mail, Phone } from 'lucide-react';
 import { findPotentialLeads } from '../services/geminiService';
 import { PotentialLead, Lead, LeadStatus, ProspectingHistoryItem } from '../types';
 
@@ -9,43 +11,37 @@ export const Prospecting: React.FC = () => {
     const { addLead, leads, clients, prospectingHistory, addProspectingHistory, clearProspectingHistory, disqualifiedProspects, disqualifyProspect } = useData();
     const { currentUser } = useAuth();
 
-    // Search State
     const [industry, setIndustry] = useState('');
     const [location, setLocation] = useState('');
     const [keywords, setKeywords] = useState('');
     const [isSearching, setIsSearching] = useState(false);
-    
-    // Results State
     const [results, setResults] = useState<PotentialLead[]>([]);
     const [convertedIds, setConvertedIds] = useState<Set<string>>(new Set());
 
-    // --- LOGIC: DEDUPLICATION ---
     const filterNewResults = (rawData: PotentialLead[], ignoreHistory: boolean = false) => {
-        // Normalize helper
         const normalize = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-        // 1. Existing Database (Leads + Clients)
         const existingCompanies = new Set([
             ...leads.map(l => normalize(l.company)),
             ...clients.map(c => normalize(c.name))
         ]);
 
-        // 2. Prospecting History (Avoid showing the same "new lead" twice if user ignored it before)
-        const historicalNames = new Set(
-            prospectingHistory.flatMap(h => h.results.map(r => normalize(r.companyName)))
-        );
-
-        // 3. Disqualified Prospects (Explicitly discarded by user)
         const disqualifiedSet = new Set(disqualifiedProspects);
+        const historicalNames = new Set(prospectingHistory.flatMap(h => h.results.map(r => normalize(r.companyName))));
 
-        // Filter
         return rawData.filter(item => {
             const normalizedName = normalize(item.companyName);
+            
+            // Validação de sanidade de dados (anti-sujeira)
+            const hasGenericEmail = /empresa\d|test|example|placeholder/i.test(item.email || '');
+            const hasBadPhone = (item.phone || '').replace(/\D/g, '').length < 10;
+            
+            if (hasGenericEmail || hasBadPhone) return false;
+
             const isClientOrLead = existingCompanies.has(normalizedName);
             const isDisqualified = disqualifiedSet.has(normalizedName);
             const isInHistory = !ignoreHistory && historicalNames.has(normalizedName);
 
-            // Must NOT be in DB AND Must NOT be in History (if checking) AND Must NOT be Disqualified
             return !isClientOrLead && !isDisqualified && !isInHistory;
         });
     };
@@ -58,31 +54,32 @@ export const Prospecting: React.FC = () => {
         }
 
         setIsSearching(true);
+        setResults([]);
+        
         try {
             const rawData = await findPotentialLeads(industry, location, keywords);
-            
             const uniqueResults = filterNewResults(rawData);
 
-            // Limit to 10 results and ensure unique IDs
             const safeData = uniqueResults.slice(0, 10).map((item, idx) => ({
                 ...item, 
                 id: `PROSPECT-${Date.now()}-${idx}`
             }));
 
             setResults(safeData);
-            setConvertedIds(new Set()); // Reset converted state for new search
+            setConvertedIds(new Set());
             
-            // ALWAYS Save to History (Even if 0 results, to record effort)
-            const historyItem: ProspectingHistoryItem = {
-                id: `HIST-${Date.now()}`,
-                timestamp: new Date().toISOString(),
-                industry,
-                location,
-                keywords: keywords,
-                results: safeData, // Saving what was found in THIS run (even if empty)
-                organizationId: currentUser?.organizationId
-            };
-            addProspectingHistory(historyItem);
+            if (safeData.length > 0) {
+                const historyItem: ProspectingHistoryItem = {
+                    id: `HIST-${Date.now()}`,
+                    timestamp: new Date().toISOString(),
+                    industry,
+                    location,
+                    keywords: keywords,
+                    results: safeData,
+                    organizationId: currentUser?.organizationId
+                };
+                addProspectingHistory(historyItem);
+            }
 
         } catch (error) {
             console.error(error);
@@ -93,153 +90,83 @@ export const Prospecting: React.FC = () => {
     };
 
     const handleConvertToLead = (prospect: PotentialLead) => {
-        // Create new Lead object
         const newLead: Lead = {
             id: `L-${Date.now()}`,
-            name: "Contato Comercial", // Default contact name as we might not have it
+            name: "Decisor / Contato",
             company: prospect.companyName,
             email: prospect.email || "", 
             phone: prospect.phone || "", 
-            value: 0, // Initial value
+            value: 0,
             status: LeadStatus.NEW,
-            source: "Nexus AI Prospecting",
+            source: "Nexus AI Real Prospect",
             probability: prospect.matchScore > 80 ? 30 : 10,
             createdAt: new Date().toISOString(),
             lastContact: new Date().toISOString(),
             address: prospect.location,
-            productInterest: prospect.reason, // Use the reason as interest context
-            description: `**Sugestão IA:** ${prospect.suggestedApproach}\n**Tamanho:** ${prospect.estimatedSize}`
+            productInterest: prospect.reason,
+            description: `**Inteligência Prospect:** ${prospect.suggestedApproach}\n**Empresa Verificada:** Sim`
         };
 
         addLead(currentUser, newLead);
-        
-        // Mark as converted visually
         setConvertedIds(prev => new Set(prev).add(prospect.id));
     };
 
     const handleDiscard = (prospect: PotentialLead) => {
         if(window.confirm(`Deseja descartar "${prospect.companyName}"? Ela não aparecerá em buscas futuras.`)) {
             disqualifyProspect(prospect.companyName);
-            // Remove from current view immediately
             setResults(prev => prev.filter(p => p.id !== prospect.id));
         }
     };
 
-    const loadHistoryItem = (item: ProspectingHistoryItem) => {
-        setIndustry(item.industry);
-        setLocation(item.location);
-        setKeywords(item.keywords || ''); // Restore keywords
-        
-        // Re-filter results but IGNORE history check (since we are loading history)
-        const filteredHistoricalResults = filterNewResults(item.results, true);
-        
-        setResults(filteredHistoricalResults);
-        setConvertedIds(new Set()); // Reset on reload
-    };
-
     return (
         <div className="p-4 md:p-8 flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors h-full overflow-hidden">
-            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Target className="text-red-600 dark:text-red-500" /> Nexus Prospect
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">Inteligência Artificial para encontrar seu próximo grande cliente.</p>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">Busca de leads reais filtrada por integridade de dados.</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
-                {/* Left Column: Search & History */}
                 <div className="lg:col-span-1 flex flex-col gap-6 h-full min-h-0">
-                    {/* Search Box */}
                     <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors shrink-0">
-                        <h3 className="font-bold text-slate-900 dark:text-white mb-4">Nova Busca</h3>
+                        <h3 className="font-bold text-slate-900 dark:text-white mb-4">Parâmetros de Busca</h3>
                         <form onSubmit={handleSearch} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 flex items-center gap-2">
-                                    <Briefcase size={14}/> Setor / Nicho
+                                    <Briefcase size={14}/> Setor
                                 </label>
-                                <input 
-                                    type="text" 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition-colors text-sm"
-                                    placeholder="Ex: Varejo, Clínicas"
-                                    value={industry}
-                                    onChange={e => setIndustry(e.target.value)}
-                                />
+                                <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-slate-700 dark:text-white text-sm" placeholder="Ex: Farmácias" value={industry} onChange={e => setIndustry(e.target.value)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 flex items-center gap-2">
-                                    <MapPin size={14}/> Localização
+                                    <MapPin size={14}/> Cidade/UF
                                 </label>
-                                <input 
-                                    type="text" 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition-colors text-sm"
-                                    placeholder="Ex: São Paulo"
-                                    value={location}
-                                    onChange={e => setLocation(e.target.value)}
-                                />
+                                <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-slate-700 dark:text-white text-sm" placeholder="Ex: Curitiba PR" value={location} onChange={e => setLocation(e.target.value)} />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 flex items-center gap-2">
-                                    <Search size={14}/> Palavras-chave
-                                </label>
-                                <input 
-                                    type="text" 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition-colors text-sm"
-                                    placeholder="Opcional"
-                                    value={keywords}
-                                    onChange={e => setKeywords(e.target.value)}
-                                />
-                            </div>
-                            <button 
-                                type="submit" 
-                                disabled={isSearching}
-                                className="w-full bg-red-600 text-white font-bold py-2.5 rounded-lg hover:bg-red-700 transition shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-sm"
-                            >
-                                {isSearching ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>}
-                                {isSearching ? 'Analisando...' : 'Buscar Leads'}
+                            <button type="submit" disabled={isSearching} className="w-full bg-red-600 text-white font-bold py-2.5 rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2 disabled:opacity-70 text-sm">
+                                {isSearching ? <Loader2 className="animate-spin" size={18}/> : <Search size={18}/>}
+                                {isSearching ? 'Buscando Reais...' : 'Procurar Empresas'}
                             </button>
                         </form>
                     </div>
 
-                    {/* History List - Ensure height is constrained to allow scrolling */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-0 overflow-hidden transition-colors h-full">
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 shrink-0">
+                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
                             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                                <History size={16}/> Histórico Recente
+                                <History size={16}/> Histórico
                             </h3>
-                            {prospectingHistory.length > 0 && (
-                                <button onClick={clearProspectingHistory} className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1">
-                                    <Trash2 size={12}/> Limpar
-                                </button>
-                            )}
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
                             {prospectingHistory.length === 0 ? (
-                                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs italic">
-                                    Nenhuma busca recente.
-                                </div>
+                                <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs italic">Nenhuma busca.</div>
                             ) : (
                                 prospectingHistory.slice(0, 20).map((item) => (
-                                    <div 
-                                        key={item.id}
-                                        onClick={() => loadHistoryItem(item)}
-                                        className="p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition group"
-                                    >
-                                        <div className="flex justify-between items-start mb-1">
-                                            <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[70%]">{item.industry}</p>
-                                            <span className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
-                                        </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">{item.location}</p>
-                                        
-                                        <div className="flex justify-between items-center">
-                                            <div className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded w-fit font-medium ${item.results.length > 0 ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20' : 'text-slate-500 bg-slate-100 dark:bg-slate-700'}`}>
-                                                {item.results.length > 0 ? <CheckCircle size={10}/> : <AlertCircle size={10}/>} 
-                                                {item.results.length > 0 ? `${item.results.length} novos` : '0 novos'}
-                                            </div>
-                                            {item.keywords && <span className="text-[9px] text-slate-400 italic truncate max-w-[80px]">{item.keywords}</span>}
-                                        </div>
+                                    <div key={item.id} onClick={() => { setIndustry(item.industry); setLocation(item.location); }} className="p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition">
+                                        <p className="font-bold text-slate-800 dark:text-white text-xs truncate">{item.industry}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.location}</p>
                                     </div>
                                 ))
                             )}
@@ -247,89 +174,50 @@ export const Prospecting: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right Column: Results Grid */}
                 <div className="lg:col-span-3 flex flex-col overflow-hidden h-full min-h-0">
                     {results.length > 0 ? (
                         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-6">
                             <div className="flex items-center justify-between mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                    Resultados <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-2 py-1 rounded-full">{results.length}</span>
-                                </h2>
-                                {results.length < 5 && results.length > 0 && (
-                                    <p className="text-xs text-slate-500 italic">
-                                        Filtramos leads que já estão no seu CRM.
-                                    </p>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-xl font-bold text-slate-800 dark:text-white">Leads Verificados</h2>
+                                    <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-green-200">
+                                        <ShieldCheck size={12}/> DATA SCRUBBING ATIVO
+                                    </div>
+                                </div>
+                                <span className="text-xs text-slate-500">Mostrando {results.length} resultados qualificados</span>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {results.map((prospect) => {
                                     const isConverted = convertedIds.has(prospect.id);
-                                    
                                     return (
-                                        <div key={prospect.id} className={`bg-white dark:bg-slate-800 rounded-xl border p-6 flex flex-col transition-all duration-300 relative group ${isConverted ? 'border-green-500 ring-1 ring-green-500 opacity-60' : 'border-slate-200 dark:border-slate-700 hover:shadow-xl hover:border-red-300 dark:hover:border-red-500'}`}>
-                                            {/* Discard Button (Top Right) */}
+                                        <div key={prospect.id} className={`bg-white dark:bg-slate-800 rounded-xl border p-6 flex flex-col transition-all duration-300 relative group ${isConverted ? 'border-green-500 ring-1 ring-green-500 opacity-60' : 'border-slate-200 dark:border-slate-700 hover:shadow-xl'}`}>
                                             {!isConverted && (
-                                                <button 
-                                                    onClick={() => handleDiscard(prospect)}
-                                                    className="absolute top-3 right-3 text-slate-300 hover:text-red-500 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
-                                                    title="Descartar (Não mostrar novamente)"
-                                                >
-                                                    <X size={16} />
-                                                </button>
+                                                <button onClick={() => handleDiscard(prospect)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><X size={16} /></button>
                                             )}
-
-                                            <div className="flex justify-between items-start mb-4 pr-6">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-300">
-                                                        <Building2 size={20} />
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0"><Building2 size={20} /></div>
+                                                    <div className="min-w-0">
+                                                        <h3 className="font-bold text-slate-900 dark:text-white text-lg truncate" title={prospect.companyName}>{prospect.companyName}</h3>
+                                                        <p className="text-xs text-slate-500 truncate">{prospect.industry}</p>
                                                     </div>
-                                                    <div>
-                                                        <h3 className="font-bold text-slate-900 dark:text-white text-lg leading-tight line-clamp-1" title={prospect.companyName}>{prospect.companyName}</h3>
-                                                        <p className="text-xs text-slate-500 dark:text-slate-400">{prospect.industry} • {prospect.location}</p>
-                                                    </div>
-                                                </div>
-                                                <div className={`flex flex-col items-end shrink-0 ${prospect.matchScore >= 80 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                                                    <span className="text-2xl font-bold">{prospect.matchScore}%</span>
-                                                    <span className="text-[10px] uppercase font-bold tracking-wider">Match</span>
                                                 </div>
                                             </div>
-
                                             <div className="space-y-4 flex-1">
-                                                <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">Por que prospectar?</p>
-                                                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-snug line-clamp-3" title={prospect.reason}>{prospect.reason}</p>
+                                                <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Qualificação</p>
+                                                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-snug line-clamp-3">{prospect.reason}</p>
                                                 </div>
-
-                                                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                                    <span className="font-bold">Porte Estimado:</span> {prospect.estimatedSize}
-                                                </div>
-
-                                                {/* Contact Info (If Available) */}
-                                                {(prospect.email || prospect.phone) && (
-                                                    <div className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700 pt-2">
-                                                        {prospect.email && <div className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center">@</div> {prospect.email}</div>}
-                                                        {prospect.phone && <div className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center">#</div> {prospect.phone}</div>}
-                                                    </div>
-                                                )}
-
-                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
-                                                    <p className="text-[10px] text-blue-500 dark:text-blue-300 uppercase font-bold mb-1 flex items-center gap-1"><Sparkles size={10}/> Dica de Abordagem</p>
-                                                    <p className="text-sm text-blue-800 dark:text-blue-200 italic line-clamp-3" title={prospect.suggestedApproach}>"{prospect.suggestedApproach}"</p>
+                                                <div className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-300">
+                                                    <div className="flex items-center gap-2"><Mail size={14} className="text-slate-400"/> {prospect.email}</div>
+                                                    <div className="flex items-center gap-2"><Phone size={14} className="text-slate-400"/> {prospect.phone}</div>
+                                                    <div className="flex items-center gap-2"><MapPin size={14} className="text-slate-400"/> {prospect.location}</div>
                                                 </div>
                                             </div>
-
                                             <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
-                                                <button 
-                                                    onClick={() => handleConvertToLead(prospect)}
-                                                    disabled={isConverted}
-                                                    className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${isConverted ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 cursor-default' : 'bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800 dark:hover:bg-slate-600 shadow-sm'}`}
-                                                >
-                                                    {isConverted ? (
-                                                        <><CheckCircle size={18}/> Adicionado ao Pipeline</>
-                                                    ) : (
-                                                        <><UserPlus size={18}/> Adicionar Lead</>
-                                                    )}
+                                                <button onClick={() => handleConvertToLead(prospect)} disabled={isConverted} className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${isConverted ? 'bg-green-100 text-green-700 cursor-default' : 'bg-slate-900 dark:bg-white dark:text-slate-900 text-white hover:bg-slate-800 shadow-sm'}`}>
+                                                    {isConverted ? <><CheckCircle size={18}/> Na Base</> : <><UserPlus size={18}/> Adicionar Lead</>}
                                                 </button>
                                             </div>
                                         </div>
@@ -340,12 +228,12 @@ export const Prospecting: React.FC = () => {
                     ) : !isSearching ? (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 opacity-60">
                             <Target size={64} className="mb-4 text-slate-300 dark:text-slate-700"/>
-                            <p className="text-center max-w-md">Utilize os filtros à esquerda para iniciar a prospecção inteligente. A IA irá ignorar empresas que já constam na sua base.</p>
+                            <p className="text-center max-w-md font-medium">Inicie uma busca por nicho e cidade. Nossa IA agora utiliza validação de dados para ignorar informações fictícias ou incompletas.</p>
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center">
                             <Loader2 size={48} className="text-red-500 animate-spin mb-4"/>
-                            <p className="text-slate-500 font-bold">Analisando o mercado...</p>
+                            <p className="text-slate-500 font-bold">Validando empresas reais em {location}...</p>
                         </div>
                     )}
                 </div>

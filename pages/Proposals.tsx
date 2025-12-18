@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Proposal } from '../types';
-import { Plus, Search, FileText, Edit2, Trash2, Send, Download, Printer, CheckCircle, X, Save, Share2, Globe, RefreshCw, Calculator, ShoppingCart, Percent, Loader2 } from 'lucide-react';
+import { Plus, Search, FileText, Edit2, Trash2, Send, Download, Printer, CheckCircle, X, Save, Share2, Globe, RefreshCw, Calculator, ShoppingCart, Percent, Loader2, Code2 } from 'lucide-react';
 import { ProposalDocument } from '../components/ProposalDocument';
 import { SectionTitle, Badge } from '../components/Widgets';
 import { SignaturePad } from '../components/SignaturePad';
@@ -56,7 +56,8 @@ export const Proposals: React.FC = () => {
         introduction: DEFAULT_INTRO,
         terms: DEFAULT_TERMS,
         scopeItem: '',
-        scope: [] as string[]
+        scope: [] as string[],
+        includesDevelopment: false // NEW FLAG
     });
 
     // Product Selection State
@@ -238,6 +239,7 @@ export const Proposals: React.FC = () => {
             monthlyCost: Number(formData.monthlyCost),
             price: totalEstimatedValue, 
             unit: formData.unit,
+            includesDevelopment: formData.includesDevelopment, // NEW FLAG
 
             consultantName: currentUser?.name || 'Consultor Nexus',
             consultantEmail: currentUser?.email || 'contato@nexus.com',
@@ -257,7 +259,6 @@ export const Proposals: React.FC = () => {
         if (editingId) {
             updateProposal(currentUser, proposalData);
             if (sendImmediately) {
-                 // Explicitly target companyName for notification matching in portal
                  addSystemNotification('Proposta Enviada', `Proposta "${proposalData.title}" enviada para ${formData.companyName}.`, 'success', formData.companyName);
             } else {
                  addSystemNotification('Proposta Atualizada', `A proposta para ${formData.companyName} foi salva.`, 'success');
@@ -268,24 +269,22 @@ export const Proposals: React.FC = () => {
                 ? `Proposta criada e disponibilizada no Portal do Cliente.` 
                 : `Rascunho criado para ${formData.companyName}.`;
             
-            // CRÍTICO: Use 'companyName' como 'relatedTo'. 
-            // O Portal filtra notificações onde relatedTo === currentClient.name (que é o nome da empresa).
             const targetForNotification = formData.companyName; 
             
             addSystemNotification(
                 sendImmediately ? 'Nova Proposta Recebida' : 'Rascunho Salvo', 
                 msg, 
                 'success', 
-                targetForNotification // Notifica a EMPRESA
+                targetForNotification 
             );
         }
 
         setView('list');
         setFormData({
             leadId: '', clientId: '', title: '', clientName: '', companyName: '', unit: '', setupCost: 0, monthlyCost: 0, timeline: '30 dias',
-            introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: []
+            introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: [], includesDevelopment: false
         });
-        setSelectedItems([]); // Reset items
+        setSelectedItems([]); 
         setEditingId(null);
         setErrors({});
     };
@@ -304,25 +303,22 @@ export const Proposals: React.FC = () => {
             introduction: proposal.introduction,
             terms: proposal.terms,
             scope: proposal.scope,
-            scopeItem: ''
+            scopeItem: '',
+            includesDevelopment: !!proposal.includesDevelopment
         });
         
-        // Reconstruct selected items from Scope for visual consistency (Best Guess)
         const reconstructedItems: ProposalItem[] = [];
         
-        // Try to match scope strings to known products
         if (proposal.scope && proposal.scope.length > 0) {
             proposal.scope.forEach(scopeStr => {
-                 // Simple match: does the product name exist in scope?
                  const prod = products.find(p => scopeStr.includes(p.name));
                  if (prod) {
-                     // Check if already added to avoid duplicates if scope has variations
                      if (!reconstructedItems.find(ri => ri.productId === prod.id)) {
                          reconstructedItems.push({
                             productId: prod.id,
                             name: prod.name,
                             originalPrice: prod.price,
-                            discountPercent: 0, // Assumption: We lost discount data, assume full price or 0%
+                            discountPercent: 0, 
                             finalPrice: prod.price
                          });
                      }
@@ -330,10 +326,7 @@ export const Proposals: React.FC = () => {
             });
         }
         
-        // We set the items for display, but we DO NOT trigger a recalculation that would overwrite 
-        // the correctly loaded monthlyCost. The remove/add/update handlers will trigger recalc.
         setSelectedItems(reconstructedItems);
-        
         setTargetType(proposal.clientId ? 'client' : 'lead');
         setEditingId(proposal.id);
         setView('create');
@@ -401,7 +394,6 @@ export const Proposals: React.FC = () => {
         const text = `Olá ${proposal.clientName}, segue a proposta comercial "${proposal.title}" para análise.\n\nInvestimento Setup: ${formatCurrency(proposal.setupCost || 0)}\nMensalidade: ${formatCurrency(proposal.monthlyCost || 0)}\n\nQualquer dúvida, estou à disposição!`;
         
         try {
-            // Tenta encontrar o telefone
             let phone = '';
             if (proposal.clientId) {
                 const client = clients.find(c => c.id === proposal.clientId);
@@ -415,15 +407,12 @@ export const Proposals: React.FC = () => {
                 throw new Error("Telefone não encontrado para este contato.");
             }
 
-            // Tenta via Bridge
             await sendBridgeWhatsApp(phone, text);
             addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${proposal.clientName} via Bridge.`, 'success');
             setSendModalOpen(false);
 
         } catch (error: any) {
             console.warn("Bridge send failed or no phone:", error);
-            
-            // Fallback para link nativo
             if (confirm("O envio direto falhou ou o Bridge está offline. Deseja abrir o WhatsApp Web/App?")) {
                 const encodedText = encodeURIComponent(text);
                 window.open(`https://wa.me/?text=${encodedText}`, '_blank');
@@ -460,7 +449,8 @@ export const Proposals: React.FC = () => {
         consultantEmail: currentUser?.email || 'email@nexus.com',
         consultantPhone: currentUser?.phone || '',
         organizationId: currentUser?.organizationId,
-        clientId: formData.clientId 
+        clientId: formData.clientId,
+        includesDevelopment: formData.includesDevelopment
     });
 
     const filteredProposals = useMemo(() => {
@@ -472,7 +462,6 @@ export const Proposals: React.FC = () => {
 
     return (
         <div className="p-4 md:p-8 min-h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-            {/* ... Hidden PDF Generator ... */}
             {proposalToSend && (
                 <div className="fixed top-0 left-0 -z-50 opacity-0 pointer-events-none w-[210mm]" style={{ transform: 'translateX(-9999px)' }}>
                     <div id="pdf-generator-content">
@@ -490,7 +479,7 @@ export const Proposals: React.FC = () => {
                         </div>
                         <button onClick={() => { setView('create'); setEditingId(null); setFormData({
                             leadId: '', clientId: '', title: '', clientName: '', companyName: '', unit: '', setupCost: 0, monthlyCost: 0, timeline: '30 dias',
-                            introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: []
+                            introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, scopeItem: '', scope: [], includesDevelopment: false
                         }); setSelectedItems([]); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2">
                             <Plus size={18}/> Nova Proposta
                         </button>
@@ -503,7 +492,7 @@ export const Proposals: React.FC = () => {
                                 <input 
                                     type="text" 
                                     placeholder="Buscar proposta..." 
-                                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
@@ -523,6 +512,7 @@ export const Proposals: React.FC = () => {
                                     <tr>
                                         <th className="p-4">Título / Cliente</th>
                                         <th className="p-4">Valor Mensal</th>
+                                        <th className="p-4 text-center">Dev.</th>
                                         <th className="p-4">Validade</th>
                                         <th className="p-4 text-center">Status</th>
                                         <th className="p-4 text-center">Ações</th>
@@ -531,7 +521,7 @@ export const Proposals: React.FC = () => {
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                     {filteredProposals.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="p-8 text-center text-slate-400">
+                                            <td colSpan={6} className="p-8 text-center text-slate-400">
                                                 Nenhuma proposta encontrada. Clique em "Nova Proposta" para começar.
                                             </td>
                                         </tr>
@@ -544,6 +534,9 @@ export const Proposals: React.FC = () => {
                                                 </td>
                                                 <td className="p-4 text-slate-700 dark:text-slate-300 font-mono">
                                                     {formatCurrency(prop.monthlyCost || 0)}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {prop.includesDevelopment ? <Badge color="purple"><Code2 size={12}/></Badge> : <span className="text-slate-300">-</span>}
                                                 </td>
                                                 <td className="p-4 text-slate-600 dark:text-slate-400">
                                                     {new Date(prop.validUntil).toLocaleDateString()}
@@ -576,18 +569,13 @@ export const Proposals: React.FC = () => {
                 </>
             ) : (
                 <div className="flex flex-col h-full overflow-hidden">
-                    {/* ... (Create/Edit View Logic - Same as before) ... */}
                     <div className="flex justify-between items-center mb-6 shrink-0">
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{editingId ? 'Editar Proposta' : 'Nova Proposta'}</h1>
                         <div className="flex gap-2">
                             <button onClick={() => setView('list')} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                            
-                            {/* Option 1: Save Draft */}
                             <button onClick={() => handleSave(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2">
                                 <Save size={18}/> Salvar Rascunho
                             </button>
-
-                            {/* Option 2: Save & Send (Publish) */}
                             <button onClick={() => handleSave(true)} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-lg shadow-blue-500/20">
                                 <Globe size={18}/> Salvar e Enviar ao Portal
                             </button>
@@ -595,10 +583,8 @@ export const Proposals: React.FC = () => {
                     </div>
 
                     <div className="flex gap-6 h-full overflow-hidden">
-                        {/* Editor Form */}
                         <div className="w-1/2 overflow-y-auto pr-2 custom-scrollbar bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                             <div className="space-y-6">
-                                {/* ... (Form Fields - Same as before) ... */}
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Destinatário (Tipo)</label>
                                     <div className="flex gap-4">
@@ -642,18 +628,31 @@ export const Proposals: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Unidade / Filial</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Matriz, Filial Norte, Loja 01" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} />
-                                    <p className="text-[10px] text-slate-400 mt-1">Isso ajuda a identificar o centro de custo no financeiro do cliente.</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Unidade / Filial</label>
+                                        <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Matriz, Filial Norte, Loja 01" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} />
+                                    </div>
+                                    <div className="flex items-end pb-1.5">
+                                        <label className="flex items-center gap-2 cursor-pointer bg-slate-50 dark:bg-slate-700 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition w-full">
+                                            <input 
+                                                type="checkbox" 
+                                                className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                                checked={formData.includesDevelopment}
+                                                onChange={e => setFormData({...formData, includesDevelopment: e.target.checked})}
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <Code2 size={18} className="text-purple-500"/>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Inclui Desenvolvimento</span>
+                                            </div>
+                                        </label>
+                                    </div>
                                 </div>
 
                                 <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border border-slate-200 dark:border-slate-600">
                                     <h4 className="text-sm font-bold text-slate-700 dark:text-white mb-3 flex items-center gap-2">
                                         <Calculator size={16} className="text-blue-500"/> Calculadora de Valores
                                     </h4>
-                                    
-                                    {/* Product Selector */}
                                     <div className="flex gap-2 mb-4">
                                         <select 
                                             className="flex-1 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none"
@@ -670,7 +669,6 @@ export const Proposals: React.FC = () => {
                                         </button>
                                     </div>
 
-                                    {/* Selected Products List */}
                                     {selectedItems.length > 0 && (
                                         <div className="mb-4 space-y-2">
                                             {selectedItems.map((item, idx) => (
@@ -754,7 +752,6 @@ export const Proposals: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Preview */}
                         <div className="w-1/2 bg-slate-200 dark:bg-slate-900 rounded-xl overflow-hidden shadow-inner flex flex-col">
                             <div className="bg-slate-300 dark:bg-slate-800 p-2 text-center text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest shrink-0">Pré-visualização do Documento</div>
                             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar flex justify-center bg-slate-200 dark:bg-slate-900">
@@ -767,7 +764,6 @@ export const Proposals: React.FC = () => {
                 </div>
             )}
 
-            {/* SEND MODAL */}
             {isSendModalOpen && proposalToSend && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
@@ -810,14 +806,13 @@ export const Proposals: React.FC = () => {
                 </div>
             )}
 
-            {/* DELETE CONFIRMATION MODAL */}
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-4 border-red-500">
                         <div className="p-6">
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Excluir Proposta</h3>
                             <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                                Tem certeza que deseja excluir a proposta <strong>{proposalToDelete?.title}</strong>? Esta ação é irreversível.
+                                Tem certeza que deseja excluir a proposta <strong>{proposalToDelete?.title}</strong>? Esta ação é irreversível e removerá automaticamente cards de produção e desenvolvimento associados.
                             </p>
                             
                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">
