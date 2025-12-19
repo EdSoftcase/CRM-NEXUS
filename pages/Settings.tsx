@@ -12,7 +12,7 @@ import {
     AlertTriangle, List,
     RefreshCw, Loader2, ListChecks,
     CreditCard, Power, Info, LayoutGrid,
-    PieChart as PieIcon, Wallet, Server, Terminal, Copy, Zap, Settings2, Globe, CheckCircle, TrendingUp, DollarSign
+    PieChart as PieIcon, Wallet, Server, Terminal, Copy, Zap, Settings2, Globe, CheckCircle, TrendingUp, DollarSign, MessageSquare, QrCode
 } from 'lucide-react';
 import { SectionTitle, Badge, KPICard } from '../components/Widgets';
 import { Role, Product, PermissionAction, CustomFieldDefinition, WebhookConfig, TriggerType, FinancialCategory, Organization, User } from '../types';
@@ -66,7 +66,13 @@ export const Settings: React.FC = () => {
     const [loadingCounts, setLoadingCounts] = useState(false);
     const [supabaseForm, setSupabaseForm] = useState({ url: '', key: '' });
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    
+    // Bridge States
     const [bridgeStatus, setBridgeStatus] = useState({ server: 'OFFLINE', whatsapp: 'OFFLINE', iugu: 'PENDING' });
+    const [qrCode, setQrCode] = useState<string | null>(null);
+    const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+    const [loadingQR, setLoadingQR] = useState(false);
+
     const [orgs, setOrgs] = useState<Organization[]>([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
 
@@ -98,6 +104,26 @@ export const Settings: React.FC = () => {
         if (activeTab === 'saas') fetchOrganizations();
     }, [activeTab]);
 
+    const handleShowWhatsAppQR = async () => {
+        setLoadingQR(true);
+        setIsQRModalOpen(true);
+        try {
+            // Tenta buscar o QR Code do servidor local (Nexus Bridge)
+            const response = await fetch('http://127.0.0.1:3001/whatsapp/qr');
+            const data = await response.json();
+            if (data.qr) {
+                setQrCode(data.qr);
+            } else {
+                setQrCode(null);
+            }
+        } catch (e) {
+            console.error("Erro ao buscar QR Code. Verifique se o Bridge está rodando.");
+            setQrCode(null);
+        } finally {
+            setLoadingQR(false);
+        }
+    };
+
     // Data for Finance Charts
     const chartData = useMemo(() => {
         const expenses = financialCategories.filter(c => c.type === 'Expense');
@@ -112,7 +138,7 @@ export const Settings: React.FC = () => {
         const bar = financialCategories.slice(0, 8).map(c => ({
             name: c.name.split(' ')[0],
             Orçado: c.budget || 0,
-            Realizado: (c.budget || 0) * (0.7 + Math.random() * 0.4) // Simulação de gasto
+            Realizado: (c.budget || 0) * (0.7 + Math.random() * 0.4) 
         }));
 
         return { pie, bar };
@@ -279,7 +305,6 @@ export const Settings: React.FC = () => {
 
             <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 
-                {/* 1. PERFIL */}
                 {activeTab === 'profile' && (
                     <div className="max-w-3xl animate-fade-in space-y-6">
                         <SectionTitle title="Meu Perfil" subtitle="Gerencie seus dados pessoais e de acesso." />
@@ -304,7 +329,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 2. EMPRESA */}
                 {activeTab === 'organization' && (
                     <div className="max-w-3xl animate-fade-in space-y-6">
                         <SectionTitle title="Dados da Empresa" subtitle="Informações da sua organização para faturamento e portal." />
@@ -321,7 +345,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 3. EQUIPE */}
                 {activeTab === 'team' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
@@ -355,7 +378,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 4. PERMISSÕES */}
                 {activeTab === 'permissions' && (
                     <div className="animate-fade-in space-y-6">
                         <SectionTitle title="Matriz de Permissões" subtitle="Defina o que cada cargo pode visualizar ou editar no sistema." />
@@ -386,7 +408,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 5. PRODUTOS */}
                 {activeTab === 'products' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
@@ -412,7 +433,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 6. FINANCEIRO (PLANO DE CONTAS + DASHBOARD) */}
                 {activeTab === 'financial' && (
                     <div className="animate-fade-in space-y-8">
                         <div className="flex justify-between items-center">
@@ -422,27 +442,19 @@ export const Settings: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* Financial Analytics Summary */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <KPICard title="Orçamento Total" value={`R$ ${financialStats.totalBudget.toLocaleString()}`} icon={Wallet} color="bg-blue-500" trend="Snapshot Planejado" />
                             <KPICard title="Receita Prevista" value={`R$ ${financialStats.revenue.toLocaleString()}`} icon={TrendingUp} color="bg-emerald-500" trend="Entradas" trendUp={true} />
                             <KPICard title="Despesas Totais" value={`R$ ${financialStats.expenses.toLocaleString()}`} icon={DollarSign} color="bg-red-500" trend="Saídas" trendUp={false} />
                         </div>
 
-                        {/* Charts Row */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm min-h-[350px] flex flex-col">
                                 <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><PieIcon size={18} className="text-blue-500"/> Distribuição de Despesas</h3>
                                 <div className="flex-1 w-full min-h-0">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
-                                            <Pie 
-                                                data={chartData.pie} 
-                                                innerRadius={60} 
-                                                outerRadius={80} 
-                                                paddingAngle={5} 
-                                                dataKey="value"
-                                            >
+                                            <Pie data={chartData.pie} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                                                 {chartData.pie.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
                                             </Pie>
                                             <Tooltip />
@@ -469,7 +481,6 @@ export const Settings: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Category Table */}
                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                             <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                                 <h3 className="font-bold text-slate-700 dark:text-white text-sm">Categorias do Plano de Contas</h3>
@@ -494,7 +505,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 7. CAMPOS PERSONALIZADOS */}
                 {activeTab === 'custom_fields' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
@@ -519,7 +529,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 8. WEBHOOKS */}
                 {activeTab === 'webhooks' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
@@ -528,7 +537,7 @@ export const Settings: React.FC = () => {
                         </div>
                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 uppercase text-[10px] font-bold">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 uppercase text-[10px] font-bold">
                                     <tr><th className="p-4">Nome / URL</th><th className="p-4">Evento</th><th className="p-4">Método</th><th className="p-4 text-right">Ações</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -546,7 +555,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 9. INTEGRATIONS (CLOUD) */}
                 {activeTab === 'integrations' && (
                     <div className="max-w-3xl animate-fade-in space-y-6">
                         <SectionTitle title="Supabase Cloud Config" subtitle="Conecte seu frontend a um projeto Supabase real." />
@@ -565,7 +573,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 10. BRIDGE */}
                 {activeTab === 'bridge' && (
                     <div className="animate-fade-in space-y-6">
                         <SectionTitle title="Nexus Bridge Server" subtitle="Status do servidor local de automação de WhatsApp e E-mail." />
@@ -578,7 +585,7 @@ export const Settings: React.FC = () => {
                             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
                                 <div className="flex justify-between items-center mb-4"><h4 className="font-bold text-slate-800 dark:text-white">WhatsApp VoIP</h4><div className={`w-3 h-3 rounded-full ${bridgeStatus.whatsapp === 'ONLINE' ? 'bg-green-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`}></div></div>
                                 <p className="text-sm text-slate-500">Sessão: {bridgeStatus.whatsapp}</p>
-                                <button className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">Ver QR Code</button>
+                                <button onClick={handleShowWhatsAppQR} className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"><QrCode size={12}/> Ver QR Code</button>
                             </div>
                             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
                                 <div className="flex justify-between items-center mb-4"><h4 className="font-bold text-slate-800 dark:text-white">Financeiro Iugu</h4><div className={`w-3 h-3 rounded-full ${bridgeStatus.iugu === 'CONFIGURED' ? 'bg-green-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-yellow-500'}`}></div></div>
@@ -589,7 +596,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 11. AUDITORIA */}
                 {activeTab === 'audit' && (
                     <div className="animate-fade-in space-y-6">
                         <SectionTitle title="Logs de Auditoria" subtitle="Rastro completo de ações executadas pelos usuários." />
@@ -613,7 +619,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 12. DATABASE (STATUS BD) */}
                 {activeTab === 'database' && (
                     <div className="animate-fade-in space-y-6">
                         <SectionTitle title="Status do Banco de Dados" subtitle="Estatísticas de armazenamento e volume de dados." />
@@ -634,7 +639,6 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
-                {/* 13. SAAS MASTER */}
                 {activeTab === 'saas' && isSuperAdmin && (
                     <div className="animate-fade-in space-y-6">
                         <SectionTitle title="Master Admin - SaaS" subtitle="Painel exclusivo para controle de organizações e licenças." />
@@ -662,7 +666,38 @@ export const Settings: React.FC = () => {
 
             </main>
 
-            {/* MODAIS */}
+            {/* MODAL WHATSAPP QR */}
+            {isQRModalOpen && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><MessageSquare className="text-green-500"/> Conectar WhatsApp</h3>
+                            <button onClick={() => setIsQRModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition"><X size={20}/></button>
+                        </div>
+                        <div className="p-8 flex flex-col items-center text-center">
+                            {loadingQR ? (
+                                <div className="py-12"><Loader2 className="animate-spin text-blue-600" size={48}/> <p className="text-sm text-slate-500 mt-4">Gerando código...</p></div>
+                            ) : qrCode ? (
+                                <>
+                                    <div className="bg-white p-4 rounded-2xl shadow-inner mb-6 border border-slate-100">
+                                        <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
+                                    </div>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 font-medium">Abra o WhatsApp no seu celular e escaneie o código para ativar o VoIP.</p>
+                                </>
+                            ) : (
+                                <div className="py-8">
+                                    <AlertTriangle className="text-amber-500 mx-auto mb-4" size={48}/>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 font-bold">QR Code não disponível.</p>
+                                    <p className="text-xs text-slate-500 mt-1 px-4">Certifique-se que o Nexus Bridge Server está rodando localmente ou se o WhatsApp já está conectado.</p>
+                                </div>
+                            )}
+                            <button onClick={handleShowWhatsAppQR} className="mt-4 px-6 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Atualizar QR Code</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAIS GERAIS (MANTIDOS) */}
             {isTeamModalOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[500] p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md animate-scale-in border border-slate-200 dark:border-slate-700">
