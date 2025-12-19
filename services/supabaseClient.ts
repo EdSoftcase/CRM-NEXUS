@@ -1,7 +1,12 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL_KEY = 'nexus_supabase_url';
 const SUPABASE_KEY_KEY = 'nexus_supabase_key';
+
+// CREDENCIAIS FIXAS PARA PULAR SETUP (FORNECIDAS PELO USUÁRIO)
+const DEFAULT_URL = 'https://csiolvibjokyedkygzzb.supabase.co';
+const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaW9sdmliam9reWVka3lnenpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMzc0MDcsImV4cCI6MjA3OTgxMzQwN30.6CxUgsU17DeQEVuApMzZ-ij73s7emNrznB7g-EwYfiY';
 
 const getEnv = (key: string): string => {
     // @ts-ignore
@@ -19,8 +24,8 @@ const getEnv = (key: string): string => {
 
 export const getSupabaseConfig = () => {
   return {
-    url: localStorage.getItem(SUPABASE_URL_KEY) || getEnv('VITE_SUPABASE_URL') || 'https://csiolvibjokyedkygzzb.supabase.co',
-    key: localStorage.getItem(SUPABASE_KEY_KEY) || getEnv('VITE_SUPABASE_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaW9sdmliam9reWVka3lnenpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMzc0MDcsImV4cCI6MjA3OTgxMzQwN30.6CxUgsU17DeQEVuApMzZ-ij73s7emNrznB7g-EwYfiY'
+    url: localStorage.getItem(SUPABASE_URL_KEY) || getEnv('VITE_SUPABASE_URL') || DEFAULT_URL,
+    key: localStorage.getItem(SUPABASE_KEY_KEY) || getEnv('VITE_SUPABASE_KEY') || DEFAULT_KEY
   };
 };
 
@@ -66,89 +71,100 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => {
-  return `-- SOFT-CRM ENTERPRISE - DATABASE REPAIR SCRIPT (v3.3)
--- Este script renomeia colunas incorretas e aplica as políticas RLS corrigidas.
+  return `-- SOFT-CRM ENTERPRISE - SQL SETUP (v8.0 - CNPJ, PHONE, EMAIL)
+-- Execute este script no seu SQL Editor do Supabase.
 
--- 1. CORREÇÃO DE NOMENCLATURA (MIGRAÇÃO CAMELCASE -> SNAKE_CASE)
-DO $$ 
-BEGIN
-  -- Corrigir tabela issues
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'issues' AND column_name = 'organizationId') THEN
-    ALTER TABLE issues RENAME COLUMN "organizationId" TO organization_id;
-  END IF;
-  
-  -- Corrigir tabela profiles
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'organizationId') THEN
-    ALTER TABLE profiles RENAME COLUMN "organizationId" TO organization_id;
-  END IF;
-
-  -- Corrigir tabela leads
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'organizationId') THEN
-    ALTER TABLE leads RENAME COLUMN "organizationId" TO organization_id;
-  END IF;
-
-  -- Repetir para outras tabelas se necessário...
-END $$;
-
--- 2. FUNÇÃO HELPER (Retorno robusto como text)
-CREATE OR REPLACE FUNCTION get_user_org() RETURNS text AS $$
-  SELECT organization_id::text FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
-
--- 3. GARANTIR QUE AS TABELAS EXISTAM COM A ESTRUTURA CORRETA
+-- 1. ORGANIZAÇÕES
 CREATE TABLE IF NOT EXISTS organizations (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id text PRIMARY KEY,
   name text NOT NULL,
   slug text UNIQUE NOT NULL,
   plan text DEFAULT 'Standard',
-  status text DEFAULT 'pending',
+  status text DEFAULT 'active',
   license_expires_at timestamptz,
   created_at timestamptz DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS profiles (
-  id uuid PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
-  full_name text,
-  email text,
-  role text DEFAULT 'sales',
-  organization_id uuid REFERENCES organizations(id),
-  related_client_id text,
-  xp integer DEFAULT 0,
-  level integer DEFAULT 1,
-  active boolean DEFAULT true,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS issues (
+-- 2. CLIENTES (ESTRUTURA COMPLETA)
+CREATE TABLE IF NOT EXISTS clients (
   id text PRIMARY KEY,
-  title text NOT NULL,
-  type text,
-  status text,
-  points integer,
-  assignee text,
-  sprint text,
-  project text,
-  progress integer,
-  notes jsonb DEFAULT '[]',
-  organization_id uuid REFERENCES organizations(id),
-  proposal_id text
+  name text NOT NULL,
+  contact_person text,
+  document text, -- CNPJ/CPF
+  email text,    -- E-mail
+  phone text,    -- Telefone
+  segment text,
+  since timestamptz DEFAULT now(),
+  status text DEFAULT 'Active',
+  ltv numeric DEFAULT 0,
+  organization_id text REFERENCES organizations(id),
+  unit text,
+  contract_id text,
+  contract_start_date text,
+  contract_end_date text,
+  parking_spots integer DEFAULT 0,
+  exempt_spots integer DEFAULT 0,
+  vehicle_count integer DEFAULT 0,
+  credential_count integer DEFAULT 0,
+  pricing_table text,
+  table_price numeric DEFAULT 0,
+  total_table_price numeric DEFAULT 0,
+  special_day text,
+  special_price numeric DEFAULT 0,
+  total_special_price numeric DEFAULT 0,
+  metadata jsonb DEFAULT '{}'
 );
 
--- 4. ATIVAR RLS
+-- 3. PATCH DE COLUNAS (PARA BANCOS JÁ EXISTENTES)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS document text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS unit text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_id text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_start_date text;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_end_date text;
+
+-- 4. LEADS
+CREATE TABLE IF NOT EXISTS leads (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  company text,
+  email text,
+  phone text,
+  value numeric DEFAULT 0,
+  status text DEFAULT 'Novo',
+  source text,
+  probability integer DEFAULT 0,
+  last_contact timestamptz,
+  created_at timestamptz DEFAULT now(),
+  organization_id text REFERENCES organizations(id)
+);
+
+-- 5. FATURAS
+CREATE TABLE IF NOT EXISTS invoices (
+  id text PRIMARY KEY,
+  type text NOT NULL,
+  customer text NOT NULL,
+  amount numeric NOT NULL,
+  due_date timestamptz NOT NULL,
+  status text NOT NULL,
+  description text,
+  organization_id text REFERENCES organizations(id),
+  metadata jsonb DEFAULT '{}'
+);
+
+-- ATIVAR RLS E POLÍTICAS
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE issues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 
--- 5. POLÍTICAS DE ACESSO (Usa cast explícito para text)
-DROP POLICY IF EXISTS org_access ON organizations;
-CREATE POLICY org_access ON organizations FOR SELECT USING (id::text = get_user_org());
-
-DROP POLICY IF EXISTS profile_access ON profiles;
-CREATE POLICY profile_access ON profiles FOR ALL USING (organization_id::text = get_user_org());
-
-DROP POLICY IF EXISTS issue_policy ON issues;
-CREATE POLICY issue_policy ON issues FOR ALL USING (organization_id::text = get_user_org());
-
--- Adicionar políticas para as outras tabelas seguindo o mesmo padrão...
+DO $$ BEGIN
+    CREATE POLICY "Acesso Total" ON organizations FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON clients FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON leads FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON invoices FOR ALL USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 `;
 };

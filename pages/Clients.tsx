@@ -1,64 +1,45 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Client } from '../types';
-import { Search, Plus, Upload, Download, FileSpreadsheet, Trash2, Edit2, MapPin, Phone, Mail, Building2, ExternalLink, X, Save, CheckCircle, Eye } from 'lucide-react';
-import { Badge, SectionTitle } from '../components/Widgets';
-import { CustomFieldRenderer } from '../components/CustomFieldRenderer';
+import { Search, Plus, Upload, Download, Trash2, Edit2, X, Save, CheckCircle, Eye, Sparkles, Loader2, DollarSign, AlertCircle, Phone, ShieldCheck, Mail, Send, MessageCircle, Clock, Timer, StopCircle, Filter } from 'lucide-react';
+import { Badge } from '../components/Widgets';
 import { Client360 } from '../components/Client360';
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 
 export const Clients: React.FC = () => {
-    // Adicionado leads, tickets e invoices para alimentar o Client360
-    const { clients, leads, tickets, invoices, addClient, updateClient, removeClient, addClientsBulk, addSystemNotification, customFields } = useData();
+    const { clients, leads, tickets, invoices, addClient, updateClient, removeClient, addClientsBulk, addSystemNotification, addActivity } = useData();
     const { currentUser } = useAuth();
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [segmentFilter, setSegmentFilter] = useState('All');
+    
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentClient, setCurrentClient] = useState<Partial<Client>>({});
     const [isEditing, setIsEditing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Estado para o Client360
     const [selectedClientFor360, setSelectedClientFor360] = useState<Client | null>(null);
 
-    // --- IMPORT / EXPORT LOGIC ---
+    // --- BULK WHATSAPP STATE ---
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    const [bulkMessage, setBulkMessage] = useState('');
+    const [isSendingBulk, setIsSendingBulk] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, status: '', nextIn: 0 });
+    const [stopBulk, setStopBulk] = useState(false);
+
+    const segments = useMemo(() => ['All', ...new Set(clients.map(c => c.segment).filter(Boolean))], [clients]);
+
     const handleDownloadTemplate = () => {
-        const templateData = [{ 'Contrato': 'CTR-001', 'Cliente': 'Exemplo Empresa Ltda', 'Unidade': 'Unidade Centro', 'CNPJ': '00.000.000/0001-00', 'Status': 'Ativo', 'Vagas': 100, 'Isentas': 5, 'Qtd. Veícu': 95, 'Tabela': 'Padrão 2024', 'R$ Tabela': '150,00', 'R$ Tabela Total': '15.000,00', 'R$ Especial': '12.000,00', 'Email': 'joao@empresa.com', 'Celular': '11999999999', 'Fixo': '1133333333', 'Início': '01/01/2024', 'Fim': '01/01/2025', 'Produtos': 'Internet, Gestão, Consultoria' }];
-        const ws = XLSX.utils.json_to_sheet(templateData);
+        const headers = [
+            ["Contrato", "Cód. Int.", "Início", "Fim", "Tipo", "Unidade", "Status", "Vagas", "Isentas", "Qtd. Veículos", "Qtd. Credenciais", "Tabela", "R$ Tabela", "R$ Tabela Total", "Dia Espec.", "R$ Especial", "R$ Especial Total", "document", "email", "phone"]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(headers);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Template Clientes");
-        XLSX.writeFile(wb, "template_importacao_clientes.xlsx");
-    };
-
-    const parseCurrency = (value: any): number => {
-        if (!value) return 0;
-        if (typeof value === 'number') return value;
-        let str = String(value).trim();
-        str = str.replace(/[R$\s]/g, '');
-        if (str === '-' || str === ' - ') return 0;
-        if (str.includes(',') && (!str.includes('.') || str.lastIndexOf(',') > str.lastIndexOf('.'))) {
-            str = str.replace(/\./g, '').replace(',', '.');
-        } else {
-            str = str.replace(/,/g, '');
-        }
-        const num = parseFloat(str);
-        return isNaN(num) ? 0 : num;
-    };
-
-    const getValueByKeys = (row: any, keys: string[]) => {
-        const rowKeys = Object.keys(row);
-        for (const key of keys) {
-            if (row[key] !== undefined) return row[key];
-            const normalizedSearchKey = key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-            const foundKey = rowKeys.find(k => {
-                const normalizedRowKey = k.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                return normalizedRowKey === normalizedSearchKey;
-            });
-            if (foundKey) return row[foundKey];
-        }
-        return undefined;
+        XLSX.utils.book_append_sheet(wb, ws, "Modelo Importacao");
+        XLSX.writeFile(wb, "modelo_importacao_nexus.xlsx");
     };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,353 +51,415 @@ export const Clients: React.FC = () => {
             const workbook = XLSX.read(data);
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-            if (jsonData.length === 0) {
-                addSystemNotification("Erro de Arquivo", "O arquivo está vazio ou não pôde ser lido.", "alert");
-                return;
-            }
-
+            
             const processedClients: Client[] = jsonData.map((row: any) => {
-                const doc = getValueByKeys(row, ['CNPJ', 'CPF', 'Documento', 'Document']);
-                const cleanDoc = doc ? String(doc).replace(/\D/g, '') : '';
-                
-                const existingClient = cleanDoc ? clients.find(c => c.document && c.document.replace(/\D/g, '') === cleanDoc) : null;
+                const findVal = (keyName: string) => {
+                    const foundKey = Object.keys(row).find(k => k.trim().toLowerCase() === keyName.toLowerCase());
+                    return foundKey ? row[foundKey] : null;
+                };
 
-                const name = getValueByKeys(row, ['Cliente', 'Nome', 'Empresa', 'Name', 'Company']) || (existingClient ? existingClient.name : 'Cliente Importado');
-                const contact = getValueByKeys(row, ['Contato', 'Responsável', 'Responsavel', 'Contact']) || (existingClient ? existingClient.contactPerson : 'Gestor');
-                const email = getValueByKeys(row, ['Email', 'E-mail', 'Mail']) || (existingClient ? existingClient.email : '');
-                
-                const mobile = getValueByKeys(row, ['Telefone', 'Celular', 'Mobile', 'WhatsApp']);
-                const landline = getValueByKeys(row, ['Fixo', 'Comercial', 'Telefone Fixo']);
-                let phone = existingClient ? existingClient.phone : '';
-                
-                if (mobile || landline) {
-                    if (mobile && landline) phone = `${mobile} / ${landline}`;
-                    else if (mobile) phone = String(mobile);
-                    else if (landline) phone = String(landline);
-                }
-                
-                const contract = getValueByKeys(row, ['Contrato', 'Contract', 'ID']) || (existingClient ? existingClient.contractId : undefined);
-                const unit = getValueByKeys(row, ['Unidade', 'Unit', 'Filial']) || (existingClient ? existingClient.unit : undefined);
-                
-                const statusRaw = getValueByKeys(row, ['Status']);
-                let status: 'Active' | 'Inactive' | 'Churn Risk' = existingClient ? existingClient.status as any : 'Active';
-                if (statusRaw) {
-                    const s = String(statusRaw).toLowerCase();
-                    if (s === 'ativo' || s === 'active') status = 'Active';
-                    else if (s === 'inativo' || s === 'inactive') status = 'Inactive';
-                    else if (s.includes('risco') || s.includes('churn')) status = 'Churn Risk';
-                }
+                const parseCurrency = (val: any) => {
+                    if (val === undefined || val === null || val === "") return 0;
+                    if (typeof val === 'number') return val;
+                    const clean = String(val).replace('R$', '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.').trim();
+                    return parseFloat(clean) || 0;
+                };
 
-                const startDate = getValueByKeys(row, ['Início', 'Inicio', 'Start Date']) || (existingClient ? existingClient.contractStartDate : undefined);
-                const endDate = getValueByKeys(row, ['Fim', 'End Date']) || (existingClient ? existingClient.contractEndDate : undefined);
-                
-                const rawVagas = getValueByKeys(row, ['Vagas', 'Spots', 'Qtd Vagas', 'Vagas Total']);
-                const parkingSpots = rawVagas ? parseInt(String(rawVagas).replace(/\D/g,'')) : (existingClient ? existingClient.parkingSpots : undefined);
-                
-                const rawPrice = getValueByKeys(row, ['R$ Tabela', 'Valor', 'Preço', 'Mensalidade', 'Price', 'Valor Mensal']);
-                const rawTotal = getValueByKeys(row, ['R$ Tabela Total', 'Valor Total', 'Total', 'Receita', 'LTV', 'Valor Contrato']);
-                
-                const tablePrice = rawPrice ? parseCurrency(rawPrice) : (existingClient ? existingClient.tablePrice : undefined);
-                const totalTablePrice = rawTotal ? parseCurrency(rawTotal) : (existingClient ? existingClient.totalTablePrice : undefined);
-                
-                let finalValue = existingClient ? existingClient.ltv : 0;
-                if (totalTablePrice && totalTablePrice > 0) finalValue = totalTablePrice;
-                else if (tablePrice && tablePrice > 0) finalValue = tablePrice;
+                const parseInteger = (val: any) => {
+                    if (typeof val === 'number') return Math.floor(val);
+                    return parseInt(String(val).replace(/\D/g, '')) || 0;
+                };
 
-                const address = getValueByKeys(row, ['Endereço', 'Endereco', 'Address', 'Logradouro']) || (existingClient ? existingClient.address : '');
-                const cep = getValueByKeys(row, ['CEP', 'Zip', 'Postal Code']) || (existingClient ? existingClient.cep : '');
-                
-                const rawProducts = getValueByKeys(row, ['Produtos', 'Products', 'Serviços', 'Services', 'Contratado']);
-                const contractedProducts = rawProducts ? String(rawProducts).split(',').map(p => p.trim()).filter(p => p) : (existingClient ? existingClient.contractedProducts : []);
+                const specialTotal = parseCurrency(findVal('R$ Especial Total'));
+                const tableTotal = parseCurrency(findVal('R$ Tabela Total'));
+                const ltvFinal = specialTotal > 0 ? specialTotal : tableTotal;
 
                 return { 
-                    id: existingClient ? existingClient.id : `C-IMP-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    name: String(name),
-                    contactPerson: String(contact),
-                    email: String(email),
-                    phone: String(phone),
-                    document: String(doc || existingClient?.document || ''),
-                    segment: existingClient ? existingClient.segment : 'Geral',
-                    contractId: contract ? String(contract) : undefined,
-                    contractStartDate: startDate ? String(startDate) : undefined,
-                    contractEndDate: endDate ? String(endDate) : undefined,
-                    unit: unit ? String(unit) : undefined,
-                    parkingSpots: parkingSpots,
-                    tablePrice: tablePrice,
-                    totalTablePrice: totalTablePrice,
-                    ltv: finalValue,
-                    status: status,
-                    since: existingClient ? existingClient.since : new Date().toISOString(),
-                    lastContact: existingClient ? existingClient.lastContact : '',
-                    healthScore: existingClient ? existingClient.healthScore : 100,
-                    nps: existingClient ? existingClient.nps : 0,
-                    onboardingStatus: existingClient ? existingClient.onboardingStatus : 'Completed',
-                    address: String(address),
-                    cep: String(cep),
-                    latitude: existingClient ? existingClient.latitude : 0,
-                    longitude: existingClient ? existingClient.longitude : 0,
-                    contractedProducts: contractedProducts,
-                    metadata: existingClient ? existingClient.metadata : {}
-                }; 
+                    id: `C-IMP-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    name: String(findVal('Unidade') || findVal('Cliente') || 'Unidade Sem Nome'),
+                    unit: String(findVal('Unidade') || ''),
+                    contractId: String(findVal('Contrato') || ''),
+                    contractStartDate: String(findVal('Início') || ''),
+                    contractEndDate: String(findVal('Fim') || ''),
+                    segment: String(findVal('Tipo') || 'Estacionamento'),
+                    status: 'Active',
+                    parkingSpots: parseInteger(findVal('Vagas')),
+                    exemptSpots: parseInteger(findVal('Isentas')),
+                    vehicleCount: parseInteger(findVal('Qtd. Veículos')),
+                    credentialCount: parseInteger(findVal('Qtd. Credenciais')),
+                    pricingTable: String(findVal('Tabela') || ''),
+                    tablePrice: parseCurrency(findVal('R$ Tabela')),
+                    totalTablePrice: tableTotal,
+                    specialDay: String(findVal('Dia Espec.') || ''),
+                    specialPrice: parseCurrency(findVal('R$ Especial')),
+                    totalSpecialPrice: specialTotal,
+                    ltv: ltvFinal,
+                    document: String(findVal('document') || ''),
+                    email: String(findVal('email') || ''),
+                    phone: String(findVal('phone') || ''),
+                    since: new Date().toISOString(),
+                    contactPerson: 'Gestor da Unidade',
+                    organizationId: currentUser?.organizationId,
+                    metadata: { internal_code: String(findVal('Cód. Int.') || '') }
+                } as Client;
             }); 
-            
-            addClientsBulk(currentUser, processedClients); 
+
+            addClientsBulk(currentUser, processedClients);
+            addSystemNotification("Sucesso", `${processedClients.length} registros processados.`, "success");
         } catch (error) { 
-            console.error("Erro na importação:", error); 
-            addSystemNotification("Erro Crítico", "Erro ao processar o arquivo Excel.", "alert"); 
+            console.error(error);
+            addSystemNotification("Erro", "Falha técnica ao ler arquivo.", "alert"); 
         } 
-        if (fileInputRef.current) { 
-            fileInputRef.current.value = ''; 
-        } 
+        event.target.value = '';
     };
 
-    // --- CRUD ---
+    // --- BULK WHATSAPP LOGIC ---
+    const startBulkWhatsApp = async () => {
+        if (!bulkMessage.trim()) return;
+        
+        const clientsWithPhone = clients.filter(c => c.phone && c.phone.replace(/\D/g, '').length >= 10);
+        if (clientsWithPhone.length === 0) {
+            alert("Nenhum cliente com telefone válido na carteira.");
+            return;
+        }
+
+        setIsSendingBulk(true);
+        setStopBulk(false);
+        setBulkProgress({ current: 0, total: clientsWithPhone.length, status: 'Iniciando motor de disparo...', nextIn: 0 });
+
+        for (let i = 0; i < clientsWithPhone.length; i++) {
+            if (stopBulk) break;
+
+            const client = clientsWithPhone[i];
+            setBulkProgress(prev => ({ ...prev, current: i + 1, status: `Enviando para: ${client.name}` }));
+
+            try {
+                const personalizedMsg = bulkMessage.replace('[NOME]', client.name.split(' ')[0]);
+                await sendBridgeWhatsApp(client.phone, personalizedMsg);
+                
+                addActivity(currentUser, {
+                    id: `ACT-MASS-${Date.now()}-${i}`,
+                    title: 'WhatsApp Massa Enviado',
+                    type: 'Call',
+                    dueDate: new Date().toISOString(),
+                    completed: true,
+                    relatedTo: client.name,
+                    assignee: currentUser?.id || 'system',
+                    description: `Mensagem em massa enviada via motor cadenciado: ${personalizedMsg}`
+                });
+            } catch (e) {
+                console.error("Falha no disparo individual:", e);
+            }
+
+            if (i < clientsWithPhone.length - 1) {
+                const randomMinutes = parseFloat((Math.random() * (7 - 2) + 2).toFixed(2));
+                const delayMs = randomMinutes * 60 * 1000;
+                
+                setBulkProgress(prev => ({ 
+                    ...prev, 
+                    status: `Aguardando intervalo anti-ban...`,
+                    nextIn: randomMinutes 
+                }));
+
+                let remaining = randomMinutes;
+                while (remaining > 0) {
+                    if (stopBulk) break;
+                    await new Promise(r => setTimeout(r, 10000)); 
+                    remaining -= 0.166; 
+                    setBulkProgress(prev => ({ ...prev, nextIn: Math.max(0, remaining) }));
+                    if (remaining <= 0) break;
+                }
+            }
+        }
+
+        setIsSendingBulk(false);
+        if (!stopBulk) {
+            addSystemNotification("Sucesso", "Disparo em massa concluído!", "success");
+            alert("Disparo concluído com sucesso!");
+            setIsBulkModalOpen(false);
+        }
+    };
+
     const handleSaveClient = (e: React.FormEvent) => {
         e.preventDefault();
         const clientData: Client = {
             id: isEditing ? currentClient.id! : `C-${Date.now()}`,
             name: currentClient.name || '',
             contactPerson: currentClient.contactPerson || '',
+            document: currentClient.document || '',
             email: currentClient.email || '',
             phone: currentClient.phone || '',
-            document: currentClient.document || '',
             status: currentClient.status as any || 'Active',
-            segment: currentClient.segment || 'Geral',
+            segment: currentClient.segment || 'Estacionamento',
             since: currentClient.since || new Date().toISOString(),
             ltv: Number(currentClient.ltv) || 0,
-            address: currentClient.address || '',
+            unit: currentClient.unit || '',
+            contractId: currentClient.contractId || '',
             organizationId: currentUser?.organizationId,
             metadata: currentClient.metadata || {}
         };
-
         if (isEditing) updateClient(currentUser, clientData);
         else addClient(currentUser, clientData);
-
         setIsModalOpen(false);
         setCurrentClient({});
     };
 
-    const handleDeleteClient = (id: string) => {
-        if (confirm("Tem certeza que deseja excluir este cliente?")) {
-            removeClient(currentUser, id, "Exclusão manual");
-        }
-    };
-
-    const openNewClientModal = () => {
-        setCurrentClient({ status: 'Active', segment: 'Geral', ltv: 0 });
-        setIsEditing(false);
-        setIsModalOpen(true);
-    };
-
-    const openEditClientModal = (client: Client) => {
-        setCurrentClient(client);
-        setIsEditing(true);
-        setIsModalOpen(true);
-    };
-
     const filteredClients = useMemo(() => {
-        return clients.filter(c => 
-            c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            c.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [clients, searchTerm]);
+        return clients.filter(c => {
+            const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                 (c.unit && c.unit.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                 (c.contractId && c.contractId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                 (c.document && c.document.includes(searchTerm));
+            
+            const matchesStatus = statusFilter === 'All' || c.status === statusFilter;
+            const matchesSegment = segmentFilter === 'All' || c.segment === segmentFilter;
+
+            return matchesSearch && matchesStatus && matchesSegment;
+        });
+    }, [clients, searchTerm, statusFilter, segmentFilter]);
 
     return (
         <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Carteira de Clientes</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Gestão completa da base de clientes.</p>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Unidades & Contratos</h1>
+                    <p className="text-slate-500 dark:text-slate-400">Gestão financeira e operacional da base de clientes.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition text-sm font-medium">
-                        <FileSpreadsheet size={18}/> Modelo Excel
+                    <button onClick={() => setIsBulkModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition shadow-md">
+                        <MessageCircle size={18}/> Disparar para Todos
                     </button>
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition text-sm font-medium">
-                        <Upload size={18}/> Importar
+                    <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition text-sm font-medium shadow-sm">
+                        <Download size={18}/> Modelo Vazio
+                    </button>
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition shadow-md">
+                        <Upload size={18}/> Importar Excel
                     </button>
                     <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                    
-                    <button onClick={openNewClientModal} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition shadow-sm">
-                        <Plus size={18}/> Novo Cliente
+                    <button onClick={() => { setCurrentClient({ status: 'Active', segment: 'Estacionamento', ltv: 0 }); setIsEditing(false); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition shadow-sm">
+                        <Plus size={18}/> Nova Unidade
                     </button>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                    <div className="relative w-full md:w-64">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
+                <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/50">
+                    <div className="relative flex-1 min-w-[200px]">
                         <Search className="absolute left-3 top-2.5 text-slate-400" size={18}/>
-                        <input 
-                            type="text" 
-                            placeholder="Buscar cliente..." 
-                            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 dark:text-white"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                        <input type="text" placeholder="Buscar unidade ou documento..." className="w-full pl-10 pr-4 py-2 rounded-lg border bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                     </div>
-                    <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                        Total: {filteredClients.length}
-                    </span>
-                </div>
 
+                    <div className="flex items-center gap-2">
+                        <Filter size={16} className="text-slate-400"/>
+                        <select 
+                            className="bg-white dark:bg-slate-800 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="All">Todos Status</option>
+                            <option value="Active">Ativos</option>
+                            <option value="Churn Risk">Em Risco</option>
+                            <option value="Inactive">Inativos</option>
+                        </select>
+                        <select 
+                            className="bg-white dark:bg-slate-800 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            value={segmentFilter}
+                            onChange={(e) => setSegmentFilter(e.target.value)}
+                        >
+                            {segments.map(s => <option key={s} value={s}>{s === 'All' ? 'Todos Segmentos' : s}</option>)}
+                        </select>
+                    </div>
+
+                    <Badge color="blue">{filteredClients.length} Registros</Badge>
+                </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 dark:text-slate-300 uppercase text-xs font-bold sticky top-0 shadow-sm z-10">
+                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 uppercase text-[10px] font-bold sticky top-0 shadow-sm z-10">
                             <tr>
-                                <th className="p-4">Cliente / Empresa</th>
-                                <th className="p-4">Contatos</th>
-                                <th className="p-4">Segmento</th>
-                                <th className="p-4">Valor (LTV)</th>
+                                <th className="p-4">Contrato / Unidade</th>
+                                <th className="p-4">Vagas / Fluxo</th>
+                                <th className="p-4 text-right">R$ Especial Total</th>
+                                <th className="p-4 text-right">R$ Tabela Total</th>
                                 <th className="p-4 text-center">Status</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                             {filteredClients.map(client => (
-                                <tr 
-                                    key={client.id} 
-                                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer group"
-                                    onClick={() => setSelectedClientFor360(client)}
-                                >
+                                <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer group" onClick={() => setSelectedClientFor360(client)}>
                                     <td className="p-4">
-                                        <p className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{client.name}</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                            <Building2 size={10}/> {client.document || 'N/A'}
-                                        </p>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-300">
-                                            <span className="flex items-center gap-1"><Phone size={10}/> {client.phone}</span>
-                                            <span className="flex items-center gap-1"><Mail size={10}/> {client.email}</span>
+                                        <p className="font-bold text-slate-900 dark:text-white leading-tight">{client.unit || client.name}</p>
+                                        <div className="flex flex-col gap-0.5 mt-1">
+                                            {client.document && (
+                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
+                                                    <ShieldCheck size={10} className="text-blue-500"/> {client.document}
+                                                </p>
+                                            )}
+                                            {client.phone && (
+                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                                    <Phone size={10} className="text-indigo-500"/> {client.phone}
+                                                </p>
+                                            )}
+                                            <p className="text-[10px] text-slate-400 font-mono">{client.contractId || 'S/ CONTRATO'}</p>
                                         </div>
                                     </td>
-                                    <td className="p-4 text-slate-700 dark:text-slate-300">{client.segment}</td>
-                                    <td className="p-4 font-mono font-bold text-slate-800 dark:text-white">R$ {(client.ltv || 0).toLocaleString()}</td>
+                                    <td className="p-4">
+                                        <div className="flex flex-col text-xs">
+                                            <span className="font-bold text-slate-700 dark:text-slate-300">{client.parkingSpots || 0} vagas</span>
+                                            <span className="text-slate-400">Veículos: {client.vehicleCount || 0}</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <p className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">R$ {(client.totalSpecialPrice || client.ltv || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                        <p className="text-[9px] text-slate-400 uppercase font-bold">Valor Mensal</p>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <p className="font-mono font-bold text-slate-500 dark:text-slate-400">R$ {(client.totalTablePrice || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                        <p className="text-[9px] text-slate-400 uppercase">Preço Base</p>
+                                    </td>
                                     <td className="p-4 text-center">
-                                        <Badge color={client.status === 'Active' ? 'green' : client.status === 'Inactive' ? 'gray' : 'red'}>
+                                        <Badge color={client.status === 'Active' ? 'green' : client.status === 'Churn Risk' ? 'yellow' : 'red'}>
                                             {client.status === 'Active' ? 'Ativo' : client.status === 'Inactive' ? 'Inativo' : 'Risco'}
                                         </Badge>
                                     </td>
                                     <td className="p-4 text-right">
                                         <div className="flex justify-end gap-2">
-                                            {/* Eye Icon for explicit 360 View - Helps UX */}
-                                            <button className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition hidden md:block" title="Visão 360">
-                                                <Eye size={16}/>
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); openEditClientModal(client); }} 
-                                                className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition" 
-                                                title="Editar"
-                                            >
-                                                <Edit2 size={16}/>
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }} 
-                                                className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition" 
-                                                title="Excluir"
-                                            >
-                                                <Trash2 size={16}/>
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setCurrentClient(client); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 transition"><Edit2 size={16}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); if(confirm("Excluir unidade?")) removeClient(currentUser, client.id, "Manual"); }} className="p-1.5 text-slate-400 hover:text-red-600 transition"><Trash2 size={16}/></button>
                                         </div>
                                     </td>
                                 </tr>
                             ))}
-                            {filteredClients.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-500">
-                                        Nenhum cliente encontrado.
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            {/* MODAL */}
+            {/* BULK WHATSAPP MODAL */}
+            {isBulkModalOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9000] p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                            <h3 className="font-bold text-xl flex items-center gap-2">
+                                <MessageCircle className="text-emerald-600"/> Disparo em Lote (Anti-Ban)
+                            </h3>
+                            <button onClick={() => !isSendingBulk && setIsBulkModalOpen(false)} disabled={isSendingBulk} className="text-slate-400 hover:text-slate-600 disabled:opacity-30">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            {!isSendingBulk ? (
+                                <>
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-start gap-3">
+                                        <ShieldCheck className="text-blue-600 dark:text-blue-400 shrink-0" size={24}/>
+                                        <div>
+                                            <h4 className="font-bold text-blue-900 dark:text-blue-200 text-sm">Segurança Inteligente Ativa</h4>
+                                            <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">O disparo será feito com intervalos variáveis entre 2 e 7 minutos para proteger seu número. Use [NOME] para personalizar.</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-widest">Mensagem de Disparo</label>
+                                        <textarea 
+                                            className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-4 h-48 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-white resize-none text-sm shadow-inner"
+                                            placeholder="Olá [NOME], passando para informar que..."
+                                            value={bulkMessage}
+                                            onChange={e => setBulkMessage(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs text-slate-400">
+                                        <span>Total de Clientes: <strong>{clients.length}</strong></span>
+                                        <span>Estimativa: <strong>~{clients.length * 4} mins</strong></span>
+                                    </div>
+                                    <button 
+                                        onClick={startBulkWhatsApp}
+                                        disabled={!bulkMessage.trim()}
+                                        className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        <Send size={20}/> INICIAR CAMPANHA DE DISPARO
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="py-8 flex flex-col items-center text-center space-y-6">
+                                    <div className="relative">
+                                        <div className="w-24 h-24 rounded-full border-4 border-slate-100 dark:border-slate-700 border-t-emerald-500 animate-spin"></div>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-xl font-black text-emerald-600">{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <h4 className="font-bold text-lg text-slate-800 dark:text-white">{bulkProgress.status}</h4>
+                                        <p className="text-sm text-slate-500">{bulkProgress.current} de {bulkProgress.total} mensagens processadas</p>
+                                    </div>
+
+                                    {bulkProgress.nextIn > 0 && (
+                                        <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800 flex items-center gap-3">
+                                            <Timer className="text-amber-600 animate-pulse" size={20}/>
+                                            <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                                                Próximo envio em {bulkProgress.nextIn.toFixed(1)} minutos...
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                                        <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}></div>
+                                    </div>
+
+                                    <button 
+                                        onClick={() => setStopBulk(true)}
+                                        className="mt-4 px-6 py-2 border border-red-200 text-red-500 rounded-lg text-sm font-bold hover:bg-red-50 transition flex items-center gap-2"
+                                    >
+                                        <StopCircle size={18}/> Parar Campanha
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-                            <h3 className="font-bold text-xl text-slate-900 dark:text-white">{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X size={24}/></button>
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b flex justify-between items-center">
+                            <h3 className="font-bold text-xl">{isEditing ? 'Editar Registro' : 'Novo Registro'}</h3>
+                            <button onClick={() => setIsModalOpen(false)}><X/></button>
                         </div>
-                        
-                        <form onSubmit={handleSaveClient} className="p-6 overflow-y-auto flex-1 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome / Razão Social</label>
-                                    <input required type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.name || ''} onChange={e => setCurrentClient({...currentClient, name: e.target.value})} />
+                        <form onSubmit={handleSaveClient} className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome da Unidade</label>
+                                    <input required className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.name || ''} onChange={e => setCurrentClient({...currentClient, name: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Responsável</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.contactPerson || ''} onChange={e => setCurrentClient({...currentClient, contactPerson: e.target.value})} />
+                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">CNPJ / CPF</label>
+                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.document || ''} onChange={e => setCurrentClient({...currentClient, document: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
-                                    <input type="email" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.email || ''} onChange={e => setCurrentClient({...currentClient, email: e.target.value})} />
+                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Telefone</label>
+                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.phone || ''} onChange={e => setCurrentClient({...currentClient, phone: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.phone || ''} onChange={e => setCurrentClient({...currentClient, phone: e.target.value})} />
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">E-mail</label>
+                                    <input type="email" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.email || ''} onChange={e => setCurrentClient({...currentClient, email: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">CNPJ / CPF</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.document || ''} onChange={e => setCurrentClient({...currentClient, document: e.target.value})} />
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">ID Contrato</label>
+                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.contractId || ''} onChange={e => setCurrentClient({...currentClient, contractId: e.target.value})} />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Segmento</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.segment || ''} onChange={e => setCurrentClient({...currentClient, segment: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Status</label>
-                                    <select className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.status || 'Active'} onChange={e => setCurrentClient({...currentClient, status: e.target.value as any})}>
-                                        <option value="Active">Ativo</option>
-                                        <option value="Inactive">Inativo</option>
-                                        <option value="Churn Risk">Em Risco</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Contrato (Mensal)</label>
-                                    <input type="number" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: Number(e.target.value)})} />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Endereço Completo</label>
-                                    <input type="text" className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" value={currentClient.address || ''} onChange={e => setCurrentClient({...currentClient, address: e.target.value})} />
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Mensal Especial (LTV)</label>
+                                    <input type="number" step="0.01" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white font-mono" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: Number(e.target.value), totalSpecialPrice: Number(e.target.value)})} />
                                 </div>
                             </div>
-
-                            {/* Custom Fields */}
-                            <CustomFieldRenderer 
-                                fields={customFields} 
-                                module="clients" 
-                                values={currentClient.metadata || {}} 
-                                onChange={(key, value) => setCurrentClient(prev => ({ ...prev, metadata: { ...prev.metadata, [key]: value } }))}
-                                className="pt-4 border-t border-slate-100 dark:border-slate-700"
-                            />
-
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                                <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
-                                    <Save size={18}/> Salvar Cliente
-                                </button>
-                            </div>
+                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 shadow-md">Salvar Unidade</button>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* CLIENT 360 MODAL */}
             {selectedClientFor360 && (
-                <Client360 
-                    client={selectedClientFor360}
-                    leads={leads}
-                    tickets={tickets}
-                    invoices={invoices}
-                    onClose={() => setSelectedClientFor360(null)}
-                />
+                <Client360 client={selectedClientFor360} leads={leads} tickets={tickets} invoices={invoices} onClose={() => setSelectedClientFor360(null)} />
             )}
         </div>
     );

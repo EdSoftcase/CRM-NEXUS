@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Client, Activity } from '../types';
-import { Phone, CheckCircle, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy, Save, X, Calendar } from 'lucide-react';
+import { Phone, CheckCircle, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy, Save, X, Calendar, PlusCircle, partyPopper } from 'lucide-react';
 
 interface DailyTarget {
     clientId: string;
@@ -16,7 +17,7 @@ interface DailySelection {
 }
 
 export const ContactCenterWidget: React.FC = () => {
-    const { clients, updateClientContact, products, activities } = useData();
+    const { clients, updateClientContact, products, activities, addSystemNotification } = useData();
     const { currentUser } = useAuth();
 
     const [dailySelection, setDailySelection] = useState<DailySelection | null>(null);
@@ -38,6 +39,8 @@ export const ContactCenterWidget: React.FC = () => {
         const total = dailySelection.targets.length;
         return { count: completed, total: total, percent: Math.round((completed / total) * 100) };
     }, [dailySelection]);
+
+    const isGoalReached = dailyProgress.count === dailyProgress.total && dailyProgress.total > 0;
 
     const periodProgress = useMemo(() => {
         const activeClients = clients.filter(c => c.status === 'Active');
@@ -119,6 +122,36 @@ export const ContactCenterWidget: React.FC = () => {
         return { date: dateStr, targets };
     };
 
+    const handleRequestMoreTargets = () => {
+        if (!dailySelection) return;
+
+        const currentTargetIds = new Set(dailySelection.targets.map(t => t.clientId));
+        const activeClients = clients.filter(c => c.status === 'Active' && !currentTargetIds.has(c.id));
+        
+        if (activeClients.length === 0) {
+            addSystemNotification('Limite Atingido', 'Você já contatou todos os clientes ativos da sua carteira!', 'info');
+            return;
+        }
+
+        // Selecionar mais 2 aleatórios
+        const additionalTargets: DailyTarget[] = [];
+        const shuffled = [...activeClients].sort(() => 0.5 - Math.random());
+        const toAdd = shuffled.slice(0, 2);
+
+        toAdd.forEach(client => {
+            additionalTargets.push({ clientId: client.id, status: 'pending' });
+        });
+
+        const newSelection: DailySelection = {
+            ...dailySelection,
+            targets: [...dailySelection.targets, ...additionalTargets]
+        };
+
+        setDailySelection(newSelection);
+        localStorage.setItem('nexus_daily_contacts', JSON.stringify(newSelection));
+        addSystemNotification('Metas Extras', 'Mais 2 clientes foram adicionados à sua lista de hoje.', 'success');
+    };
+
     const handleOpenAction = (target: DailyTarget) => {
         if (target.status === 'done') return;
         const client = clients.find(c => c.id === target.clientId);
@@ -131,7 +164,6 @@ export const ContactCenterWidget: React.FC = () => {
         }
     };
 
-    // FIX: Added toggleProductSelection to handle interest selection in the contact modal
     const toggleProductSelection = (productName: string) => {
         setSelectedProductIds(prev => 
             prev.includes(productName) 
@@ -176,6 +208,15 @@ export const ContactCenterWidget: React.FC = () => {
                             <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden shadow-sm">
                                 <div className="bg-gradient-to-r from-green-600 to-green-400 h-full rounded-full transition-all duration-1000 ease-out" style={{width: `${animatedWidths.daily}%`}}></div>
                             </div>
+                            
+                            {isGoalReached && (
+                                <button 
+                                    onClick={handleRequestMoreTargets}
+                                    className="mt-4 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black py-2 rounded-lg transition flex items-center justify-center gap-2 animate-bounce"
+                                >
+                                    <PlusCircle size={14}/> QUERO MAIS CONTATOS
+                                </button>
+                            )}
                         </div>
                         <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700 shadow-inner">
                             <div className="flex justify-between items-end mb-2">
@@ -189,30 +230,50 @@ export const ContactCenterWidget: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {dailySelection.targets.map((target, idx) => {
-                        const client = clients.find(c => c.id === target.clientId);
-                        if (!client) return null;
-                        const isDone = target.status === 'done';
-                        const isHighValue = idx < 2;
-                        return (
-                            <div key={target.clientId} onClick={() => handleOpenAction(target)} className={`relative p-5 rounded-2xl border transition cursor-pointer group flex flex-col justify-between ${isDone ? 'bg-slate-800/50 border-slate-700 opacity-60' : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/50 hover:shadow-2xl transform hover:-translate-y-1'}`}>
-                                {isDone && <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] rounded-2xl z-20"><div className="bg-green-500 text-white px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-1 shadow-lg transform scale-110"><CheckCircle size={14}/> FEITO</div></div>}
-                                <div>
-                                    <div className="flex justify-between items-start mb-3">
-                                        {isHighValue ? <span className="text-[10px] font-black bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/40 flex items-center gap-1"><Sparkles size={10}/> VIP</span> : <span className="text-[10px] font-black bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/40">CARTEIRA</span>}
-                                        {!isDone && <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></div>}
-                                    </div>
-                                    <h4 className="font-bold text-base text-white group-hover:text-indigo-300 transition-colors">{client.name}</h4>
-                                    <p className="text-xs text-slate-400 mt-1">{client.contactPerson}</p>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
-                                    <span className="text-[10px] text-slate-500 font-mono">LTV: R$ {client.ltv?.toLocaleString()}</span>
-                                    <span className="text-xs font-black text-indigo-400 group-hover:text-white transition-colors">CONTATAR &rarr;</span>
-                                </div>
+                <div className="flex-1">
+                    {isGoalReached && (
+                        <div className="mb-4 bg-indigo-500/20 border border-indigo-500/40 p-3 rounded-xl flex items-center justify-between animate-fade-in">
+                            <div className="flex items-center gap-3">
+                                <Sparkles className="text-indigo-400"/>
+                                <span className="text-sm font-bold">Meta batida! Parabéns pelo empenho de hoje.</span>
                             </div>
-                        );
-                    })}
+                            <button onClick={handleRequestMoreTargets} className="text-xs font-black bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">SOLICITAR EXTRAS</button>
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {dailySelection.targets.map((target, idx) => {
+                            const client = clients.find(c => c.id === target.clientId);
+                            if (!client) return null;
+                            const isDone = target.status === 'done';
+                            const isExtra = idx >= 3;
+                            const isHighValue = !isExtra && idx < 2;
+                            
+                            return (
+                                <div key={target.clientId} onClick={() => handleOpenAction(target)} className={`relative p-5 rounded-2xl border transition cursor-pointer group flex flex-col justify-between ${isDone ? 'bg-slate-800/50 border-slate-700 opacity-60' : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/50 hover:shadow-2xl transform hover:-translate-y-1'}`}>
+                                    {isDone && <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] rounded-2xl z-20"><div className="bg-green-500 text-white px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-1 shadow-lg transform scale-110"><CheckCircle size={14}/> FEITO</div></div>}
+                                    <div>
+                                        <div className="flex justify-between items-start mb-3">
+                                            {isExtra ? (
+                                                <span className="text-[10px] font-black bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/40 flex items-center gap-1">EXTRA</span>
+                                            ) : isHighValue ? (
+                                                <span className="text-[10px] font-black bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/40 flex items-center gap-1"><Sparkles size={10}/> VIP</span>
+                                            ) : (
+                                                <span className="text-[10px] font-black bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/40">CARTEIRA</span>
+                                            )}
+                                            {!isDone && <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></div>}
+                                        </div>
+                                        <h4 className="font-bold text-base text-white group-hover:text-indigo-300 transition-colors">{client.name}</h4>
+                                        <p className="text-xs text-slate-400 mt-1">{client.contactPerson}</p>
+                                    </div>
+                                    <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                                        <span className="text-[10px] text-slate-500 font-mono">LTV: R$ {client.ltv?.toLocaleString()}</span>
+                                        <span className="text-xs font-black text-indigo-400 group-hover:text-white transition-colors">CONTATAR &rarr;</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
 

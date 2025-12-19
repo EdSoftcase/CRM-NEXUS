@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { DollarSign, TrendingUp, Users, AlertCircle, RefreshCw, CheckCircle, Circle, Clock, ArrowRight, X, Bell, Zap, Phone, PartyPopper, Briefcase, Eye, EyeOff, Trophy } from 'lucide-react';
+import { DollarSign, TrendingUp, Users, AlertCircle, RefreshCw, CheckCircle, Circle, Clock, ArrowRight, X, Bell, Zap, Phone, Eye, EyeOff, Trophy } from 'lucide-react';
 import { KPICard, SectionTitle } from '../components/Widgets';
 import { RevenueChart, PipelineFunnel } from '../components/Charts';
 import { generateExecutiveSummary } from '../services/geminiService';
@@ -26,36 +26,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
       localStorage.setItem('nexus_privacy_mode', String(newVal));
   };
   
-  const { activities, toggleActivity, leads, clients, tickets, invoices, notifications, markNotificationRead, addSystemNotification } = useData();
+  const { activities, leads, clients, tickets, invoices, notifications, markNotificationRead } = useData();
   const { currentUser, usersList, hasPermission } = useAuth();
 
-  const [stagnantLeads, setStagnantLeads] = useState<Lead[]>([]);
-  const [showStagnantModal, setShowStagnantModal] = useState(false);
-  
-  // Explicit check for view mode
   const isContactCenterMode = viewMode === 'contact-center';
-  
-  // Permission Check for Financials
   const canSeeFinancials = hasPermission('finance', 'view');
 
   const maskValue = (value: string | number | null | undefined, type: 'currency' | 'number' | 'percent' = 'number') => {
       if (!privacyMode) {
-          // CORRECTION: Handle null/undefined values safely
           if (value === null || value === undefined) return '0';
-          
-          if (type === 'currency' && typeof value === 'number') return `R$ ${value.toLocaleString()}`;
+          if (type === 'currency' && typeof value === 'number') return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
           return value.toString();
       }
-      
       if (type === 'currency') return 'R$ ••••••';
       if (type === 'percent') return '•••%';
       return '••••';
   };
 
+  // CÁLCULO MRR: Apenas R$ Especial Total
   const currentMRR = useMemo(() => {
       return clients
           .filter(c => c.status === 'Active')
-          .reduce((acc, curr) => acc + (curr.totalTablePrice || curr.tablePrice || curr.ltv || 0), 0);
+          .reduce((acc, curr) => acc + (curr.totalSpecialPrice || 0), 0);
   }, [clients]);
 
   const currentARR = currentMRR * 12;
@@ -88,7 +80,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                   const invDate = new Date(inv.dueDate);
                   return invDate.getMonth() === d.getMonth() && 
                          invDate.getFullYear() === d.getFullYear() &&
-                         (inv.status === InvoiceStatus.PAID || inv.status === InvoiceStatus.SENT);
+                         (inv.status === InvoiceStatus.PAID);
               })
               .reduce((acc, curr) => acc + curr.amount, 0);
           const value = monthRevenue > 0 ? monthRevenue : (i === 0 ? currentMRR : 0);
@@ -110,9 +102,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
   }, [usersList]);
 
   useEffect(() => {
-    // Disable AI Summary for contact center mode
     if (isContactCenterMode) return;
-
     const fetchSummary = async () => {
         if (currentMRR > 0 || leads.length > 0) {
             const result = await generateExecutiveSummary({
@@ -123,46 +113,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                 critical_tickets: criticalTickets.length
             });
             setSummary(result);
-        } else {
-            setSummary("Adicione clientes e leads para que a IA possa gerar insights sobre seu negócio.");
         }
     };
     const timer = setTimeout(() => fetchSummary(), 2000);
-
-    const isAdminOrSales = ['admin', 'executive', 'sales'].includes(currentUser.role);
-    if (isAdminOrSales) {
-        const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const inactiveLeads = leads.filter(l => new Date(l.lastContact) < sevenDaysAgo && l.status !== LeadStatus.CLOSED_WON && l.status !== LeadStatus.CLOSED_LOST);
-        if(inactiveLeads.length > 0) { setStagnantLeads(inactiveLeads); if(!sessionStorage.getItem('nexus_stagnant_leads_shown')) setShowStagnantModal(true); }
-    }
     return () => clearTimeout(timer);
-  }, [currentMRR, activeClientsCount, churnRate, leads.length, criticalTickets.length, currentUser, isContactCenterMode]);
+  }, [currentMRR, activeClientsCount, churnRate, leads.length, criticalTickets.length, isContactCenterMode]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleNavigateToFilteredCommercial = () => { sessionStorage.setItem('nexus_filter_stagnant', 'true'); setShowStagnantModal(false); onNavigate('commercial'); };
-  
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 bg-slate-50 dark:bg-slate-900 min-h-full transition-colors duration-300">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 mb-2">
         <div className="flex items-center gap-4">
             <div>
                 <h1 className="font-bold text-slate-900 dark:text-white flex items-center gap-3 text-2xl md:text-3xl">
-                    {isContactCenterMode ? (
-                        <>
-                            <Phone className="text-indigo-500" /> Central de Contatos Ativa
-                        </>
-                    ) : (
-                        "Visão Executiva"
-                    )}
-                    
+                    {isContactCenterMode ? <><Phone className="text-indigo-500" /> Central de Contatos Ativa</> : "Visão Executiva"}
                     {!isContactCenterMode && canSeeFinancials && (
-                        <button 
-                            onClick={togglePrivacy} 
-                            className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full"
-                            title={privacyMode ? "Mostrar valores" : "Ocultar valores"}
-                        >
+                        <button onClick={togglePrivacy} className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full">
                             {privacyMode ? <EyeOff size={20} /> : <Eye size={20} />}
                         </button>
                     )}
@@ -172,88 +139,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                 </p>
             </div>
         </div>
-        
-        {!isContactCenterMode && canSeeFinancials && (
-            <div className="flex items-center gap-3 mt-4 md:mt-0">
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3 rounded-lg max-w-xl mr-4 hidden lg:block">
-                    <div className="flex items-start gap-3">
-                        <div className="mt-1"><RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin-slow" /></div>
-                        <div>
-                            <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100">Nexus AI Insights</h4>
-                            <p className={`text-xs text-blue-800 dark:text-blue-200 mt-1 leading-snug ${privacyMode ? 'blur-[3px]' : ''} transition-all`}>{summary}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
       </div>
 
-      {/* CONTACT CENTER WIDGET (Always shown, specially prominent in Contact Mode) */}
       <ContactCenterWidget />
 
-      {/* KPI Grid - Hidden in Contact Center Mode */}
       {!isContactCenterMode && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-            {/* Show Financial KPIs only if user has permission */}
             {canSeeFinancials ? (
                 <>
-                    <KPICard title="MRR (Mensal)" value={maskValue(currentMRR, 'currency')} trend="Calculado sobre ativos" trendUp={true} icon={DollarSign} color="bg-blue-500" tooltip="Receita Mensal Recorrente calculada pela soma dos valores mensais de todos os clientes ativos." />
-                    <KPICard title="ARR (Anual)" value={maskValue(currentARR, 'currency')} trend="Projeção 12m" trendUp={true} icon={TrendingUp} color="bg-emerald-500" tooltip="Receita Anual Recorrente (MRR x 12). Projeção financeira anualizada da base atual." />
+                    <KPICard title="Faturamento Mensal (Especial)" value={maskValue(currentMRR, 'currency')} trend="Baseado no quadro Especial" trendUp={true} icon={DollarSign} color="bg-blue-500" />
+                    <KPICard title="Receita Anual" value={maskValue(currentARR, 'currency')} trend="Projeção 12m" trendUp={true} icon={TrendingUp} color="bg-emerald-500" />
                 </>
             ) : (
                 <>
-                    <KPICard title="Fila de Chamados" value={tickets.filter(t => t.status === TicketStatus.OPEN).length.toString()} trend="Tickets Abertos" trendUp={false} icon={AlertCircle} color="bg-orange-500" tooltip="Total de chamados aguardando atendimento." />
-                    <KPICard title="Em Atendimento" value={tickets.filter(t => t.status === TicketStatus.IN_PROGRESS).length.toString()} trend="Trabalhando agora" trendUp={true} icon={Clock} color="bg-blue-500" tooltip="Total de chamados sendo tratados pela equipe." />
+                    <KPICard title="Fila de Chamados" value={tickets.filter(t => t.status === TicketStatus.OPEN).length.toString()} trend="Abertos" trendUp={false} icon={AlertCircle} color="bg-orange-500" />
+                    <KPICard title="Em Atendimento" value={tickets.filter(t => t.status === TicketStatus.IN_PROGRESS).length.toString()} trend="Trabalhando agora" trendUp={true} icon={Clock} color="bg-blue-500" />
                 </>
             )}
-            
-            <KPICard title="Clientes Ativos" value={maskValue(activeClientsCount, 'number')} trend={`${clients.length} Total`} trendUp={true} icon={Users} color="bg-indigo-500" tooltip="Contagem total de clientes com status 'Active' no sistema." />
-            <KPICard title="Taxa de Churn" value={maskValue(churnRate, 'percent')} trend={Number(churnRate) > 5 ? "Alto" : "Controlado"} trendUp={Number(churnRate) < 5} icon={AlertCircle} color="bg-red-500" tooltip="Percentual de clientes inativos ou perdidos em relação à base total de clientes." />
+            <KPICard title="Clientes Ativos" value={maskValue(activeClientsCount, 'number')} trend={`${clients.length} Total`} trendUp={true} icon={Users} color="bg-indigo-500" />
+            <KPICard title="Taxa de Churn" value={maskValue(churnRate, 'percent')} trend={Number(churnRate) > 5 ? "Atenção" : "Saudável"} trendUp={Number(churnRate) < 5} icon={AlertCircle} color="bg-red-500" />
           </div>
       )}
 
-      {/* Main Content Grid */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Charts Column (Hidden in Contact Mode) */}
         {!isContactCenterMode ? (
             <div className="lg:col-span-2 flex flex-col gap-6">
-              
-              {/* Only show Revenue Chart if permissions allow */}
               {canSeeFinancials && (
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
-                    <SectionTitle title="Receita Realizada" subtitle="Baseado em faturas e projeção atual" />
+                    <SectionTitle title="Evolução de Receita" subtitle="Faturamento mensal histórico" />
                     <div className={`flex-1 w-full min-h-0 mt-4 transition-all duration-300 ${privacyMode ? 'filter blur-sm select-none opacity-50' : ''}`}>
                         <RevenueChart data={revenueChartData} />
                     </div>
                 </div>
               )}
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0 h-auto md:h-72">
-                 
-                 {/* Show Pipeline if Can See Commercial/Financials, otherwise show something else or full width ticket */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0 h-auto">
                  <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col min-h-[250px]">
-                    <SectionTitle title="Funil de Vendas" subtitle="Leads reais por estágio" />
+                    <SectionTitle title="Funil de Vendas" subtitle="Leads por estágio" />
                     <div className={`flex-1 w-full min-h-0 transition-all duration-300 ${privacyMode ? 'filter blur-sm select-none opacity-50' : ''}`}>
                         <PipelineFunnel data={pipelineData} />
                     </div>
                  </div>
-
                  <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden min-h-[250px]">
-                    <SectionTitle title="Tickets Críticos" subtitle="Atenção Imediata" />
+                    <SectionTitle title="Alertas Críticos" subtitle="Atenção Imediata" />
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 mt-2">
                         {criticalTickets.length > 0 ? criticalTickets.map(ticket => (
                             <div key={ticket.id} className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/30 rounded-lg border border-red-100 dark:border-red-900/50">
                                 <div className="min-w-0">
                                     <p className="font-medium text-red-900 dark:text-red-200 truncate">{ticket.subject}</p>
-                                    <p className="text-xs text-red-700 dark:text-red-300 truncate">{privacyMode ? '••••••' : ticket.customer} • {new Date(ticket.created_at).toLocaleDateString()}</p>
+                                    <p className="text-xs text-red-700 dark:text-red-300 truncate">{privacyMode ? '••••' : ticket.customer}</p>
                                 </div>
-                                <span className="text-[10px] font-bold bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-1 rounded whitespace-nowrap ml-2">{ticket.priority}</span>
+                                <span className="text-[10px] font-bold bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-1 rounded">{ticket.priority}</span>
                             </div>
                         )) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
                                  <CheckCircle size={32} className="mb-2 text-green-500 opacity-50"/>
-                                 <p className="text-sm">Nenhum ticket crítico aberto.</p>
+                                 <p className="text-sm">Tudo em ordem.</p>
                             </div>
                         )}
                     </div>
@@ -261,161 +201,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
               </div>
             </div>
         ) : (
-            // Contact Center Mode View
             <div className="lg:col-span-2 flex flex-col gap-6">
                  <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center h-full min-h-[300px]">
                     <Phone size={48} className="text-indigo-200 dark:text-indigo-900 mb-4 animate-pulse-slow" />
-                    <h3 className="text-xl font-bold text-slate-700 dark:text-white">Modo Foco Ativado</h3>
-                    <p className="text-slate-500 dark:text-slate-400 max-w-md mt-2">
-                        Concentre-se em completar as metas de contato diárias exibidas acima. 
-                        As métricas financeiras foram ocultadas para evitar distrações.
-                    </p>
+                    <h3 className="text-xl font-bold text-slate-700 dark:text-white">Foco Operacional</h3>
+                    <p className="text-slate-500 dark:text-slate-400 max-w-md mt-2">Valores financeiros ocultos para foco total em metas de relacionamento.</p>
                  </div>
             </div>
         )}
 
-        {/* Column C: Tables & Alerts */}
         <div className="flex flex-col gap-6">
-            
-            {/* Gamification - Only in General Mode */}
-            {!isContactCenterMode && (
-                <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-6 rounded-xl shadow-lg border border-indigo-800 text-white flex flex-col min-h-[250px] relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                    <div className="flex items-center gap-2 mb-4 relative z-10">
-                        <Trophy className="text-yellow-400" />
-                        <h3 className="font-bold text-lg">Ranking de Vendas</h3>
-                    </div>
-                    <div className="space-y-4 relative z-10">
-                        {topPerformers.map((user, idx) => (
-                            <div key={user.id} className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-white/5 backdrop-blur-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-slate-300 text-slate-800' : 'bg-orange-400 text-orange-900'}`}>
-                                        {idx + 1}
-                                    </div>
-                                    <div>
-                                        <p className="font-bold text-sm">{user.name}</p>
-                                        <p className="text-[10px] text-slate-400">Nível {user.level || 1}</p>
-                                    </div>
-                                </div>
-                                <span className="font-mono font-bold text-yellow-400">{user.xp || 0} XP</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-            
-            {/* Notifications */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
                 <div className="flex items-center justify-between mb-4 shrink-0">
-                    <SectionTitle title="Alertas do Sistema" />
-                    {unreadCount > 0 && (
-                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">{unreadCount}</span>
-                    )}
+                    <SectionTitle title="Notificações" />
+                    {unreadCount > 0 && <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">{unreadCount}</span>}
                 </div>
-                
-                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 max-h-[250px]">
-                    {notifications.length === 0 ? (
-                        <div className="text-center py-6 text-slate-400 dark:text-slate-500">
-                            <Bell size={24} className="mx-auto mb-2 opacity-30"/>
-                            <p className="text-sm">Tudo tranquilo.</p>
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 max-h-[400px]">
+                    {notifications.length === 0 ? <p className="text-center text-slate-400 py-10">Vazio.</p> : notifications.map(notif => (
+                        <div key={notif.id} className={`p-3 rounded-lg border text-sm transition-all cursor-pointer ${notif.read ? 'bg-slate-50 dark:bg-slate-700/50 opacity-60' : 'bg-white dark:bg-slate-700 shadow-sm'}`} onClick={() => markNotificationRead(notif.id)}>
+                            <p className={`font-bold ${notif.read ? 'text-slate-600' : 'text-slate-800 dark:text-white'}`}>{notif.title}</p>
+                            <p className="text-slate-500 text-xs mt-0.5">{notif.message}</p>
                         </div>
-                    ) : (
-                        notifications.map(notif => (
-                            <div 
-                                key={notif.id} 
-                                className={`p-3 rounded-lg border text-sm transition-all cursor-pointer ${
-                                    notif.read ? 'bg-slate-50 dark:bg-slate-700/50 border-slate-100 dark:border-slate-700 opacity-60' : 'bg-white dark:bg-slate-700 border-blue-100 dark:border-blue-900 shadow-sm'
-                                }`}
-                                onClick={() => markNotificationRead(notif.id)}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className={`mt-0.5 p-1.5 rounded-full shrink-0 ${
-                                        notif.type === 'alert' ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300' :
-                                        notif.type === 'success' ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-300' :
-                                        notif.type === 'warning' ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-300' :
-                                        'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300'
-                                    }`}>
-                                        <Zap size={14} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className={`font-bold truncate ${notif.read ? 'text-slate-600 dark:text-slate-400' : 'text-slate-800 dark:text-white'}`}>
-                                            {notif.title}
-                                        </p>
-                                        <p className={`text-slate-500 dark:text-slate-400 text-xs mt-0.5 line-clamp-2 ${privacyMode ? 'blur-[3px]' : ''}`}>{notif.message}</p>
-                                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">
-                                            {new Date(notif.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
-
-            {/* Activities - Keep for both modes */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col flex-1 min-h-[300px]">
-                <div className="shrink-0 mb-2">
-                    <SectionTitle title="Minhas Tarefas" />
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 max-h-[250px]">
-                    {activities.filter(a => !a.completed).length === 0 ? (
-                        <div className="text-center py-6 text-slate-400 dark:text-slate-500">
-                                <CheckCircle size={24} className="mx-auto mb-2 opacity-30"/>
-                                <p className="text-sm">Nenhuma tarefa pendente.</p>
-                        </div>
-                    ) : (
-                        activities.filter(a => !a.completed).map(act => (
-                        <div key={act.id} className={`flex items-center gap-3 p-3 rounded-lg border transition bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-500`}>
-                            <button onClick={() => toggleActivity(currentUser, act.id)}>
-                                <Circle size={18} className="text-slate-300 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition" />
-                            </button>
-                            <div className="min-w-0">
-                                <p className="font-medium text-sm text-slate-800 dark:text-white truncate">{act.title}</p>
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                                    <Clock size={10} />
-                                    <span>{new Date(act.dueDate).toLocaleDateString()}</span>
-                                    <span className="truncate">• {act.relatedTo}</span>
-                                </div>
-                            </div>
-                        </div>
-                        ))
-                    )}
+                    ))}
                 </div>
             </div>
         </div>
       </div>
-
-      {showStagnantModal && !isContactCenterMode && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                  <div className="bg-blue-600 p-6 text-white text-center">
-                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse-slow">
-                          <AlertCircle size={32} />
-                      </div>
-                      <h3 className="text-xl font-bold">Oportunidades Estagnadas</h3>
-                      <p className="text-blue-100 text-sm mt-1">Identificamos {stagnantLeads.length} leads sem interação recente.</p>
-                  </div>
-                  <div className="p-6">
-                      <p className="text-slate-600 dark:text-slate-300 text-sm mb-6 text-center">
-                          Leads parados por mais de 7 dias têm 80% menos chance de fechamento. Que tal reaquecer esses contatos hoje?
-                      </p>
-                      <button 
-                          onClick={handleNavigateToFilteredCommercial}
-                          className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
-                      >
-                          Ver Leads Estagnados <ArrowRight size={18}/>
-                      </button>
-                      <button 
-                          onClick={() => setShowStagnantModal(false)}
-                          className="w-full mt-3 py-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm font-medium"
-                      >
-                          Lembrar depois
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
     </div>
   );
 };
