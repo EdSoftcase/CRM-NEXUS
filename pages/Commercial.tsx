@@ -14,11 +14,11 @@ import { Badge } from '../components/Widgets';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { sendBridgeWhatsApp } from '../services/bridgeService';
 
-// WhatsApp Templates
+// WhatsApp Templates Atualizados
 const whatsappTemplates = [
-    { label: 'Saudação', text: 'Olá [Nome], tudo bem? Sou da [Sua Empresa].' },
-    { label: 'Follow-up', text: 'Olá [Nome], gostaria de saber se conseguiu avaliar nossa proposta.' },
-    { label: 'Agendamento', text: 'Oi [Nome], podemos agendar uma reunião para apresentar nossa solução?' }
+    { label: 'Apresentação LPR', text: 'Olá! Tudo bem? Sou da Softcase. Desenvolvemos soluções de automação para estacionamentos com LPR, controle total da operação e redução de perdas. Posso te explicar em 2 minutos como funciona?' },
+    { label: 'Follow-up', text: 'Olá [Nome], tudo bem? Gostaria de saber se conseguiu avaliar a proposta que te enviei sobre a automação do seu estacionamento.' },
+    { label: 'Agendamento', text: 'Oi [Nome], podemos agendar uma conversa rápida de 5 minutos para eu te mostrar como o LPR da Softcase pode eliminar suas perdas manuais?' }
 ];
 
 type SortOption = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc' | 'value-desc';
@@ -27,38 +27,28 @@ export const Commercial: React.FC = () => {
     const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification } = useData();
     const { currentUser } = useAuth();
 
-    // View & Filter State
     const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<LeadStatus | 'All'>('All');
     const [sortOrder, setSortOrder] = useState<SortOption>('date-desc');
 
-    // Modals State
     const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
-    // Selection State
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [emailLead, setEmailLead] = useState<Lead | null>(null);
-    
-    // Edit State
     const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
-    // Action Data State
     const [cancelReason, setCancelReason] = useState('');
     const [whatsAppMessage, setWhatsAppMessage] = useState('');
     const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(false);
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
-    // New/Edit Lead Form
     const [leadForm, setLeadForm] = useState<Partial<Lead>>({ status: LeadStatus.NEW, source: 'Manual' });
-
-    // Drag & Drop
     const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
-    // Filter and SORT logic
     const filteredLeads = useMemo(() => {
         const result = leads.filter(l => {
             const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -67,21 +57,14 @@ export const Commercial: React.FC = () => {
             return matchesSearch && matchesStatus;
         });
 
-        // Apply Sorting
         return result.sort((a, b) => {
             switch (sortOrder) {
-                case 'name-asc':
-                    return a.company.localeCompare(b.company);
-                case 'name-desc':
-                    return b.company.localeCompare(a.company);
-                case 'date-desc':
-                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                case 'date-asc':
-                    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-                case 'value-desc':
-                    return b.value - a.value;
-                default:
-                    return 0;
+                case 'name-asc': return a.company.localeCompare(b.company);
+                case 'name-desc': return b.company.localeCompare(a.company);
+                case 'date-desc': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'date-asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                case 'value-desc': return b.value - a.value;
+                default: return 0;
             }
         });
     }, [leads, searchTerm, filterStatus, sortOrder]);
@@ -94,15 +77,12 @@ export const Commercial: React.FC = () => {
         { id: LeadStatus.CLOSED_WON, label: 'Ganho', color: 'border-green-500' }
     ];
 
-    // Handlers
     const handleDragStart = (e: React.DragEvent, id: string) => {
         setDraggedLeadId(id);
         e.dataTransfer.setData('leadId', id);
     };
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-    };
+    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
 
     const handleDrop = (e: React.DragEvent, status: LeadStatus) => {
         const leadId = e.dataTransfer.getData('leadId');
@@ -228,8 +208,8 @@ export const Commercial: React.FC = () => {
         if (editingLead) {
             const updatedLead: Lead = {
                 ...editingLead,
-                name: leadForm.name,
-                company: leadForm.company,
+                name: leadForm.name!,
+                company: leadForm.company!,
                 email: leadForm.email || '',
                 phone: leadForm.phone || '',
                 value: leadForm.value || 0,
@@ -239,8 +219,8 @@ export const Commercial: React.FC = () => {
         } else {
             const lead: Lead = {
                 id: `L-${Date.now()}`,
-                name: leadForm.name,
-                company: leadForm.company,
+                name: leadForm.name!,
+                company: leadForm.company!,
                 email: leadForm.email || '',
                 phone: leadForm.phone || '',
                 value: leadForm.value || 0,
@@ -249,7 +229,6 @@ export const Commercial: React.FC = () => {
                 probability: 10,
                 createdAt: new Date().toISOString(),
                 lastContact: new Date().toISOString(),
-                ...leadForm
             } as Lead;
             addLead(currentUser, lead);
             addSystemNotification('Novo Lead', 'Lead criado com sucesso.', 'success');
@@ -262,7 +241,6 @@ export const Commercial: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -272,7 +250,6 @@ export const Commercial: React.FC = () => {
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    {/* Ordenação */}
                     <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
                         <ArrowUpDown size={14} className="text-slate-400" />
                         <select 
@@ -305,7 +282,6 @@ export const Commercial: React.FC = () => {
                 </div>
             </div>
 
-            {/* Kanban Board */}
             <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
                 <div className="flex gap-4 h-full min-w-max">
                     {columns.map(col => (
@@ -361,7 +337,6 @@ export const Commercial: React.FC = () => {
                 </div>
             </div>
 
-            {/* NEW/EDIT LEAD MODAL */}
             {isNewLeadOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9000] p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">

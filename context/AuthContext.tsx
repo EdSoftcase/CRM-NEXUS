@@ -29,6 +29,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SUPER_ADMIN_EMAILS = ['edson.softcase@gmail.com', 'superadmin@nexus.com', 'admin@softcase.com.br'];
+
 // Default Matrix Builder - GRANULAR PERMISSIONS
 const createDefaultMatrix = (): PermissionMatrix => {
   const matrix: PermissionMatrix = {};
@@ -39,7 +41,7 @@ const createDefaultMatrix = (): PermissionMatrix => {
       'dashboard', 'contact-center', 'inbox', 'prospecting', 'competitive-intelligence', 
       'calendar', 'marketing', 'commercial', 'proposals', 'operations', 
       'clients', 'geo-intelligence', 'projects', 'customer-success', 'retention', 
-      'automation', 'finance', 'support', 'dev', 'reports', 'settings', 'portal'
+      'automation', 'finance', 'support', 'dev', 'reports', 'settings', 'portal', 'saas'
   ];
   
   const noAccess = { view: false, create: false, edit: false, delete: false };
@@ -70,7 +72,7 @@ const createDefaultMatrix = (): PermissionMatrix => {
   matrix['sales']['finance'] = { view: true, create: true, edit: false, delete: false };
   matrix['sales']['projects'] = { ...viewOnly };
   matrix['sales']['operations'] = { ...viewOnly };
-  matrix['sales']['settings'] = { view: true, create: false, edit: false, delete: false }; // Can see settings but limited by logic
+  matrix['sales']['settings'] = { view: true, create: false, edit: false, delete: false };
 
   // --- 3. SUPPORT (SUPORTE) ---
   const supportModules = ['dashboard', 'inbox', 'support', 'clients', 'calendar'];
@@ -104,11 +106,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>(() => {
       try {
           const saved = localStorage.getItem('nexus_permissions');
-          // Merge saved with default to ensure new modules appear
           const defaultM = createDefaultMatrix();
           if (saved) {
               const parsed = JSON.parse(saved);
-              // Deep merge logic simplified: if module exists in saved, use it, else use default
               Object.keys(defaultM).forEach(role => {
                   if (parsed[role]) {
                       Object.keys(defaultM[role]).forEach(mod => {
@@ -130,7 +130,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   const [usersList, setUsersList] = useState<User[]>(MOCK_USERS);
 
-  // ... (Existing useEffects and fetch functions remain unchanged) ...
   useEffect(() => {
     const initSession = async () => {
       const supabase = getSupabase();
@@ -199,13 +198,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const fetchTeamMembers = async () => {
       const supabase = getSupabase();
       if (!supabase) return;
-
       try {
           const { data, error } = await supabase.from('profiles').select('*');
-          if (error) {
-              console.error("Error fetching team:", error);
-              return;
-          }
+          if (error) return;
           if (data) {
               const mappedUsers: User[] = data.map((p: any) => ({
                   id: p.id,
@@ -221,9 +216,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }));
               setUsersList(mappedUsers);
           }
-      } catch (e) {
-          console.error("Exception fetching team:", e);
-      }
+      } catch (e) {}
   };
 
   const fetchProfileAndOrg = async (userId: string, userEmail?: string) => {
@@ -240,26 +233,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) {
-          console.error("Profile Fetch Error:", error);
-          setLoading(false);
-          return;
-      }
-
       if (profile) {
         await processProfileData(profile, supabase);
       } else {
-        if (userEmail === 'edson.softcase@gmail.com') {
-             const masterUser = MOCK_USERS.find(u => u.email === userEmail);
-             if (masterUser) {
-                 setCurrentUser(masterUser);
-                 setCurrentOrganization(MOCK_ORGANIZATIONS[0]);
-             }
+        if (userEmail && SUPER_ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
+             const masterUser = MOCK_USERS.find(u => u.email === userEmail) || MOCK_USERS[0];
+             setCurrentUser({ ...masterUser, email: userEmail });
+             setCurrentOrganization(MOCK_ORGANIZATIONS[0]);
         }
         setLoading(false);
       }
     } catch (error) {
-      console.error("Auth Fetch Exception:", error);
       setLoading(false);
     }
   };
@@ -270,9 +254,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             const { data: org, error } = await supabase.from('organizations').select('*').eq('id', profile.organization_id).single();
             if (!error && org) orgData = org;
-        } catch (e) {
-            console.warn("Failed to fetch org details", e);
-        }
+        } catch (e) {}
       }
 
       const mappedUser: User = {
@@ -296,13 +278,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
     const supabase = getSupabase();
     const normalizedEmail = email.trim().toLowerCase();
-    
-    // Master User Fallback
     const masterUser = MOCK_USERS.find(u => u.email.toLowerCase() === normalizedEmail);
     
     if (!supabase) {
-        if (masterUser || normalizedEmail === 'admin@nexus.com' || normalizedEmail === 'client@test.com') {
-            const user = masterUser || MOCK_USERS.find(u => u.email === 'admin@nexus.com')!;
+        if (masterUser || normalizedEmail === 'admin@nexus.com') {
+            const user = masterUser || MOCK_USERS[0];
             setCurrentUser(user);
             setCurrentOrganization(MOCK_ORGANIZATIONS[0]);
             localStorage.setItem('nexus_mock_user', JSON.stringify(user));
@@ -313,22 +293,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      
       if (error) {
-          try {
-              const { data: shadowUser, error: rpcError } = await supabase.rpc('check_shadow_login', { 
-                  email_input: email, 
-                  password_input: password 
-              });
-
-              if (!rpcError && shadowUser) {
-                  await processProfileData(shadowUser, supabase);
-                  return {};
-              }
-          } catch (shadowError) {
-              console.error("Shadow login check failed:", shadowError);
-          }
-
           if (masterUser) {
               setCurrentUser(masterUser);
               setCurrentOrganization(MOCK_ORGANIZATIONS[0]);
@@ -339,16 +304,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       return {}; 
     } catch (err: any) { 
-        if (masterUser) {
-             setCurrentUser(masterUser);
-             setCurrentOrganization(MOCK_ORGANIZATIONS[0]);
-             return {};
-        }
         return { error: err.message }; 
     }
   };
 
-  // ... (SignUp, JoinOrganization, Logout functions remain the same) ...
   const signUp = async (email: string, password: string, fullName: string, companyName: string): Promise<{ error?: string, success?: boolean }> => {
       const supabase = getSupabase();
       if (!supabase) return { error: "Modo Offline: Registro desabilitado." };
@@ -358,10 +317,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (!authData.user) return { error: "Erro ao criar usuário" };
           const userId = authData.user.id;
           const orgId = crypto.randomUUID();
-          const { error: orgError } = await supabase.from('organizations').insert({ id: orgId, name: companyName, slug: companyName.toLowerCase().replace(/[^a-z0-9]/g, '-'), status: 'pending', plan: 'Standard' });
-          if (orgError) return { error: "Erro ao criar organização: " + orgError.message };
-          const { error: profileError } = await supabase.from('profiles').insert({ id: userId, full_name: fullName, email: email, role: 'admin', organization_id: orgId, active: true });
-          if (profileError) return { error: "Erro ao criar perfil. " + profileError.message };
+          await supabase.from('organizations').insert({ id: orgId, name: companyName, slug: companyName.toLowerCase().replace(/[^a-z0-9]/g, '-'), status: 'pending', plan: 'Standard' });
+          await supabase.from('profiles').insert({ id: userId, full_name: fullName, email: email, role: 'admin', organization_id: orgId, active: true });
           return { success: true };
       } catch (err: any) { return { error: err.message }; }
   };
@@ -370,13 +327,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const supabase = getSupabase();
       if (!supabase) return { error: "Modo Offline: Recurso indisponível." };
       try {
-          const { data: org, error: orgError } = await supabase.from('organizations').select('id').eq('slug', orgSlug).single();
-          if (orgError || !org) return { error: "Organização não encontrada com este identificador." };
+          const { data: org } = await supabase.from('organizations').select('id').eq('slug', orgSlug).single();
+          if (!org) return { error: "Organização não encontrada." };
           const { data: authData, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
           if (authError) return { error: authError.message };
-          if (!authData.user) return { error: "Erro ao criar usuário" };
-          const { error: profileError } = await supabase.from('profiles').insert({ id: authData.user.id, full_name: fullName, email: email, role: 'sales', organization_id: org.id, active: false });
-          if (profileError) return { error: "Erro ao criar perfil." };
+          await supabase.from('profiles').insert({ id: authData.user!.id, full_name: fullName, email: email, role: 'sales', organization_id: org.id, active: false });
           return { success: true };
       } catch (err: any) { return { error: err.message }; }
   };
@@ -397,20 +352,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const hasPermission = (module: string, action: PermissionAction = 'view'): boolean => {
     if (!currentUser) return false;
     const role = currentUser.role;
-    if (role === 'client' && module === 'portal') return true;
-    if (role === 'admin') return true; // Admins always have access
+    const email = currentUser.email?.toLowerCase() || '';
     
-    if (!permissionMatrix[role] || !permissionMatrix[role][module]) {
-        return false;
-    }
+    // Super Admins have all permissions automatically
+    if (SUPER_ADMIN_EMAILS.includes(email)) return true;
+    if (role === 'admin') return true;
+    if (role === 'client' && module === 'portal') return true;
+    
+    if (!permissionMatrix[role] || !permissionMatrix[role][module]) return false;
     return permissionMatrix[role][module][action];
   };
 
   const updatePermission = (role: Role, module: string, action: PermissionAction, value: boolean) => {
       setPermissionMatrix(prev => {
           const modulePerms = prev[role][module] || {view: false, create: false, edit: false, delete: false};
-          
-          // Logic: If enabling edit, ensure view is enabled. If disabling view, disable edit.
           let newModulePerms = { ...modulePerms, [action]: value };
           if (action === 'edit' && value === true) newModulePerms.view = true;
           if (action === 'view' && value === false) {
@@ -418,7 +373,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               newModulePerms.edit = false;
               newModulePerms.delete = false;
           }
-
           const newMatrix = { ...prev, [role]: { ...prev[role], [module]: newModulePerms } };
           localStorage.setItem('nexus_permissions', JSON.stringify(newMatrix));
           return newMatrix;
@@ -429,21 +383,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   const changePassword = async (password: string): Promise<{ success: boolean; error?: string }> => {
       const supabase = getSupabase();
-      if (!supabase) return { success: false, error: "Modo Offline: Não é possível alterar senha." };
+      if (!supabase) return { success: false, error: "Modo Offline." };
       try {
           const { error } = await supabase.auth.updateUser({ password });
           if (error) throw error;
           return { success: true };
-      } catch (e: any) {
-          return { success: false, error: e.message };
-      }
+      } catch (e: any) { return { success: false, error: e.message }; }
   };
 
   const adminUpdateUser = async (userId: string, data: Partial<User>) => {
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
       const supabase = getSupabase();
-      if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
-
       if (supabase) {
           const dbData: any = {};
           if (data.name) dbData.full_name = data.name;
@@ -461,13 +411,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   const addTeamMember = async (name: string, email: string, role: Role) => {
       const newId = crypto.randomUUID(); 
-      const newUser: User = { id: newId, name, email, role, avatar: name.charAt(0).toUpperCase(), active: true, organizationId: currentOrganization?.id };
-      setUsersList(prev => [...prev, newUser]);
+      setUsersList(prev => [...prev, { id: newId, name, email, role, avatar: name.charAt(0).toUpperCase(), active: true, organizationId: currentOrganization?.id }]);
       const supabase = getSupabase();
       if (supabase) {
-          try {
-             await supabase.from('profiles').insert({ id: newId, full_name: name, email: email, role: role, organization_id: currentOrganization?.id, active: true });
-          } catch (e: any) { console.warn("Supabase exception:", e.message); }
+          await supabase.from('profiles').insert({ id: newId, full_name: name, email: email, role: role, organization_id: currentOrganization?.id, active: true });
       }
       return {success: true};
   };
@@ -475,15 +422,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const createClientAccess = async (client: Client, email: string) => { 
       const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!";
       const newId = crypto.randomUUID();
-      const newUser: User = { id: newId, name: client.contactPerson || client.name, email, role: 'client', avatar: (client.name || 'C').charAt(0).toUpperCase(), active: true, organizationId: currentOrganization?.id, relatedClientId: client.id };
-      setUsersList(prev => [...prev, newUser]);
       const supabase = getSupabase();
       if (supabase) {
           try {
-             await supabase.from('profiles').insert({ id: newId, full_name: newUser.name, email: newUser.email, role: 'client', organization_id: newUser.organizationId, related_client_id: newUser.relatedClientId, active: true, metadata: { portal_password: tempPassword } });
+             await supabase.from('profiles').insert({ id: newId, full_name: client.contactPerson || client.name, email, role: 'client', organization_id: currentOrganization?.id, related_client_id: client.id, active: true, metadata: { portal_password: tempPassword } });
+             await fetchTeamMembers();
+             return {success: true, password: tempPassword};
           } catch (e: any) { return { success: false, error: e.message }; }
       }
-      return {success: true, password: tempPassword}; 
+      return {success: false, error: "Offline"};
   };
   
   const sendRecoveryInvite = async (email: string) => { 
@@ -512,8 +459,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
