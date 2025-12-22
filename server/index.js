@@ -84,13 +84,24 @@ app.get('/status', (req, res) => {
     });
 });
 
-// --- ROTA DE E-MAIL (CORREÇÃO DO ERRO 404) ---
+app.get('/whatsapp/check-number/:number', async (req, res) => {
+    if (!isReady) return res.status(400).json({ error: "WhatsApp não está conectado." });
+    
+    try {
+        const number = req.params.number;
+        const chatId = number.includes('@c.us') ? number : `${number}@c.us`;
+        const isRegistered = await client.isRegisteredUser(chatId);
+        res.json({ registered: isRegistered });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/send-email', async (req, res) => {
     const { to, subject, html, fromName } = req.body;
     const smtp = getSmtpConfig();
 
     if (!smtp) {
-        // Se não houver SMTP configurado, apenas logamos (Modo Simulação)
         console.log(`[SIMULAÇÃO EMAIL] De: ${fromName} Para: ${to} | Assunto: ${subject}`);
         return res.json({ success: true, message: "Modo simulação: configure o SMTP no servidor." });
     }

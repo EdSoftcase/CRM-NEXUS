@@ -59,6 +59,11 @@ export const checkBridgeStatus = async () => {
     }
 };
 
+export const checkWhatsAppNumber = async (phone: string) => {
+    const sanitizedNumber = sanitizePhone(phone);
+    return await fetchBridge(`/whatsapp/check-number/${sanitizedNumber}`, { method: 'GET' });
+};
+
 export const disconnectWhatsApp = async () => {
     return await fetchBridge('/whatsapp/logout', { method: 'POST' });
 };
