@@ -70,7 +70,7 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => {
-  return `-- SOFT-CRM ENTERPRISE - PATCH DEFINITIVO DE SCHEMA E RLS (v22.0)
+  return `-- SOFT-CRM ENTERPRISE - PATCH DEFINITIVO DE SCHEMA E RLS (v24.0)
 
 -- 1. Garante que a tabela 'proposals' existe com a estrutura correta
 CREATE TABLE IF NOT EXISTS public.proposals (
@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS public.proposals (
     organization_id text,
     lead_id text,
     client_id text,
+    client_email text,
     title text,
     client_name text,
     company_name text,
@@ -100,43 +101,59 @@ CREATE TABLE IF NOT EXISTS public.proposals (
     valid_until timestamp with time zone
 );
 
--- 2. Habilita Row Level Security (RLS)
+-- 2. Habilita Row Level Security (RLS) para proposals
 ALTER TABLE public.proposals ENABLE ROW LEVEL SECURITY;
-
--- 3. Remove políticas antigas para evitar conflitos
-DROP POLICY IF EXISTS "Enable all access for proposals" ON public.proposals;
-DROP POLICY IF EXISTS "Proposals: Users can manage their own org data" ON public.proposals;
-
--- 4. Cria política que permite acesso TOTAL se o organization_id bater (Multitenancy)
--- Ou acesso geral para facilitar o setup inicial em ambientes de teste
-CREATE POLICY "Proposals: Full Access for Authenticated" 
-ON public.proposals 
-FOR ALL 
-TO authenticated, anon
-USING (true)
-WITH CHECK (true);
-
--- 5. Conceder permissões de tabela
+DROP POLICY IF EXISTS "Proposals: Full Access for Authenticated" ON public.proposals;
+CREATE POLICY "Proposals: Full Access for Authenticated" ON public.proposals FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 GRANT ALL ON TABLE public.proposals TO anon, authenticated, service_role;
 
--- 6. Garantir colunas se a tabela já existia (Migração Suave)
+-- 3. Garante que a tabela 'projects' existe com a estrutura correta
+CREATE TABLE IF NOT EXISTS public.projects (
+    id text PRIMARY KEY,
+    organization_id text,
+    title text,
+    client_name text,
+    status text,
+    progress numeric DEFAULT 0,
+    start_date timestamp with time zone DEFAULT now(),
+    deadline timestamp with time zone,
+    manager text,
+    description text,
+    install_address text,
+    archived boolean DEFAULT false,
+    completed_at timestamp with time zone,
+    products jsonb DEFAULT '[]'::jsonb,
+    installation_notes text,
+    proposal_id text,
+    status_updated_at timestamp with time zone,
+    stage_history jsonb DEFAULT '[]'::jsonb,
+    tasks jsonb DEFAULT '[]'::jsonb
+);
+
+-- 4. Habilita Row Level Security (RLS) para projects
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Projects: Full Access for Authenticated" ON public.projects;
+CREATE POLICY "Projects: Full Access for Authenticated" ON public.projects FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
+GRANT ALL ON TABLE public.projects TO anon, authenticated, service_role;
+
+-- 5. Garantir colunas se a tabela já existia (Migração Suave)
 DO $$ 
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='client_name') THEN
-        ALTER TABLE proposals ADD COLUMN client_name text;
+    -- Colunas para Proposals
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='client_email') THEN
+        ALTER TABLE proposals ADD COLUMN client_email text;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='setup_cost') THEN
-        ALTER TABLE proposals ADD COLUMN setup_cost numeric DEFAULT 0;
+    
+    -- Colunas para Projects
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='projects' AND column_name='proposal_id') THEN
+        ALTER TABLE projects ADD COLUMN proposal_id text;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='monthly_cost') THEN
-        ALTER TABLE proposals ADD COLUMN monthly_cost numeric DEFAULT 0;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='includes_development') THEN
-        ALTER TABLE proposals ADD COLUMN includes_development boolean DEFAULT false;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='projects' AND column_name='status_updated_at') THEN
+        ALTER TABLE projects ADD COLUMN status_updated_at timestamp with time zone;
     END IF;
 END $$;
 
--- 7. FORÇA O RELOAD DO CACHE DE SCHEMA NO SUPABASE
+-- 6. FORÇA O RELOAD DO CACHE DE SCHEMA NO SUPABASE
 NOTIFY pgrst, 'reload schema';
 `;
 };

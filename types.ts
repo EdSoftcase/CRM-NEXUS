@@ -61,6 +61,7 @@ export interface Proposal {
   title: string;
   leadId?: string;
   clientId?: string;
+  clientEmail?: string; // Novo campo para redundância de filtro
   clientName: string;
   companyName: string;
   createdDate: string;
@@ -170,8 +171,6 @@ export interface Client {
   lastContact?: string;
   organizationId?: string;
   contractedProducts?: string[];
-  // Fix: Removed duplicate 'totalSpecialPrice' and 'totalTablePrice' declarations here (lines 173-174 in previous version)
-  // as they are defined below near related fields.
   unit?: string;
   address?: string;
   cep?: string;

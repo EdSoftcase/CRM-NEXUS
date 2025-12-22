@@ -36,6 +36,7 @@ export const Proposals: React.FC = () => {
     const [formData, setFormData] = useState({
         leadId: '',
         clientId: '',
+        clientEmail: '',
         title: '',
         clientName: '',
         companyName: '',
@@ -79,6 +80,7 @@ export const Proposals: React.FC = () => {
                 ...prev,
                 leadId: id,
                 clientId: '',
+                clientEmail: lead ? lead.email : '',
                 clientName: lead ? lead.name : '',
                 companyName: lead ? lead.company : '',
             }));
@@ -88,6 +90,7 @@ export const Proposals: React.FC = () => {
                 ...prev,
                 clientId: id,
                 leadId: '',
+                clientEmail: client ? client.email : '',
                 clientName: client ? client.contactPerson : '',
                 companyName: client ? client.name : '',
                 unit: client ? (client.unit || '') : ''
@@ -98,7 +101,7 @@ export const Proposals: React.FC = () => {
     const handleOpenCreate = () => {
         setEditingId(null);
         setFormData({
-            leadId: '', clientId: '', title: '', clientName: '', companyName: '', 
+            leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
             unit: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
             introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
             scope: [], items: [], includesDevelopment: false
@@ -112,6 +115,7 @@ export const Proposals: React.FC = () => {
         setFormData({
             leadId: p.leadId || '',
             clientId: p.clientId || '',
+            clientEmail: p.clientEmail || '',
             title: p.title,
             clientName: p.clientName || '',
             companyName: p.companyName || '',
@@ -173,6 +177,7 @@ export const Proposals: React.FC = () => {
             title: formData.title,
             leadId: targetType === 'lead' ? formData.leadId : undefined,
             clientId: targetType === 'client' ? formData.clientId : undefined,
+            clientEmail: formData.clientEmail,
             clientName: formData.clientName,
             companyName: formData.companyName,
             unit: formData.unit,
@@ -218,9 +223,9 @@ export const Proposals: React.FC = () => {
     }, [proposals, searchTerm, statusFilter]);
 
     return (
-        <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
+        <div className="p-4 md:p-8 flex flex-col bg-slate-50 dark:bg-slate-900 min-h-full">
             {view === 'list' ? (
-                <>
+                <div className="flex flex-col flex-1 h-full">
                     <div className="flex justify-between items-center mb-6 shrink-0">
                         <div>
                             <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -243,7 +248,7 @@ export const Proposals: React.FC = () => {
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 uppercase text-[10px] font-black sticky top-0 z-10">
+                                <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 uppercase text-[10px] font-black sticky top-0 z-10">
                                     <tr>
                                         <th className="p-4">Identificação</th>
                                         <th className="p-4 text-right">Setup (Capex)</th>
@@ -283,142 +288,159 @@ export const Proposals: React.FC = () => {
                             </table>
                         </div>
                     </div>
-                </>
+                </div>
             ) : (
                 <div className="flex flex-col h-full animate-fade-in">
-                    <div className="flex justify-between items-center mb-6 shrink-0">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 shrink-0 gap-4">
                         <div className="flex items-center gap-4">
                             <button onClick={() => setView('list')} className="p-2 bg-white dark:bg-slate-800 border rounded-lg text-slate-500 hover:text-slate-900 shadow-sm transition"><ArrowLeft size={20}/></button>
                             <h1 className="text-2xl font-bold">{editingId ? 'Editar Proposta' : 'Nova Proposta'}</h1>
                         </div>
-                        <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl border shadow-sm">
-                            <button onClick={() => setActiveTab('editor')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                <Layout size={16}/> Editor
-                            </button>
-                            <button onClick={() => setActiveTab('preview')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${activeTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                <Eye size={16}/> PDF
-                            </button>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => handleSave(false)} disabled={isSaving} className="bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-300 flex items-center gap-2 disabled:opacity-50">
-                                {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} Salvar
-                            </button>
-                            <button onClick={() => handleSave(true)} disabled={isSaving} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-lg flex items-center gap-2 disabled:opacity-50">
-                                {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Enviar
-                            </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl border shadow-sm">
+                                <button onClick={() => setActiveTab('editor')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                    <Layout size={16}/> Editor
+                                </button>
+                                <button onClick={() => setActiveTab('preview')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${activeTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                    <Eye size={16}/> PDF
+                                </button>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => handleSave(false)} disabled={isSaving} className="bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-300 flex items-center gap-2 disabled:opacity-50">
+                                    {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} Salvar
+                                </button>
+                                <button onClick={() => handleSave(true)} disabled={isSaving} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-lg flex items-center gap-2 disabled:opacity-50">
+                                    {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Enviar
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1">
                         {activeTab === 'editor' ? (
-                            <div className="h-full overflow-y-auto p-1 custom-scrollbar">
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto pb-20">
-                                    <div className="lg:col-span-1 space-y-6">
-                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <div className="pb-32">
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
+                                    {/* Sidebar de Configuração */}
+                                    <div className="lg:col-span-4 space-y-6">
+                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                             <SectionTitle title="Destinatário" subtitle="Lead ou Unidade da base" />
                                             <div className="space-y-4">
                                                 <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg">
                                                     <button onClick={() => setTargetType('lead')} className={`flex-1 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition ${targetType === 'lead' ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-400'}`}>Lead</button>
                                                     <button onClick={() => setTargetType('client')} className={`flex-1 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition ${targetType === 'client' ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-400'}`}>Unidade</button>
                                                 </div>
-                                                <select className="w-full border rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-sm outline-none" value={targetType === 'lead' ? formData.leadId : formData.clientId} onChange={(e) => handleSelectTarget(e.target.value)}>
+                                                <select className="w-full border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-sm outline-none focus:ring-2 focus:ring-blue-500" value={targetType === 'lead' ? formData.leadId : formData.clientId} onChange={(e) => handleSelectTarget(e.target.value)}>
                                                     <option value="">Selecione um alvo...</option>
                                                     {targetType === 'lead' 
                                                         ? leads.map(l => <option key={l.id} value={l.id}>{l.company} ({l.name})</option>)
                                                         : clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
                                                     }
                                                 </select>
-                                                <input type="text" className="w-full border rounded-lg p-2.5 bg-white dark:bg-slate-700 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Título da Proposta" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                                                <input type="text" className="w-full border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 bg-white dark:bg-slate-700 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Título da Proposta" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                                             </div>
                                         </div>
 
-                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                             <SectionTitle title="Escopo & Notas" subtitle="Itens descritivos da solução" />
                                             <div className="flex gap-2 mb-4">
-                                                <input type="text" className="flex-1 border rounded-lg p-2 text-xs bg-slate-50 dark:bg-slate-900 outline-none" placeholder="Nova nota técnica..." value={scopeInput} onChange={e => setScopeInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddScope()} />
-                                                <button onClick={handleAddScope} className="bg-slate-900 text-white p-2 rounded-lg"><Plus size={16}/></button>
+                                                <input type="text" className="flex-1 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-xs bg-slate-50 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nova nota técnica..." value={scopeInput} onChange={e => setScopeInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddScope()} />
+                                                <button onClick={handleAddScope} className="bg-slate-900 text-white p-2 rounded-lg hover:bg-slate-800 transition"><Plus size={16}/></button>
                                             </div>
-                                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                                            <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
                                                 {formData.scope.map((item, i) => (
-                                                    <div key={i} className="flex items-start gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-xs group border border-slate-100 dark:border-slate-700">
-                                                        <span className="flex-1">{item}</span>
-                                                        <button onClick={() => setFormData(prev => ({...prev, scope: prev.scope.filter((_, idx) => idx !== i)}))} className="text-slate-300 hover:text-red-500 transition"><X size={14}/></button>
+                                                    <div key={i} className="flex items-start gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-xs group border border-slate-100 dark:border-slate-700 hover:border-slate-300 transition">
+                                                        <span className="flex-1 leading-relaxed">{item}</span>
+                                                        <button onClick={() => setFormData(prev => ({...prev, scope: prev.scope.filter((_, idx) => idx !== i)}))} className="text-slate-300 hover:text-red-500 transition shrink-0"><X size={14}/></button>
                                                     </div>
                                                 ))}
+                                                {formData.scope.length === 0 && <p className="text-center py-4 text-slate-400 text-xs italic">Nenhum item de escopo adicionado.</p>}
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="lg:col-span-2 space-y-6">
-                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 shadow-sm">
-                                            <div className="flex justify-between items-center mb-6">
-                                                <SectionTitle title="Composição Financeira" subtitle="Itens do catálogo integrados" />
-                                                <div className="flex items-center gap-2">
-                                                    <select className="border rounded-lg p-2 text-xs bg-slate-50 dark:bg-slate-900 w-64 outline-none" value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}>
+                                    {/* Composição Financeira */}
+                                    <div className="lg:col-span-8 space-y-6">
+                                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                                                <SectionTitle title="Itens e Valores" subtitle="Composição financeira da proposta" />
+                                                <div className="flex items-center gap-2 w-full md:w-auto">
+                                                    <select className="flex-1 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-xs bg-slate-50 dark:bg-slate-900 md:w-64 outline-none focus:ring-2 focus:ring-blue-500" value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}>
                                                         <option value="">Adicionar item do catálogo...</option>
                                                         {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>[{p.category === 'Product' ? 'Equip' : 'Serv'}] {p.name}</option>)}
                                                     </select>
-                                                    <button onClick={handleAddProduct} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition"><Plus size={18}/></button>
+                                                    <button onClick={handleAddProduct} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition shadow-sm"><Plus size={18}/></button>
                                                 </div>
                                             </div>
 
-                                            <div className="overflow-x-auto">
+                                            <div className="overflow-x-auto mb-8 border border-slate-100 dark:border-slate-700 rounded-xl">
                                                 <table className="w-full text-sm">
-                                                    <thead className="text-[10px] font-black uppercase text-slate-400 border-b">
+                                                    <thead className="text-[10px] font-black uppercase text-slate-400 bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-700">
                                                         <tr>
-                                                            <th className="pb-3 text-left">Item / Categoria</th>
-                                                            <th className="pb-3 text-center w-20">Qtd</th>
-                                                            <th className="pb-3 text-right w-24">V. Unitário</th>
-                                                            <th className="pb-3 text-center w-20">Desc (%)</th>
-                                                            <th className="pb-3 text-right w-32">Subtotal</th>
-                                                            <th className="pb-3 text-center w-10"></th>
+                                                            <th className="p-4 text-left">Item / Categoria</th>
+                                                            <th className="p-4 text-center w-20">Qtd</th>
+                                                            <th className="p-4 text-right w-24">V. Unitário</th>
+                                                            <th className="p-4 text-center w-20">Desc (%)</th>
+                                                            <th className="p-4 text-right w-32">Subtotal</th>
+                                                            <th className="p-4 text-center w-10"></th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
                                                         {formData.items.map((item, idx) => (
-                                                            <tr key={idx}>
-                                                                <td className="py-4">
+                                                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                                                                <td className="p-4">
                                                                     <p className="font-bold text-slate-800 dark:text-white">{item.name}</p>
                                                                     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${item.category === 'Product' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>{item.category === 'Product' ? 'Equipamento' : 'SLA/Mensalidade'}</span>
                                                                 </td>
-                                                                <td className="py-4 text-center">
-                                                                    <input type="number" className="w-14 border rounded p-1 text-center bg-slate-50 dark:bg-slate-900" value={item.quantity} onChange={e => handleUpdateItem(idx, 'quantity', e.target.value)}/>
+                                                                <td className="p-4 text-center">
+                                                                    <input type="number" className="w-14 border border-slate-200 dark:border-slate-600 rounded p-1 text-center bg-white dark:bg-slate-700" value={item.quantity} onChange={e => handleUpdateItem(idx, 'quantity', e.target.value)}/>
                                                                 </td>
-                                                                <td className="py-4 text-right font-mono text-slate-500">{formatCurrency(item.price)}</td>
-                                                                <td className="py-4 text-center">
-                                                                    <input type="number" className="w-12 border rounded p-1 text-center font-bold text-blue-600 bg-white dark:bg-slate-900" value={item.discount} onChange={e => handleUpdateItem(idx, 'discount', e.target.value)}/>
+                                                                <td className="p-4 text-right font-mono text-slate-500 dark:text-slate-400">{formatCurrency(item.price)}</td>
+                                                                <td className="p-4 text-center">
+                                                                    <input type="number" className="w-12 border border-slate-200 dark:border-slate-600 rounded p-1 text-center font-bold text-blue-600 bg-white dark:bg-slate-700" value={item.discount} onChange={e => handleUpdateItem(idx, 'discount', e.target.value)}/>
                                                                 </td>
-                                                                <td className="py-4 text-right font-black text-slate-900 dark:text-white">{formatCurrency(getItemSubtotal(item))}</td>
-                                                                <td className="py-4 text-center">
+                                                                <td className="p-4 text-right font-black text-slate-900 dark:text-white">{formatCurrency(getItemSubtotal(item))}</td>
+                                                                <td className="p-4 text-center">
                                                                     <button onClick={() => setFormData(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16}/></button>
                                                                 </td>
                                                             </tr>
                                                         ))}
                                                         {formData.items.length === 0 && (
-                                                            <tr><td colSpan={6} className="py-10 text-center text-slate-400 italic">Adicione itens para compor o valor.</td></tr>
+                                                            <tr><td colSpan={6} className="py-12 text-center text-slate-400 italic">Clique em "Adicionar item" para compor os valores.</td></tr>
                                                         )}
                                                     </tbody>
                                                 </table>
                                             </div>
                                             
-                                            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="bg-emerald-50 dark:bg-emerald-900/10 p-5 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
-                                                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1"><Package size={12}/> Venda e Setup (Capex)</span>
-                                                    <div className="flex justify-between items-end mt-2">
-                                                        <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400">{formatCurrency(finalSetupInvestment)}</p>
-                                                        <div className="text-right">
-                                                            <label className="block text-[8px] text-slate-400 uppercase font-bold">Ajuste Manual R$</label>
-                                                            <input type="number" className="w-20 bg-transparent border-b border-emerald-200 dark:border-emerald-800 text-right text-sm font-bold outline-none text-emerald-600" value={formData.setupCost} onChange={e => setFormData({...formData, setupCost: parseFloat(e.target.value) || 0})} />
+                                            {/* RESUMO DE INVESTIMENTO - GRID CORRIGIDO PARA EVITAR SOBREPOSIÇÃO */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
+                                                <div className="bg-emerald-50 dark:bg-emerald-900/10 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm">
+                                                    <div className="flex items-center gap-2 mb-4">
+                                                        <div className="bg-white dark:bg-emerald-800 p-1.5 rounded-lg shadow-sm">
+                                                            <Package size={16} className="text-emerald-600 dark:text-emerald-300"/>
+                                                        </div>
+                                                        <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Setup (Capex)</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-end">
+                                                        <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{formatCurrency(finalSetupInvestment)}</p>
+                                                        <div className="text-right w-32">
+                                                            <label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Ajuste R$</label>
+                                                            <input type="number" className="w-full bg-white dark:bg-slate-700 border border-emerald-200 dark:border-emerald-900 rounded p-1.5 text-right text-sm font-bold outline-none text-emerald-600 focus:ring-1 focus:ring-emerald-500" value={formData.setupCost} onChange={e => setFormData({...formData, setupCost: parseFloat(e.target.value) || 0})} />
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/50">
-                                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1"><RefreshCw size={12}/> Mensalidade SLA (Opex)</span>
-                                                    <div className="flex justify-between items-end mt-2">
-                                                        <p className="text-2xl font-black text-blue-700 dark:text-blue-400">{formatCurrency(finalMonthlyRecurrence)}</p>
-                                                        <div className="text-right">
-                                                            <label className="block text-[8px] text-slate-400 uppercase font-bold">Ajuste Manual R$</label>
-                                                            <input type="number" className="w-20 bg-transparent border-b border-blue-200 dark:border-blue-800 text-right text-sm font-bold outline-none text-blue-600" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: parseFloat(e.target.value) || 0})} />
+
+                                                <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/50 shadow-sm">
+                                                    <div className="flex items-center gap-2 mb-4">
+                                                        <div className="bg-white dark:bg-blue-800 p-1.5 rounded-lg shadow-sm">
+                                                            <RefreshCw size={16} className="text-blue-600 dark:text-blue-300"/>
+                                                        </div>
+                                                        <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Mensal (Opex)</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-end">
+                                                        <p className="text-2xl font-black text-blue-700 dark:text-blue-300">{formatCurrency(finalMonthlyRecurrence)}</p>
+                                                        <div className="text-right w-32">
+                                                            <label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Ajuste R$</label>
+                                                            <input type="number" className="w-full bg-white dark:bg-slate-700 border border-blue-200 dark:border-blue-900 rounded p-1.5 text-right text-sm font-bold outline-none text-blue-600 focus:ring-1 focus:ring-blue-500" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: parseFloat(e.target.value) || 0})} />
                                                         </div>
                                                     </div>
                                                 </div>

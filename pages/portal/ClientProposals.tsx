@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { Proposal, Project, ProjectTask, Issue } from '../../types';
-import { FileText, Download, CheckCircle, Clock, XCircle, Search, PenTool, X, Save, AlertCircle, CalendarClock, Loader2 } from 'lucide-react';
+import { FileText, Download, CheckCircle, Clock, XCircle, Search, PenTool, X, Save, AlertCircle, CalendarClock, Loader2, Send } from 'lucide-react';
 import { Badge } from '../../components/Widgets';
 import { ProposalDocument } from '../../components/ProposalDocument';
 import { SignaturePad } from '../../components/SignaturePad';
@@ -12,10 +12,9 @@ export const ClientProposals: React.FC = () => {
   const { currentUser } = useAuth();
   const { proposals, clients, updateProposal, addProject, addIssue, addSystemNotification } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null); // For PDF download (hidden)
+  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null); 
   const [isDownloading, setIsDownloading] = useState(false);
   
-  // SIGNATURE STATE
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
   const [proposalToSign, setProposalToSign] = useState<Proposal | null>(null);
 
@@ -24,39 +23,30 @@ export const ClientProposals: React.FC = () => {
   [clients, currentUser]);
 
   const myProposals = useMemo(() => {
-    if (!currentClient) return [];
+    if (!currentClient || !currentUser) return [];
     
-    // Normalize Helper
     const normalize = (s: string) => (s || '').trim().toLowerCase();
     const clientName = normalize(currentClient.name);
     const clientContact = normalize(currentClient.contactPerson);
+    const clientEmail = normalize(currentUser.email || '');
 
     return proposals.filter(p => {
-        // 1. REGRA DE OURO: Clientes NUNCA veem rascunhos
         if (p.status === 'Draft') return false;
-
-        // 2. Match by ID (Best)
         if (p.clientId && p.clientId === currentClient.id) return true;
-
-        // 3. Match by Company Name (Fuzzy)
+        if (p.clientEmail && normalize(p.clientEmail) === clientEmail) return true;
         const propCompany = normalize(p.companyName);
         if (propCompany && (propCompany === clientName || propCompany.includes(clientName) || clientName.includes(propCompany))) return true;
-        
-        // 4. Match by Client Name (Person) - fallback
         const propClientName = normalize(p.clientName);
         if (propClientName && (propClientName === clientContact || propClientName === clientName)) return true;
-
         return false;
     }).filter(p => 
         p.title.toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
-  }, [proposals, currentClient, searchTerm]);
+  }, [proposals, currentClient, currentUser, searchTerm]);
 
   const handleDownload = async (proposal: Proposal) => {
       setSelectedProposal(proposal);
       setIsDownloading(true);
-      
-      // Wait for DOM to render the hidden component
       setTimeout(async () => {
           const element = document.getElementById('client-proposal-pdf-content');
           if (element) {
@@ -67,19 +57,16 @@ export const ClientProposals: React.FC = () => {
                 html2canvas: { scale: 2, useCORS: true },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
-
             try {
                 // @ts-ignore
                 if (window.html2pdf) {
                     // @ts-ignore
                     await window.html2pdf().set(opt).from(element).save();
                 } else {
-                    // Fallback if library missing
                     window.print();
                 }
             } catch (e) {
                 console.error("PDF Error", e);
-                alert("Erro ao gerar PDF.");
             }
           }
           setIsDownloading(false);
@@ -95,48 +82,48 @@ export const ClientProposals: React.FC = () => {
   const handleConfirmSignature = (signatureBase64: string) => {
       if (!proposalToSign || !currentUser) return;
 
-      // 1. Atualizar Proposta para "Accepted"
       const updatedProposal: Proposal = {
           ...proposalToSign,
           status: 'Accepted',
           signature: signatureBase64,
           signedAt: new Date().toISOString(),
-          signedByIp: 'Client Portal (IP Logged)' 
+          signedByIp: 'Client Portal' 
       };
 
+      // 1. Atualizar a Proposta
       updateProposal(currentUser, updatedProposal);
-      addSystemNotification('Proposta Assinada', `A proposta "${updatedProposal.title}" foi assinada digitalmente por ${currentClient?.name}.`, 'success');
+      addSystemNotification('Proposta Assinada', `A proposta "${updatedProposal.title}" foi assinada digitalmente.`, 'success');
 
-      // 2. AUTOMATION: Criar Projeto em Operações / Gestão de Projetos
-      const scopeText = proposalToSign.scope && proposalToSign.scope.length > 0 
-          ? `\n\n--- ESCOPO CONTRATADO ---\n- ${proposalToSign.scope.join('\n- ')}` 
+      const scopeItems = proposalToSign.scope || [];
+      const scopeText = scopeItems.length > 0 
+          ? `\n\n--- ESCOPO CONTRATADO ---\n- ${scopeItems.join('\n- ')}` 
           : '';
 
+      // 2. Criar o Projeto DIRETO em Kitting com o ESCOPO preenchido e 25% de progresso
       const newProject: Project = {
-          id: `PROJ-${proposalToSign.id}-${Date.now()}`, 
+          id: `PROJ-${proposalToSign.id}-${Date.now()}`,
           title: proposalToSign.title,
           clientName: proposalToSign.companyName || proposalToSign.clientName, 
-          status: 'Planning', 
-          progress: 0,
+          status: 'Kitting', 
+          progress: 25, // Inicia em Kitting = 25% conforme nova regra
           startDate: new Date().toISOString(),
-          deadline: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), 
+          deadline: new Date(new Date().setDate(new Date().getDate() + 45)).toISOString(), 
           manager: 'A Definir', 
           description: `${proposalToSign.introduction}${scopeText}`,
-          tasks: [] as ProjectTask[], 
+          tasks: scopeItems.map((s, i) => ({ id: `t-${i}-${Date.now()}`, title: s, status: 'Pending' })), 
           organizationId: proposalToSign.organizationId || currentUser.organizationId || 'org-1',
           archived: false,
-          products: proposalToSign.scope || [], 
-          installationNotes: 'Projeto criado automaticamente via assinatura no portal.',
-          proposalId: proposalToSign.id // TRACKING LINK
+          products: scopeItems,
+          proposalId: proposalToSign.id
       };
 
       addProject(currentUser, newProject);
-      addSystemNotification('Produção Iniciada', `Projeto "${newProject.title}" enviado para o Painel de Produção.`, 'info');
+      addSystemNotification('Produção Iniciada', `O projeto "${newProject.clientName}" entrou na fase de Kitting (25%).`, 'info');
 
-      // 3. AUTOMATION: Criar Issue em Desenvolvimento (se flag marcada)
+      // 3. Se houver desenvolvimento, criar issue
       if (proposalToSign.includesDevelopment) {
           const newIssue: Issue = {
-              id: `DEV-${proposalToSign.id.slice(-4)}-${Date.now().toString().slice(-4)}`,
+              id: `DEV-${proposalToSign.id.slice(-4)}`,
               title: `Desenv: ${proposalToSign.title}`,
               type: 'Feature',
               status: 'Backlog',
@@ -145,32 +132,19 @@ export const ClientProposals: React.FC = () => {
               sprint: 'Próxima Sprint',
               project: proposalToSign.companyName || proposalToSign.clientName,
               progress: 0,
-              notes: [{
-                  id: 'note-1',
-                  text: `Demanda de desenvolvimento vinculada à Proposta ${proposalToSign.id}.`,
-                  author: 'Sistema',
-                  created_at: new Date().toISOString()
-              }],
+              notes: [],
               organizationId: proposalToSign.organizationId || currentUser.organizationId || 'org-1',
-              proposalId: proposalToSign.id // TRACKING LINK
+              proposalId: proposalToSign.id
           };
-
           addIssue(currentUser, newIssue);
-          addSystemNotification('Desenvolvimento Alertado', `Nova demanda de desenvolvimento criada no backlog para "${proposalToSign.companyName}".`, 'success');
       }
       
       setIsSignModalOpen(false);
       setProposalToSign(null);
-      alert("Proposta assinada com sucesso! O projeto foi enviado para nossa equipe de produção.");
+      alert("Contrato assinado com sucesso! O setor de Kitting já visualiza seu pedido.");
   };
 
-  if (!currentClient) return (
-      <div className="p-12 text-center flex flex-col items-center justify-center h-full">
-          <AlertCircle size={48} className="text-slate-300 mb-4"/>
-          <h3 className="text-lg font-bold text-slate-700">Perfil não vinculado</h3>
-          <p className="text-slate-500">Seu usuário não está associado a uma conta de cliente válida.</p>
-      </div>
-  );
+  if (!currentClient) return null;
 
   return (
     <div className="space-y-6">
@@ -203,7 +177,6 @@ export const ClientProposals: React.FC = () => {
             <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
                 <FileText size={48} className="mx-auto text-slate-300 mb-4"/>
                 <p className="text-slate-500 font-medium">Nenhuma proposta disponível no momento.</p>
-                <p className="text-xs text-slate-400 mt-1">Quando receber uma nova proposta, ela aparecerá aqui.</p>
             </div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -211,114 +184,64 @@ export const ClientProposals: React.FC = () => {
                     <div key={prop.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition overflow-hidden group flex flex-col">
                         <div className="p-5 flex-1">
                             <div className="flex justify-between items-start mb-3">
-                                <div className={`p-2 rounded-lg ${prop.status === 'Accepted' ? 'bg-green-100 text-green-600' : prop.status === 'Rejected' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                <div className={`p-2 rounded-lg ${prop.status === 'Accepted' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
                                     <FileText size={24}/>
                                 </div>
-                                <Badge color={prop.status === 'Accepted' ? 'green' : prop.status === 'Rejected' ? 'red' : 'blue'}>
-                                    {prop.status === 'Accepted' ? 'Aprovada' : prop.status === 'Rejected' ? 'Recusada' : 'Pendente'}
+                                <Badge color={prop.status === 'Accepted' ? 'green' : 'blue'}>
+                                    {prop.status === 'Accepted' ? 'Aprovada' : 'Pendente'}
                                 </Badge>
                             </div>
-                            
-                            <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1" title={prop.title}>{prop.title}</h3>
-                            <div className="flex flex-col gap-1 text-xs text-slate-500 mb-4">
-                                <div className="flex items-center gap-1">
-                                    <Clock size={12}/> Validade: {new Date(prop.validUntil).toLocaleDateString()}
-                                </div>
-                                {prop.timeline && (
-                                    <div className="flex items-center gap-1 text-blue-600 font-medium bg-blue-50 px-1.5 py-0.5 rounded w-fit mt-1">
-                                        <CalendarClock size={12}/> Instalação: {prop.timeline}
-                                    </div>
-                                )}
+                            <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1">{prop.title}</h3>
+                            <div className="text-xs text-slate-500 mb-4">
+                                Validade: {new Date(prop.validUntil).toLocaleDateString()}
                             </div>
-                            
                             <div className="space-y-2 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                {prop.setupCost !== undefined && prop.setupCost > 0 && (
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Setup</span>
-                                        <span className="font-medium text-slate-900">R$ {(prop.setupCost || 0).toLocaleString()}</span>
-                                    </div>
-                                )}
-                                {prop.monthlyCost !== undefined && prop.monthlyCost > 0 && (
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Mensalidade</span>
-                                        <span className="font-medium text-slate-900">R$ {(prop.monthlyCost || 0).toLocaleString()}</span>
-                                    </div>
-                                )}
-                                {(!prop.setupCost && !prop.monthlyCost) && (
-                                     <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Total</span>
-                                        <span className="font-medium text-slate-900">R$ {(prop.price || 0).toLocaleString()}</span>
-                                    </div>
-                                )}
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Setup</span>
+                                    <span className="font-bold">R$ {(prop.price || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Mensal</span>
+                                    <span className="font-bold">R$ {(prop.monthlyCost || 0).toLocaleString()}</span>
+                                </div>
                             </div>
                         </div>
-
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
                              {prop.status === 'Sent' && (
-                                <button 
-                                    onClick={() => handleOpenSign(prop)}
-                                    className="w-full py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-sm"
-                                >
-                                    <PenTool size={16}/> Revisar e Assinar
+                                <button onClick={() => handleOpenSign(prop)} className="w-full py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg hover:bg-indigo-700 transition">
+                                    Revisar e Assinar
                                 </button>
                             )}
-
-                            <button 
-                                onClick={() => handleDownload(prop)}
-                                disabled={isDownloading && selectedProposal?.id === prop.id}
-                                className="w-full py-2 bg-white text-slate-600 font-bold text-sm rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center justify-center gap-2"
-                            >
-                                {isDownloading && selectedProposal?.id === prop.id ? <Loader2 size={16} className="animate-spin"/> : <Download size={16}/>} 
-                                Baixar PDF
+                            <button onClick={() => handleDownload(prop)} disabled={isDownloading} className="w-full py-2 bg-white text-slate-600 font-bold text-sm rounded-lg border border-slate-200 hover:bg-slate-100 transition">
+                                {isDownloading ? 'Gerando...' : 'Baixar PDF'}
                             </button>
                         </div>
-
-                        {prop.status === 'Accepted' && (
-                            <div className="px-5 py-3 bg-green-50 border-t border-green-100 text-xs text-green-700 flex items-center gap-2">
-                                <CheckCircle size={14}/> Assinada em {prop.signedAt ? new Date(prop.signedAt).toLocaleDateString() : '-'}
-                            </div>
-                        )}
                     </div>
                 ))}
             </div>
         )}
 
-        {/* SIGNATURE MODAL */}
         {isSignModalOpen && proposalToSign && (
             <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                 <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
                     <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                        <div>
-                            <h3 className="font-bold text-lg text-slate-900">Assinatura Digital de Contrato</h3>
-                            <p className="text-sm text-slate-500">Documento: {proposalToSign.title}</p>
-                        </div>
+                        <h3 className="font-bold text-lg text-slate-900">Assinatura Digital de Contrato</h3>
                         <button onClick={() => setIsSignModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={24}/></button>
                     </div>
-                    
                     <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                         <div className="flex-1 bg-slate-200 p-4 md:p-8 overflow-y-auto shadow-inner custom-scrollbar">
                             <div className="transform origin-top scale-[0.6] md:scale-[0.8] mb-10 bg-white shadow-lg mx-auto w-[210mm] min-h-[297mm] pointer-events-none">
                                 <ProposalDocument data={proposalToSign} />
                             </div>
                         </div>
-
                         <div className="w-full md:w-96 bg-white border-l p-6 flex flex-col gap-6 shrink-0 z-10 shadow-xl">
                              <div>
                                  <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><PenTool size={18}/> Assinatura</h4>
-                                 <p className="text-xs text-slate-500 mb-4">
-                                     Por favor, assine no campo abaixo para aceitar a proposta.
-                                 </p>
+                                 <p className="text-xs text-slate-500 mb-4">Assine no campo abaixo para aceitar a proposta.</p>
                                  <SignaturePad onSave={handleConfirmSignature} />
                              </div>
-                             
-                             <div className="mt-auto pt-6 border-t space-y-4">
-                                 <div className="flex items-start gap-2 p-3 bg-blue-50 rounded text-xs text-blue-800 border border-blue-100">
-                                     <Clock size={16} className="shrink-0 mt-0.5"/>
-                                     <p>Sua assinatura será registrada com carimbo de tempo, IP e hash de segurança para validade jurídica.</p>
-                                 </div>
-                                 <div className="flex gap-3">
-                                     <button onClick={() => setIsSignModalOpen(false)} className="flex-1 py-3 border border-slate-300 rounded-lg text-slate-600 font-bold hover:bg-slate-50 transition">Cancelar</button>
-                                 </div>
+                             <div className="mt-auto pt-6 border-t">
+                                 <button onClick={() => setIsSignModalOpen(false)} className="w-full py-3 border border-slate-300 rounded-lg text-slate-600 font-bold hover:bg-slate-50 transition">Cancelar</button>
                              </div>
                         </div>
                     </div>

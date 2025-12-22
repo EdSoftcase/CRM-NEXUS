@@ -218,13 +218,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const payload = convertKeys(data, toSnakeCase);
             const { error } = await supabase.from(table).upsert(payload);
             if (error) {
-                console.error(`DB Upsert Error [${table}]:`, error.message);
+                console.error(`DB Upsert Error [${table}]:`, error.message || error);
                 if (error.message?.includes('violates row-level security')) {
                    addSystemNotification('Erro de Permissão', 'Seu usuário não tem permissão para gravar na tabela ' + table + '. Verifique o Patch SQL.', 'alert');
+                } else if (error.message?.includes('proposal_id')) {
+                    addSystemNotification('Banco Desatualizado', 'A coluna proposal_id está ausente na tabela projects. Vá em Configurações > Patch SQL e execute o script atualizado.', 'alert');
                 }
                 throw error;
             }
-        } catch (e: any) { console.error(`DB Upsert Exception [${table}]:`, e); }
+        } catch (e: any) { 
+            console.error(`DB Upsert Exception [${table}]:`, e?.message || e); 
+        }
     };
 
     const dbDelete = async (table: string, id: string) => {
@@ -299,7 +303,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => (prev || []).map(w => w.id === webhook.id ? webhook : w)); dbUpsert('webhooks', webhook); };
     const deleteWebhook = (id: string) => { setWebhooks(prev => (prev || []).filter(w => w.id !== id)); dbDelete('webhooks', id); };
     
-    // CORREÇÃO: Mapeamento Explícito de Propostas para evitar erros de RLS por campos nulos ou errados
     const addProposal = (user: User | null, proposal: Proposal) => { 
         setProposals(prev => [...(prev || []), proposal]); 
         dbUpsert('proposals', proposal); 
