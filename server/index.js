@@ -18,6 +18,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const IUGU_CONFIG_FILE = path.join(__dirname, 'iugu-config.json');
+const SMTP_CONFIG_FILE = path.join(__dirname, 'smtp-config.json');
 
 // --- WHATSAPP SETUP ---
 let qrCodeBase64 = "";
@@ -63,6 +64,13 @@ function getIuguConfig() {
     return null;
 }
 
+function getSmtpConfig() {
+    if (fs.existsSync(SMTP_CONFIG_FILE)) {
+        try { return JSON.parse(fs.readFileSync(SMTP_CONFIG_FILE)); } catch (e) { return null; }
+    }
+    return null;
+}
+
 // --- ROTAS ---
 
 app.get('/status', (req, res) => {
@@ -74,6 +82,39 @@ app.get('/status', (req, res) => {
         qr_code: qrCodeBase64,
         iugu: iugu ? 'CONFIGURED' : 'PENDING'
     });
+});
+
+// --- ROTA DE E-MAIL (CORREÇÃO DO ERRO 404) ---
+app.post('/send-email', async (req, res) => {
+    const { to, subject, html, fromName } = req.body;
+    const smtp = getSmtpConfig();
+
+    if (!smtp) {
+        // Se não houver SMTP configurado, apenas logamos (Modo Simulação)
+        console.log(`[SIMULAÇÃO EMAIL] De: ${fromName} Para: ${to} | Assunto: ${subject}`);
+        return res.json({ success: true, message: "Modo simulação: configure o SMTP no servidor." });
+    }
+
+    try {
+        const transporter = nodemailer.createTransport({
+            host: smtp.host,
+            port: smtp.port,
+            secure: smtp.port === 465,
+            auth: { user: smtp.user, pass: smtp.pass }
+        });
+
+        await transporter.sendMail({
+            from: `"${fromName}" <${smtp.user}>`,
+            to,
+            subject,
+            html
+        });
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Erro SMTP:", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.post('/whatsapp/logout', async (req, res) => {
@@ -100,11 +141,25 @@ app.post('/send-whatsapp', async (req, res) => {
     }
 });
 
-// Mantidas rotas de Iugu e SMTP conforme original...
+// --- ROTAS IUGU ---
 app.post('/config/iugu', (req, res) => {
     const { token, accountId } = req.body;
     fs.writeFileSync(IUGU_CONFIG_FILE, JSON.stringify({ token, accountId }));
     res.json({ success: true });
+});
+
+app.post('/iugu/create-invoice', async (req, res) => {
+    const config = getIuguConfig();
+    if (!config || !config.token) return res.status(400).json({ error: "Iugu não configurada." });
+
+    try {
+        const response = await axios.post('https://api.iugu.com/v1/invoices', req.body, {
+            params: { api_token: config.token }
+        });
+        res.json(response.data);
+    } catch (e) {
+        res.status(e.response?.status || 500).json(e.response?.data || { error: e.message });
+    }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
