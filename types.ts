@@ -1,3 +1,4 @@
+
 export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client';
 
 export enum LeadStatus {
@@ -43,18 +44,47 @@ export interface Organization {
   licenseExpiresAt?: string;
   subscription_status?: 'active' | 'blocked' | 'trial' | 'expired';
   status?: 'pending' | 'active' | 'suspended'; 
-  // FIX: Added created_at property to match Supabase database schema for raw data usage in Settings.tsx
   created_at?: string;
 }
 
-export interface PortalSettings {
-  organizationId: string;
-  portalName: string;
-  logoUrl?: string;
-  primaryColor: string;
-  welcomeMessage?: string;
-  allowInvoiceDownload: boolean;
-  allowTicketCreation: boolean;
+export interface ProposalItem {
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+    discount?: number;
+    category: 'Service' | 'Product' | 'Subscription';
+}
+
+export interface Proposal {
+  id: string;
+  title: string;
+  leadId?: string;
+  clientId?: string;
+  clientName: string;
+  companyName: string;
+  createdDate: string;
+  validUntil: string;
+  status: ProposalStatus;
+  introduction: string;
+  scope: string[];
+  items?: ProposalItem[]; 
+  customClause?: string;  
+  price: number; 
+  setupCost?: number; 
+  monthlyCost?: number; 
+  timeline: string;
+  terms: string;
+  organizationId?: string;
+  signature?: string;
+  signedAt?: string;
+  signedByIp?: string;
+  unit?: string;
+  includesDevelopment?: boolean;
+  
+  consultantName?: string;
+  consultantEmail?: string;
+  consultantPhone?: string;
 }
 
 export interface User {
@@ -73,18 +103,11 @@ export interface User {
   active?: boolean; 
 }
 
-export interface Note {
-  id: string;
-  text: string;
-  author: string;
-  created_at: string;
-}
-
 export interface FinancialCategory {
   id: string;
   name: string;
   code?: string;
-  type: 'Revenue' | 'Expense'; // Novo campo para DRE (Receita ou Despesa)
+  type: 'Revenue' | 'Expense';
   description?: string;
   budget?: number;
   organizationId?: string;
@@ -99,30 +122,6 @@ export interface Product {
     category: 'Service' | 'Product' | 'Subscription';
     active: boolean;
     costCenterId?: string;
-    organizationId?: string;
-}
-
-export interface ClientDocument {
-    id: string;
-    clientId: string;
-    title: string;
-    type: 'Contract' | 'Proposal' | 'NDA' | 'Image' | 'Other';
-    url: string;
-    uploadedBy: string;
-    uploadDate: string;
-    size: string;
-}
-
-export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'boolean';
-
-export interface CustomFieldDefinition {
-    id: string;
-    label: string;
-    key: string;
-    type: CustomFieldType;
-    module: 'leads' | 'clients';
-    options?: string[];
-    required?: boolean;
     organizationId?: string;
 }
 
@@ -154,58 +153,6 @@ export interface Lead {
   metadata?: Record<string, any>;
 }
 
-export interface PotentialLead {
-    id: string;
-    companyName: string;
-    industry: string;
-    location: string;
-    matchScore: number;
-    reason: string;
-    suggestedApproach: string;
-    estimatedSize: string;
-    email?: string;
-    phone?: string;
-}
-
-export interface ProspectingHistoryItem {
-    id: string;
-    timestamp: string;
-    industry: string;
-    location: string;
-    keywords?: string;
-    results: PotentialLead[];
-    organizationId?: string;
-}
-
-export interface Competitor {
-    id: string;
-    name: string;
-    website: string;
-    sector: string;
-    lastAnalysis?: string;
-    swot?: {
-        strengths: string[];
-        weaknesses: string[];
-        opportunities: string[];
-        threats: string[];
-    };
-    battlecard?: {
-        killPoints: string[];
-        defensePoints: string[];
-        pricing?: string;
-    };
-    organizationId?: string;
-}
-
-export interface MarketTrend {
-    id: string;
-    title: string;
-    description: string;
-    impact: 'High' | 'Medium' | 'Low';
-    sentiment: 'Positive' | 'Negative' | 'Neutral';
-    date: string;
-}
-
 export interface Client {
   id: string;
   name: string; 
@@ -223,18 +170,15 @@ export interface Client {
   lastContact?: string;
   organizationId?: string;
   contractedProducts?: string[];
-  cep?: string;
+  // Fix: Removed duplicate 'totalSpecialPrice' and 'totalTablePrice' declarations here (lines 173-174 in previous version)
+  // as they are defined below near related fields.
+  unit?: string;
   address?: string;
-  latitude?: number;
-  longitude?: number;
-  website?: string;
-  productInterest?: string;
+  cep?: string;
   contractId?: string;
   contractStartDate?: string;
   contractEndDate?: string;
-  unit?: string;
   parkingSpots?: number;
-  paymentDay?: number; // Dia de vencimento preferencial
   exemptSpots?: number;
   vehicleCount?: number;
   credentialCount?: number;
@@ -244,6 +188,8 @@ export interface Client {
   specialDay?: string;
   specialPrice?: number;
   totalSpecialPrice?: number;
+  latitude?: number;
+  longitude?: number;
   metadata?: Record<string, any>;
 }
 
@@ -279,53 +225,21 @@ export interface Issue {
   sprint: string;
   project: string;
   progress: number;
-  notes: Note[];
+  notes: any[];
   organizationId?: string;
   proposalId?: string;
 }
 
 export interface Invoice {
   id: string;
-  type: 'Income' | 'Expense'; // Identifica se é Receita ou Despesa
-  customer: string; // Em Despesas, representa o Fornecedor
+  type: 'Income' | 'Expense';
+  customer: string;
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
   description: string;
-  costCenterId?: string;
   organizationId?: string;
-  // Added metadata property to Invoice interface to fix TypeScript error in Finance.tsx
   metadata?: Record<string, any>;
-}
-
-export interface Proposal {
-  id: string;
-  title: string;
-  leadId?: string;
-  clientId?: string; // Correct CamelCase for App
-  clientName: string;
-  companyName: string;
-  createdDate: string;
-  validUntil: string;
-  status: ProposalStatus;
-  introduction: string;
-  scope: string[];
-  price: number; 
-  setupCost?: number; 
-  monthlyCost?: number; 
-  timeline: string;
-  terms: string;
-  organizationId?: string;
-  signature?: string;
-  signedAt?: string;
-  signedByIp?: string;
-  unit?: string; // Nova propriedade para Unidade/Filial
-  includesDevelopment?: boolean; // Flag para desenvolvimento
-  
-  // Consultant / User Data snapshot
-  consultantName?: string;
-  consultantEmail?: string;
-  consultantPhone?: string;
 }
 
 export interface Activity {
@@ -409,14 +323,6 @@ export interface WorkflowAction {
     };
 }
 
-export interface WorkflowLog {
-    id: string;
-    workflowId: string;
-    timestamp: string;
-    status: 'success' | 'failed';
-    details: string;
-}
-
 export interface Workflow {
     id: string;
     name: string;
@@ -425,7 +331,6 @@ export interface Workflow {
     actions: WorkflowAction[];
     runs: number;
     lastRun?: string;
-    logs?: WorkflowLog[];
     organizationId?: string;
 }
 
@@ -436,8 +341,15 @@ export interface WebhookConfig {
     triggerEvent: TriggerType;
     method: 'POST' | 'GET';
     active: boolean;
-    headers?: Record<string, string>;
     organizationId?: string;
+    headers?: Record<string, string>;
+}
+
+export interface InboxMessage {
+    id: string;
+    text: string;
+    sender: 'user' | 'agent' | 'system';
+    timestamp: string;
 }
 
 export interface InboxConversation {
@@ -449,39 +361,25 @@ export interface InboxConversation {
     lastMessageAt: string;
     unreadCount: number;
     status: 'Open' | 'Closed' | 'Archived';
-    messages: InboxMessage[];
-    relatedEntityId?: string;
-}
-
-export interface InboxMessage {
-    id: string;
-    text: string;
-    sender: 'user' | 'agent' | 'system';
-    timestamp: string;
-    attachmentUrl?: string;
+    messages: InboxMessage[]; 
 }
 
 export interface ProjectTask {
     id: string;
     title: string;
     status: 'Pending' | 'In Progress' | 'Done';
-    dueDate?: string;
-    assignee?: string;
+}
+
+export interface ProjectStageHistory {
+    stage: string;
+    durationDays?: number;
 }
 
 export interface ProjectNote {
     id: string;
     text: string;
     author: string;
-    timestamp: string;
-    stage: string;
-}
-
-export interface ProjectStageEntry {
-    stage: string;
-    enteredAt: string;
-    exitedAt?: string;
-    durationDays?: number;
+    created_at: string;
 }
 
 export interface Project {
@@ -490,7 +388,7 @@ export interface Project {
     clientName: string;
     status: 'Planning' | 'Kitting' | 'Assembly' | 'Execution' | 'Review' | 'Completed';
     statusUpdatedAt?: string;
-    stageHistory?: ProjectStageEntry[]; // NOVO: Log de todas as fases
+    stageHistory?: ProjectStageHistory[];
     progress: number;
     startDate: string;
     deadline: string;
@@ -499,8 +397,6 @@ export interface Project {
     organizationId?: string;
     description?: string;
     installAddress?: string;
-    photos?: string[];
-    notes?: ProjectNote[];
     archived?: boolean; 
     completedAt?: string; 
     products?: string[]; 
@@ -508,12 +404,83 @@ export interface Project {
     proposalId?: string;
 }
 
-export interface KPIMetric {
-  label: string;
-  value: string;
-  trend: number;
-  trendLabel: string;
-  color: 'blue' | 'green' | 'red' | 'yellow';
+export interface PortalSettings {
+  organizationId: string;
+  portalName: string;
+  primaryColor: string;
+  allowInvoiceDownload: boolean;
+  allowTicketCreation: boolean;
+}
+
+export interface CustomFieldDefinition {
+    id: string;
+    label: string;
+    key: string;
+    type: 'text' | 'number' | 'date' | 'select' | 'boolean';
+    module: 'leads' | 'clients';
+    options?: string[];
+    required?: boolean;
+    organizationId?: string;
+}
+
+export interface ClientDocument {
+    id: string;
+    clientId: string;
+    title: string;
+    type: 'Contract' | 'Invoice' | 'Report' | 'Other';
+    url: string;
+    uploadedBy: string;
+    uploadDate: string;
+    size: string;
+}
+
+export interface Competitor {
+    id: string;
+    name: string;
+    website: string;
+    sector: string;
+    lastAnalysis?: string;
+    swot?: {
+        strengths: string[];
+        weaknesses: string[];
+        opportunities: string[];
+        threats: string[];
+    };
+    battlecard?: {
+        pricing: string;
+        killPoints: string[];
+        defensePoints: string[];
+    };
+}
+
+export interface MarketTrend {
+    id: string;
+    title: string;
+    description: string;
+    sentiment: 'Positive' | 'Negative' | 'Neutral';
+    impact: string;
+}
+
+export interface PotentialLead {
+    id: string;
+    companyName: string;
+    industry: string;
+    location: string;
+    matchScore: number;
+    reason: string;
+    suggestedApproach: string;
+    email?: string;
+    phone?: string;
+}
+
+export interface ProspectingHistoryItem {
+    id: string;
+    timestamp: string;
+    industry: string;
+    location: string;
+    keywords: string;
+    results: PotentialLead[];
+    organizationId?: string;
 }
 
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';

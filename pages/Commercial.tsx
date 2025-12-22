@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
@@ -6,7 +7,8 @@ import { Lead, LeadStatus } from '../types';
 import { 
     Users, Plus, Search, Filter, MessageCircle, Mail, 
     MoreVertical, Archive, Trash2, Edit2, Phone, X, 
-    CheckCircle, AlertCircle, Loader2, Send, Server, User 
+    CheckCircle, AlertCircle, Loader2, Send, Server, User,
+    ArrowUpDown, SortAsc, SortDesc, CalendarDays
 } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 import { SendEmailModal } from '../components/SendEmailModal';
@@ -19,6 +21,8 @@ const whatsappTemplates = [
     { label: 'Agendamento', text: 'Oi [Nome], podemos agendar uma reunião para apresentar nossa solução?' }
 ];
 
+type SortOption = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc' | 'value-desc';
+
 export const Commercial: React.FC = () => {
     const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification } = useData();
     const { currentUser } = useAuth();
@@ -27,6 +31,7 @@ export const Commercial: React.FC = () => {
     const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<LeadStatus | 'All'>('All');
+    const [sortOrder, setSortOrder] = useState<SortOption>('date-desc');
 
     // Modals State
     const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -53,15 +58,33 @@ export const Commercial: React.FC = () => {
     // Drag & Drop
     const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
-    // ... Helper functions ...
+    // Filter and SORT logic
     const filteredLeads = useMemo(() => {
-        return leads.filter(l => {
+        const result = leads.filter(l => {
             const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                   l.company.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesStatus = filterStatus === 'All' || l.status === filterStatus;
             return matchesSearch && matchesStatus;
         });
-    }, [leads, searchTerm, filterStatus]);
+
+        // Apply Sorting
+        return result.sort((a, b) => {
+            switch (sortOrder) {
+                case 'name-asc':
+                    return a.company.localeCompare(b.company);
+                case 'name-desc':
+                    return b.company.localeCompare(a.company);
+                case 'date-desc':
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'date-asc':
+                    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                case 'value-desc':
+                    return b.value - a.value;
+                default:
+                    return 0;
+            }
+        });
+    }, [leads, searchTerm, filterStatus, sortOrder]);
 
     const columns = [
         { id: LeadStatus.NEW, label: 'Novo', color: 'border-blue-500' },
@@ -107,7 +130,6 @@ export const Commercial: React.FC = () => {
                 window.open(url, '_blank');
             }
             setShowWhatsAppModal(false);
-            // Log activity
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
                 title: 'WhatsApp Enviado',
@@ -204,7 +226,6 @@ export const Commercial: React.FC = () => {
         }
 
         if (editingLead) {
-            // Update Existing
             const updatedLead: Lead = {
                 ...editingLead,
                 name: leadForm.name,
@@ -212,12 +233,10 @@ export const Commercial: React.FC = () => {
                 email: leadForm.email || '',
                 phone: leadForm.phone || '',
                 value: leadForm.value || 0,
-                // Preserve other fields unless we want to allow editing them too
             };
             updateLead(currentUser, updatedLead);
             addSystemNotification('Lead Atualizado', `Dados de ${updatedLead.name} foram salvos.`, 'success');
         } else {
-            // Create New
             const lead: Lead = {
                 id: `L-${Date.now()}`,
                 name: leadForm.name,
@@ -244,16 +263,46 @@ export const Commercial: React.FC = () => {
     return (
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Users className="text-blue-600"/> Gestão Comercial
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400">Pipeline de vendas e CRM.</p>
                 </div>
-                <button onClick={handleOpenCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2">
-                    <Plus size={18}/> Novo Lead
-                </button>
+                
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    {/* Ordenação */}
+                    <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <ArrowUpDown size={14} className="text-slate-400" />
+                        <select 
+                            className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-transparent outline-none border-none cursor-pointer"
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value as SortOption)}
+                        >
+                            <option value="date-desc">Mais Recentes</option>
+                            <option value="date-asc">Mais Antigos</option>
+                            <option value="name-asc">Nome (A-Z)</option>
+                            <option value="name-desc">Nome (Z-A)</option>
+                            <option value="value-desc">Maior Valor</option>
+                        </select>
+                    </div>
+
+                    <div className="relative flex-1 md:flex-none md:w-64">
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
+                        <input 
+                            type="text" 
+                            placeholder="Buscar empresa ou contato..." 
+                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <button onClick={handleOpenCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-500/20 transition whitespace-nowrap">
+                        <Plus size={18}/> Novo Lead
+                    </button>
+                </div>
             </div>
 
             {/* Kanban Board */}
@@ -262,43 +311,48 @@ export const Commercial: React.FC = () => {
                     {columns.map(col => (
                         <div 
                             key={col.id} 
-                            className={`w-80 flex flex-col bg-slate-100 dark:bg-slate-800 rounded-xl border-t-4 ${col.color} transition-colors`}
+                            className={`w-80 flex flex-col bg-slate-100/50 dark:bg-slate-800/50 rounded-xl border-t-4 ${col.color} transition-colors`}
                             onDragOver={handleDragOver}
                             onDrop={(e) => handleDrop(e, col.id)}
                         >
-                            <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-700 dark:text-slate-200">
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-700 dark:text-slate-200">
                                 {col.label}
-                                <span className="bg-white dark:bg-slate-700 px-2 py-0.5 rounded text-xs">{filteredLeads.filter(l => l.status === col.id).length}</span>
+                                <span className="bg-white dark:bg-slate-700 px-2 py-0.5 rounded-full text-[10px] font-black border border-slate-100 dark:border-slate-600">{filteredLeads.filter(l => l.status === col.id).length}</span>
                             </div>
-                            <div className="p-2 flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                            <div className="p-3 flex-1 overflow-y-auto custom-scrollbar space-y-3">
                                 {filteredLeads.filter(l => l.status === col.id).map(lead => (
                                     <div 
                                         key={lead.id}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, lead.id)}
-                                        className="bg-white dark:bg-slate-700 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md cursor-grab active:cursor-grabbing group relative"
+                                        className="bg-white dark:bg-slate-700 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-500 cursor-grab active:cursor-grabbing group relative transition-all"
                                     >
                                         <div className="flex justify-between items-start mb-2">
-                                            <h4 className="font-bold text-slate-800 dark:text-white truncate pr-6">{lead.company}</h4>
+                                            <h4 className="font-bold text-slate-800 dark:text-white truncate pr-6 leading-tight">{lead.company}</h4>
                                             
-                                            {/* Action Buttons Overlay */}
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition absolute top-2 right-2 bg-white dark:bg-slate-700 pl-2">
-                                                <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(lead); }} className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded" title="Editar Dados">
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition absolute top-2 right-2 bg-white dark:bg-slate-700 pl-2 rounded-bl-lg">
+                                                <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(lead); }} className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition" title="Editar Dados">
                                                     <Edit2 size={14}/>
                                                 </button>
-                                                <button onClick={() => openWhatsApp(lead)} className="p-1 text-slate-400 hover:text-green-500" title="WhatsApp"><MessageCircle size={14}/></button>
-                                                <button onClick={() => openEmail(lead)} className="p-1 text-slate-400 hover:text-blue-500" title="Email"><Mail size={14}/></button>
-                                                <button onClick={() => openCancelModal(lead)} className="p-1 text-slate-400 hover:text-red-500" title="Arquivar/Cancelar"><Archive size={14}/></button>
+                                                <button onClick={() => openWhatsApp(lead)} className="p-1.5 text-slate-400 hover:text-green-500 rounded-lg transition" title="WhatsApp"><MessageCircle size={14}/></button>
+                                                <button onClick={() => openEmail(lead)} className="p-1.5 text-slate-400 hover:text-blue-500 rounded-lg transition" title="Email"><Mail size={14}/></button>
+                                                <button onClick={() => openCancelModal(lead)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition" title="Arquivar/Cancelar"><Archive size={14}/></button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1"><User size={10}/> {lead.name}</p>
-                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">R$ {lead.value.toLocaleString()}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5"><User size={12} className="text-slate-300"/> {lead.name}</p>
                                         
-                                        {lead.lastContact && (
-                                            <p className="text-[10px] text-slate-400 mt-2 text-right">
-                                                {new Date(lead.lastContact).toLocaleDateString()}
-                                            </p>
-                                        )}
+                                        <div className="flex justify-between items-end">
+                                            <div>
+                                                <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-0.5">Valor</p>
+                                                <p className="text-sm font-black text-slate-800 dark:text-slate-200">R$ {lead.value.toLocaleString()}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[9px] text-slate-400 uppercase font-bold flex items-center justify-end gap-1"><CalendarDays size={10}/> Entrada</p>
+                                                <p className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                                                    {new Date(lead.createdAt).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -310,35 +364,37 @@ export const Commercial: React.FC = () => {
             {/* NEW/EDIT LEAD MODAL */}
             {isNewLeadOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-slate-900 dark:text-white">{editingLead ? 'Editar Lead' : 'Novo Lead'}</h3>
-                            <button onClick={() => setIsNewLeadOpen(false)}><X className="text-slate-400"/></button>
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <h3 className="font-bold text-xl text-slate-900 dark:text-white">{editingLead ? 'Editar Lead' : 'Novo Lead'}</h3>
+                            <button onClick={() => setIsNewLeadOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"><X size={20} className="text-slate-400"/></button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-5">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Nome do Contato</label>
-                                <input type="text" placeholder="Nome Completo" className="w-full border rounded p-2 bg-white dark:bg-slate-700 dark:text-white" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} />
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Nome do Contato</label>
+                                <input type="text" placeholder="Nome Completo" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Empresa</label>
-                                <input type="text" placeholder="Nome da Empresa" className="w-full border rounded p-2 bg-white dark:bg-slate-700 dark:text-white" value={leadForm.company || ''} onChange={e => setLeadForm({...leadForm, company: e.target.value})} />
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Empresa / Razão Social</label>
+                                <input type="text" placeholder="Nome da Empresa" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition" value={leadForm.company || ''} onChange={e => setLeadForm({...leadForm, company: e.target.value})} />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Email</label>
+                                    <input type="email" placeholder="email@empresa.com" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition text-sm" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Telefone</label>
+                                    <input type="text" placeholder="(00) 00000-0000" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition text-sm" value={leadForm.phone || ''} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} />
+                                </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label>
-                                <input type="email" placeholder="email@empresa.com" className="w-full border rounded p-2 bg-white dark:bg-slate-700 dark:text-white" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Telefone / WhatsApp</label>
-                                <input type="text" placeholder="(00) 00000-0000" className="w-full border rounded p-2 bg-white dark:bg-slate-700 dark:text-white" value={leadForm.phone || ''} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Estimado (R$)</label>
-                                <input type="number" placeholder="0.00" className="w-full border rounded p-2 bg-white dark:bg-slate-700 dark:text-white" value={leadForm.value || ''} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value)})} />
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Valor Estimado (R$)</label>
+                                <input type="number" placeholder="0.00" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition font-mono" value={leadForm.value || ''} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value)})} />
                             </div>
                             
-                            <button onClick={handleSaveLead} className="w-full bg-blue-600 text-white font-bold py-3 rounded hover:bg-blue-700 transition shadow-sm">
-                                {editingLead ? 'Salvar Alterações' : 'Criar Lead'}
+                            <button onClick={handleSaveLead} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 text-sm uppercase tracking-widest">
+                                {editingLead ? 'Salvar Alterações' : 'Criar Lead Agora'}
                             </button>
                         </div>
                     </div>
@@ -348,7 +404,7 @@ export const Commercial: React.FC = () => {
             {/* Cancel Modal */}
             {isCancelModalOpen && selectedLead && createPortal(
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-4 border-amber-500">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-8 border-amber-500">
                         <div className="p-6">
                             <div className="flex items-start gap-4 mb-4">
                                 <div className="bg-amber-100 dark:bg-amber-900/50 p-3 rounded-full text-amber-600 dark:text-amber-400 shrink-0"><Archive size={28} /></div>
@@ -358,10 +414,10 @@ export const Commercial: React.FC = () => {
                                 </div>
                             </div>
                             
-                            <div className="mb-4">
+                            <div className="mb-6">
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Justificativa <span className="text-red-500">*</span></label>
                                 <textarea 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-xl p-3 text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                                     placeholder="Por que este lead está sendo cancelado agora? (ex: Sem budget no momento, projeto adiado)"
                                     value={cancelReason}
                                     onChange={(e) => setCancelReason(e.target.value)}
@@ -369,8 +425,8 @@ export const Commercial: React.FC = () => {
                             </div>
 
                             <div className="flex gap-3 justify-end">
-                                <button onClick={() => setIsCancelModalOpen(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                                <button onClick={handleConfirmCancel} className="px-6 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition shadow-sm">Confirmar Cancelamento</button>
+                                <button onClick={() => setIsCancelModalOpen(false)} className="px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
+                                <button onClick={handleConfirmCancel} className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 transition shadow-md">Confirmar Cancelamento</button>
                             </div>
                         </div>
                     </div>
@@ -381,23 +437,45 @@ export const Commercial: React.FC = () => {
             {/* WhatsApp Modal */}
             {showWhatsAppModal && selectedLead && createPortal(
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                             <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2"><MessageCircle size={20} className="text-green-600 dark:text-green-400"/> Enviar WhatsApp</h2>
                             <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"><X size={20}/></button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">Para: <strong>{selectedLead.name}</strong> ({selectedLead.phone})</p>
-                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer" onClick={toggleBridgeWhatsApp}>
-                                <div className="flex items-center gap-2"><Server size={16} className={useBridgeWhatsApp ? 'text-green-600' : 'text-slate-400'}/><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usar Nexus Bridge (Automático)</span></div>
+                            <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600">
+                                <p className="text-xs text-slate-500 mb-1">Para:</p>
+                                <p className="text-sm font-bold text-slate-800 dark:text-white">{selectedLead.name} <span className="text-slate-400 font-normal ml-2">({selectedLead.phone})</span></p>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 cursor-pointer transition hover:bg-slate-100 dark:hover:bg-slate-600" onClick={toggleBridgeWhatsApp}>
+                                <div className="flex items-center gap-2"><Server size={16} className={useBridgeWhatsApp ? 'text-green-600' : 'text-slate-400'}/><span className="text-sm font-bold text-slate-700 dark:text-slate-300">Usar Nexus Bridge (Automático)</span></div>
                                 <div className={`w-10 h-5 rounded-full p-0.5 transition-colors ${useBridgeWhatsApp ? 'bg-green-500' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${useBridgeWhatsApp ? 'translate-x-5' : 'translate-x-0'}`}></div></div>
                             </div>
-                            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Mensagem</label><textarea className="w-full border border-slate-300 dark:border-slate-600 rounded-lg p-3 h-32 resize-none focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={whatsAppMessage} onChange={(e) => setWhatsAppMessage(e.target.value)}/></div>
-                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">{whatsappTemplates.map((tmpl, idx) => (<button key={idx} onClick={() => { const text = tmpl.text.replace('[Nome]', selectedLead.name.split(' ')[0]).replace('[Empresa]', selectedLead.company); setWhatsAppMessage(text); }} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap border border-slate-200 dark:border-slate-600 transition">{tmpl.label}</button>))}</div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 tracking-widest">Mensagem</label>
+                                <textarea className="w-full border dark:border-slate-600 rounded-xl p-3 h-32 resize-none focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition shadow-inner" value={whatsAppMessage} onChange={(e) => setWhatsAppMessage(e.target.value)}/>
+                            </div>
+                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                {whatsappTemplates.map((tmpl, idx) => (
+                                    <button 
+                                        key={idx} 
+                                        onClick={() => { 
+                                            const text = tmpl.text.replace('[Nome]', selectedLead.name.split(' ')[0]).replace('[Empresa]', selectedLead.company); 
+                                            setWhatsAppMessage(text); 
+                                        }} 
+                                        className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 whitespace-nowrap border border-slate-200 dark:border-slate-600 transition"
+                                    >
+                                        {tmpl.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                            <button onClick={() => setShowWhatsAppModal(false)} className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition">Cancelar</button>
-                            <button onClick={handleSendWhatsApp} disabled={sendingWhatsApp} className="px-6 py-2 rounded-lg bg-[#25D366] text-white font-bold hover:bg-[#128C7E] shadow-md transition flex items-center gap-2 disabled:opacity-70">{sendingWhatsApp ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>}{sendingWhatsApp ? 'Enviando...' : 'Enviar'}</button>
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+                            <button onClick={() => setShowWhatsAppModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition">Cancelar</button>
+                            <button onClick={handleSendWhatsApp} disabled={sendingWhatsApp} className="px-6 py-2.5 rounded-xl bg-[#25D366] text-white font-black hover:bg-[#128C7E] shadow-lg shadow-green-500/20 transition flex items-center gap-2 disabled:opacity-70">
+                                {sendingWhatsApp ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>}
+                                {sendingWhatsApp ? 'Enviando...' : 'Enviar Agora'}
+                            </button>
                         </div>
                     </div>
                 </div>,

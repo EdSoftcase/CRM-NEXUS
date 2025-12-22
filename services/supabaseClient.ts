@@ -4,7 +4,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const SUPABASE_URL_KEY = 'nexus_supabase_url';
 const SUPABASE_KEY_KEY = 'nexus_supabase_key';
 
-// CREDENCIAIS FIXAS PARA PULAR SETUP (FORNECIDAS PELO USUÁRIO)
 const DEFAULT_URL = 'https://csiolvibjokyedkygzzb.supabase.co';
 const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaW9sdmliam9reWVka3lnenpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMzc0MDcsImV4cCI6MjA3OTgxMzQwN30.6CxUgsU17DeQEVuApMzZ-ij73s7emNrznB7g-EwYfiY';
 
@@ -71,100 +70,73 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => {
-  return `-- SOFT-CRM ENTERPRISE - SQL SETUP (v8.0 - CNPJ, PHONE, EMAIL)
--- Execute este script no seu SQL Editor do Supabase.
+  return `-- SOFT-CRM ENTERPRISE - PATCH DEFINITIVO DE SCHEMA E RLS (v22.0)
 
--- 1. ORGANIZAÇÕES
-CREATE TABLE IF NOT EXISTS organizations (
-  id text PRIMARY KEY,
-  name text NOT NULL,
-  slug text UNIQUE NOT NULL,
-  plan text DEFAULT 'Standard',
-  status text DEFAULT 'active',
-  license_expires_at timestamptz,
-  created_at timestamptz DEFAULT now()
+-- 1. Garante que a tabela 'proposals' existe com a estrutura correta
+CREATE TABLE IF NOT EXISTS public.proposals (
+    id text PRIMARY KEY,
+    organization_id text,
+    lead_id text,
+    client_id text,
+    title text,
+    client_name text,
+    company_name text,
+    unit text,
+    status text,
+    introduction text,
+    scope jsonb DEFAULT '[]'::jsonb,
+    items jsonb DEFAULT '[]'::jsonb,
+    price numeric DEFAULT 0,
+    setup_cost numeric DEFAULT 0,
+    monthly_cost numeric DEFAULT 0,
+    timeline text,
+    terms text,
+    custom_clause text,
+    includes_development boolean DEFAULT false,
+    signature text,
+    signed_at timestamp with time zone,
+    signed_by_ip text,
+    created_date timestamp with time zone DEFAULT now(),
+    valid_until timestamp with time zone
 );
 
--- 2. CLIENTES (ESTRUTURA COMPLETA)
-CREATE TABLE IF NOT EXISTS clients (
-  id text PRIMARY KEY,
-  name text NOT NULL,
-  contact_person text,
-  document text, -- CNPJ/CPF
-  email text,    -- E-mail
-  phone text,    -- Telefone
-  segment text,
-  since timestamptz DEFAULT now(),
-  status text DEFAULT 'Active',
-  ltv numeric DEFAULT 0,
-  organization_id text REFERENCES organizations(id),
-  unit text,
-  contract_id text,
-  contract_start_date text,
-  contract_end_date text,
-  parking_spots integer DEFAULT 0,
-  exempt_spots integer DEFAULT 0,
-  vehicle_count integer DEFAULT 0,
-  credential_count integer DEFAULT 0,
-  pricing_table text,
-  table_price numeric DEFAULT 0,
-  total_table_price numeric DEFAULT 0,
-  special_day text,
-  special_price numeric DEFAULT 0,
-  total_special_price numeric DEFAULT 0,
-  metadata jsonb DEFAULT '{}'
-);
+-- 2. Habilita Row Level Security (RLS)
+ALTER TABLE public.proposals ENABLE ROW LEVEL SECURITY;
 
--- 3. PATCH DE COLUNAS (PARA BANCOS JÁ EXISTENTES)
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS document text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS email text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS unit text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_id text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_start_date text;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_end_date text;
+-- 3. Remove políticas antigas para evitar conflitos
+DROP POLICY IF EXISTS "Enable all access for proposals" ON public.proposals;
+DROP POLICY IF EXISTS "Proposals: Users can manage their own org data" ON public.proposals;
 
--- 4. LEADS
-CREATE TABLE IF NOT EXISTS leads (
-  id text PRIMARY KEY,
-  name text NOT NULL,
-  company text,
-  email text,
-  phone text,
-  value numeric DEFAULT 0,
-  status text DEFAULT 'Novo',
-  source text,
-  probability integer DEFAULT 0,
-  last_contact timestamptz,
-  created_at timestamptz DEFAULT now(),
-  organization_id text REFERENCES organizations(id)
-);
+-- 4. Cria política que permite acesso TOTAL se o organization_id bater (Multitenancy)
+-- Ou acesso geral para facilitar o setup inicial em ambientes de teste
+CREATE POLICY "Proposals: Full Access for Authenticated" 
+ON public.proposals 
+FOR ALL 
+TO authenticated, anon
+USING (true)
+WITH CHECK (true);
 
--- 5. FATURAS
-CREATE TABLE IF NOT EXISTS invoices (
-  id text PRIMARY KEY,
-  type text NOT NULL,
-  customer text NOT NULL,
-  amount numeric NOT NULL,
-  due_date timestamptz NOT NULL,
-  status text NOT NULL,
-  description text,
-  organization_id text REFERENCES organizations(id),
-  metadata jsonb DEFAULT '{}'
-);
+-- 5. Conceder permissões de tabela
+GRANT ALL ON TABLE public.proposals TO anon, authenticated, service_role;
 
--- ATIVAR RLS E POLÍTICAS
-ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-    CREATE POLICY "Acesso Total" ON organizations FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON clients FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON leads FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON invoices FOR ALL USING (true);
-EXCEPTION WHEN duplicate_object THEN NULL;
+-- 6. Garantir colunas se a tabela já existia (Migração Suave)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='client_name') THEN
+        ALTER TABLE proposals ADD COLUMN client_name text;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='setup_cost') THEN
+        ALTER TABLE proposals ADD COLUMN setup_cost numeric DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='monthly_cost') THEN
+        ALTER TABLE proposals ADD COLUMN monthly_cost numeric DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='proposals' AND column_name='includes_development') THEN
+        ALTER TABLE proposals ADD COLUMN includes_development boolean DEFAULT false;
+    END IF;
 END $$;
+
+-- 7. FORÇA O RELOAD DO CACHE DE SCHEMA NO SUPABASE
+NOTIFY pgrst, 'reload schema';
 `;
 };

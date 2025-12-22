@@ -69,9 +69,9 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
 };
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, removeToast } = useData();
+  const { toasts = [], removeToast } = useData();
 
-  if (toasts.length === 0) return null;
+  if (!toasts || toasts.length === 0) return null;
 
   return (
     <div className="fixed top-4 right-4 z-[10000] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
