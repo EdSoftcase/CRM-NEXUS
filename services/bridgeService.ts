@@ -30,13 +30,11 @@ const fetchBridge = async (endpoint: string, options: RequestInit = {}, timeoutM
     };
 
     try {
-        // Tenta pelo Proxy do Vite (Ambiente de Dev)
         const res = await fetch(`${PROXY_URL}${endpoint}`, fetchOptions);
         const data = await res.json();
         clearTimeout(timeoutId);
         return data;
     } catch (e: any) {
-        // Se falhou por timeout ou erro de rede, tenta direto na porta 3001
         try {
             const resDirect = await fetch(`${DIRECT_URL}${endpoint}`, { ...fetchOptions, mode: 'cors' });
             const data = await resDirect.json();
@@ -44,7 +42,6 @@ const fetchBridge = async (endpoint: string, options: RequestInit = {}, timeoutM
             return data;
         } catch (directErr: any) {
             clearTimeout(timeoutId);
-            // Captura "Failed to fetch" e transforma em mensagem amigável
             const isNetworkError = directErr.message === 'Failed to fetch' || directErr.name === 'AbortError';
             throw new Error(isNetworkError 
                 ? "Nexus Bridge Offline. Certifique-se que o servidor local (porta 3001) está rodando." 
@@ -60,6 +57,10 @@ export const checkBridgeStatus = async () => {
     } catch (error) { 
         return { whatsapp: 'OFFLINE', server: 'OFFLINE', error: true }; 
     }
+};
+
+export const disconnectWhatsApp = async () => {
+    return await fetchBridge('/whatsapp/logout', { method: 'POST' });
 };
 
 export const sendBridgeWhatsApp = async (phone: string, message: string) => {
