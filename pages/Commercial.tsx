@@ -24,7 +24,7 @@ const whatsappTemplates = [
 type SortOption = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc' | 'value-desc';
 
 export const Commercial: React.FC = () => {
-    const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification } = useData();
+    const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification, addInboxInteraction } = useData();
     const { currentUser } = useAuth();
 
     const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
@@ -109,6 +109,10 @@ export const Commercial: React.FC = () => {
                 const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
                 window.open(url, '_blank');
             }
+            
+            // REGISTRO NO INBOX
+            addInboxInteraction(selectedLead.company || selectedLead.name, 'WhatsApp', whatsAppMessage, selectedLead.phone);
+
             setShowWhatsAppModal(false);
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
@@ -243,7 +247,7 @@ export const Commercial: React.FC = () => {
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
                         <Users className="text-blue-600"/> Gestão Comercial
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400">Pipeline de vendas e CRM.</p>
@@ -291,7 +295,7 @@ export const Commercial: React.FC = () => {
                             onDragOver={handleDragOver}
                             onDrop={(e) => handleDrop(e, col.id)}
                         >
-                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-700 dark:text-slate-200">
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-700 dark:text-white">
                                 {col.label}
                                 <span className="bg-white dark:bg-slate-700 px-2 py-0.5 rounded-full text-[10px] font-black border border-slate-100 dark:border-slate-600">{filteredLeads.filter(l => l.status === col.id).length}</span>
                             </div>

@@ -5,6 +5,7 @@ import { Lead } from '../types';
 import { EMAIL_TEMPLATES, sendEmail } from '../services/emailService';
 import { sendBridgeEmail } from '../services/bridgeService';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 
 interface SendEmailModalProps {
     lead: Lead;
@@ -14,6 +15,7 @@ interface SendEmailModalProps {
 
 export const SendEmailModal: React.FC<SendEmailModalProps> = ({ lead, onClose, onSuccess }) => {
     const { currentUser } = useAuth();
+    const { addInboxInteraction } = useData();
     const [selectedTemplate, setSelectedTemplate] = useState('');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
@@ -79,6 +81,9 @@ export const SendEmailModal: React.FC<SendEmailModalProps> = ({ lead, onClose, o
                 );
             }
             
+            // REGISTRO NO INBOX
+            addInboxInteraction(lead.company || lead.name, 'Email', `Assunto: ${subject}\n\n${body}`, lead.email);
+
             onSuccess(`Email enviado para ${lead.email}: "${subject}"`);
             onClose();
         } catch (err: any) {

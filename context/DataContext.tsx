@@ -107,7 +107,7 @@ interface DataContextType {
 
   addLog: (log: AuditLog) => void;
 
-  addSystemNotification: (title: string, message: string, type?: 'info'|'warning'|'success'|'alert'|'info', relatedTo?: string) => void;
+  addSystemNotification: (title: string, message: string, type?: 'info'|'warning'|'success'|'alert', relatedTo?: string) => void;
   markNotificationRead: (id: string) => void;
 
   addToast: (message: Omit<ToastMessage, 'id'>) => void;
@@ -187,7 +187,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [pushEnabled, setPushEnabled] = useState(() => localStorage.getItem('nexus_push_enabled') === 'true');
     const [prospectingHistory, setProspectingHistory] = useState<ProspectingHistoryItem[]>(() => JSON.parse(localStorage.getItem('nexus_prospecting_history') || '[]'));
     const [disqualifiedProspects, setDisqualifiedProspects] = useState<string[]>(() => JSON.parse(localStorage.getItem('nexus_disqualified_prospects') || '[]'));
-    const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(MOCK_CONVERSATIONS);
+    const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(() => JSON.parse(localStorage.getItem('nexus_inbox') || '[]') || MOCK_CONVERSATIONS);
 
     const refreshData = useCallback(async () => {
         setIsSyncing(true);
@@ -217,24 +217,49 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             const payload = convertKeys(data, toSnakeCase);
             const { error } = await supabase.from(table).upsert(payload);
-            if (error) {
-                console.error(`DB Upsert Error [${table}]:`, error.message || error);
-                if (error.message?.includes('violates row-level security')) {
-                   addSystemNotification('Erro de Permissão', 'Seu usuário não tem permissão para gravar na tabela ' + table + '. Verifique o Patch SQL.', 'alert');
-                } else if (error.message?.includes('proposal_id')) {
-                    addSystemNotification('Banco Desatualizado', 'A coluna proposal_id está ausente na tabela projects. Vá em Configurações > Patch SQL e execute o script atualizado.', 'alert');
-                }
-                throw error;
-            }
-        } catch (e: any) { 
-            console.error(`DB Upsert Exception [${table}]:`, e?.message || e); 
-        }
+            if (error) throw error;
+        } catch (e: any) { console.error(`DB Upsert Error [${table}]:`, e.message || e); }
     };
 
     const dbDelete = async (table: string, id: string) => {
         const supabase = getSupabase();
         if (!supabase) return;
         try { await supabase.from(table).delete().eq('id', id); } catch (e) { console.warn(`DB Delete Error [${table}]`, e); }
+    };
+
+    // PERSISTÊNCIA ADICIONAL PARA O INBOX
+    useEffect(() => { localStorage.setItem('nexus_inbox', JSON.stringify(inboxConversations)); }, [inboxConversations]);
+
+    const addInboxInteraction = (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier: string = '') => {
+        const timestamp = new Date().toISOString();
+        const newMessage: InboxMessage = { id: `MSG-${Date.now()}`, text, sender: 'agent', timestamp };
+
+        setInboxConversations(prev => {
+            const existingIdx = prev.findIndex(c => c.contactName === contactName && c.type === type);
+            if (existingIdx > -1) {
+                const updated = [...prev];
+                updated[existingIdx] = {
+                    ...updated[existingIdx],
+                    lastMessage: text,
+                    lastMessageAt: timestamp,
+                    messages: [...updated[existingIdx].messages, newMessage]
+                };
+                return updated;
+            } else {
+                const newConvo: InboxConversation = {
+                    id: `CONV-${Date.now()}`,
+                    contactName,
+                    contactIdentifier: contactIdentifier || 'Contato Direto',
+                    type,
+                    lastMessage: text,
+                    lastMessageAt: timestamp,
+                    unreadCount: 0,
+                    status: 'Open',
+                    messages: [newMessage]
+                };
+                return [newConvo, ...prev];
+            }
+        });
     };
 
     const addLead = (user: User | null, lead: Lead) => { setLeads(prev => [...(prev || []), lead]); dbUpsert('leads', lead); };
@@ -303,20 +328,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => (prev || []).map(w => w.id === webhook.id ? webhook : w)); dbUpsert('webhooks', webhook); };
     const deleteWebhook = (id: string) => { setWebhooks(prev => (prev || []).filter(w => w.id !== id)); dbDelete('webhooks', id); };
     
-    const addProposal = (user: User | null, proposal: Proposal) => { 
-        setProposals(prev => [...(prev || []), proposal]); 
-        dbUpsert('proposals', proposal); 
-    };
-    
-    const updateProposal = (user: User | null, proposal: Proposal) => { 
-        setProposals(prev => (prev || []).map(p => p.id === proposal.id ? proposal : p)); 
-        dbUpsert('proposals', proposal); 
-    };
-
+    const addProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => [...(prev || []), proposal]); dbUpsert('proposals', proposal); };
+    const updateProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => (prev || []).map(p => p.id === proposal.id ? proposal : p)); dbUpsert('proposals', proposal); };
     const removeProposal = (user: User | null, id: string, reason: string) => { setProposals(prev => (prev || []).filter(p => p.id !== id)); dbDelete('proposals', id); };
     const addFinancialCategory = (category: FinancialCategory) => { setFinancialCategories(prev => [...(prev || []), category]); dbUpsert('financial_categories', category); };
     const deleteFinancialCategory = (id: string) => { setFinancialCategories(prev => (prev || []).filter(c => c.id !== id)); dbDelete('financial_categories', id); };
-    const addInboxInteraction = (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier: string = '') => { };
 
     const syncLocalToCloud = async () => { await refreshData(); };
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
