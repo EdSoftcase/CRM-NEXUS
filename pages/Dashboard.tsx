@@ -43,11 +43,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
       return '••••';
   };
 
-  // CÁLCULO MRR: Apenas R$ Especial Total
+  // CÁLCULO MRR: Soma de totalSpecialPrice (Capex/Opex Mensal) com fallback para ltv
   const currentMRR = useMemo(() => {
       return clients
           .filter(c => c.status === 'Active')
-          .reduce((acc, curr) => acc + (curr.totalSpecialPrice || 0), 0);
+          .reduce((acc, curr) => acc + (curr.totalSpecialPrice || curr.ltv || 0), 0);
   }, [clients]);
 
   const currentARR = currentMRR * 12;
@@ -83,6 +83,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
                          (inv.status === InvoiceStatus.PAID);
               })
               .reduce((acc, curr) => acc + curr.amount, 0);
+          
+          // Se não há faturas pagas no mês, mostra a média atual para preencher o gráfico visualmente
           const value = monthRevenue > 0 ? monthRevenue : (i === 0 ? currentMRR : 0);
           data.push({ name: monthLabel, value: value });
       }
@@ -93,13 +95,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
       (t.priority === TicketPriority.CRITICAL || t.priority === TicketPriority.HIGH) && 
       (t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED)
   );
-
-  const topPerformers = useMemo(() => {
-      return [...usersList]
-          .filter(u => u.role !== 'client')
-          .sort((a, b) => (b.xp || 0) - (a.xp || 0))
-          .slice(0, 3);
-  }, [usersList]);
 
   useEffect(() => {
     if (isContactCenterMode) return;
@@ -147,7 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, viewMode = 'ge
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
             {canSeeFinancials ? (
                 <>
-                    <KPICard title="Faturamento Mensal (Especial)" value={maskValue(currentMRR, 'currency')} trend="Baseado no quadro Especial" trendUp={true} icon={DollarSign} color="bg-blue-500" />
+                    <KPICard title="Faturamento Mensal" value={maskValue(currentMRR, 'currency')} trend="Baseado no quadro Especial" trendUp={true} icon={DollarSign} color="bg-blue-500" />
                     <KPICard title="Receita Anual" value={maskValue(currentARR, 'currency')} trend="Projeção 12m" trendUp={true} icon={TrendingUp} color="bg-emerald-500" />
                 </>
             ) : (

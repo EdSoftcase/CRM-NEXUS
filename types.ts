@@ -61,7 +61,7 @@ export interface Proposal {
   title: string;
   leadId?: string;
   clientId?: string;
-  clientEmail?: string; // Novo campo para redundância de filtro
+  clientEmail?: string; 
   clientName: string;
   companyName: string;
   createdDate: string;
@@ -438,6 +438,7 @@ export interface Competitor {
     name: string;
     website: string;
     sector: string;
+    organizationId?: string; // NOVO CAMPO
     lastAnalysis?: string;
     swot?: {
         strengths: string[];
@@ -458,6 +459,7 @@ export interface MarketTrend {
     description: string;
     sentiment: 'Positive' | 'Negative' | 'Neutral';
     impact: string;
+    organizationId?: string;
 }
 
 export interface PotentialLead {

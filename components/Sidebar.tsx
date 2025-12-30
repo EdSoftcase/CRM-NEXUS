@@ -17,8 +17,8 @@ const navItems = [
   { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
   { id: 'contact-center', label: 'Central de Contatos', icon: Phone },
   { id: 'inbox', label: 'Inbox Unificado', icon: MessageSquare }, 
-  { id: 'prospecting', label: 'Prospecção IA', icon: Target },
-  { id: 'competitive-intelligence', label: 'Nexus Spy (CI)', icon: Sword },
+  { id: 'prospecting', label: 'Soft Prospect', icon: Target },
+  { id: 'competitive-intelligence', label: 'Soft Spy (CI)', icon: Sword },
   { id: 'calendar', label: 'Agenda', icon: CalendarIcon },
   { id: 'marketing', label: 'Marketing Hub', icon: Megaphone },
   { id: 'commercial', label: 'Comercial', icon: Users },
@@ -29,7 +29,7 @@ const navItems = [
   { id: 'projects', label: 'Gestão de Projetos', icon: Trello },
   { id: 'customer-success', label: 'Sucesso do Cliente', icon: HeartPulse },
   { id: 'retention', label: 'Retenção', icon: ShieldAlert },
-  { id: 'automation', label: 'Nexus Flow', icon: Workflow }, 
+  { id: 'automation', label: 'Soft Flow', icon: Workflow }, 
   { id: 'finance', label: 'Financeiro', icon: DollarSign }, 
   { id: 'support', label: 'Suporte', icon: LifeBuoy },
   { id: 'dev', label: 'Desenvolvimento', icon: Code },
@@ -37,7 +37,7 @@ const navItems = [
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule, onNavigate }) => {
-  const { currentUser, hasPermission, logout } = useAuth();
+  const { currentUser, logout } = useAuth();
   const { isSyncing, refreshData, lastSyncTime, theme, toggleTheme } = useData();
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
@@ -45,7 +45,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
   const hasCredentials = !!url;
 
   const handleLogoutClick = () => setIsLogoutModalOpen(true);
-  const confirmLogout = () => { logout(); setIsLogoutModalOpen(false); };
+  
+  const confirmLogout = async () => { 
+    setIsLogoutModalOpen(false);
+    await logout(); 
+  };
 
   return (
     <>
@@ -62,25 +66,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
           <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition"><X size={20} /></button>
         </div>
 
-        <div className="p-4 shrink-0">
-           <div className="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 group cursor-default">
-              <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white shrink-0 border-2 border-slate-600 group-hover:border-blue-500 transition-colors overflow-hidden">
-                  {currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http')) ? <img src={currentUser.avatar} className="w-full h-full object-cover" /> : <span>{currentUser?.avatar || 'U'}</span>}
-              </div>
-              <div className="overflow-hidden flex-1">
-                  <p className="text-sm font-semibold text-white truncate">{currentUser?.name}</p>
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full ${hasCredentials ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`}></div>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wide truncate">{currentUser?.role}</p>
-                  </div>
-              </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto custom-scrollbar pb-4">
-          <p className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Menu Principal</p>
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto custom-scrollbar pt-4 pb-4">
+          <p className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Soft Hub</p>
           {navItems.map((item) => {
-            if (item.id !== 'dashboard' && item.id !== 'contact-center' && item.id !== 'calendar' && item.id !== 'inbox' && item.id !== 'prospecting' && item.id !== 'competitive-intelligence' && !hasPermission(item.id)) return null;
             const Icon = item.icon;
             const isActive = activeModule === item.id;
             return (
@@ -106,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
 
         <div className="h-8 bg-black/30 border-t border-black/20 flex items-center justify-between px-4 text-[10px] text-slate-500 select-none shrink-0">
             <div className="flex items-center gap-2">
-                {isSyncing ? <span className="flex items-center gap-1.5 text-blue-400"><RefreshCw size={10} className="animate-spin"/> Sincronizando...</span> : hasCredentials ? <span className="flex items-center gap-1.5 text-emerald-500/80"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Online</span> : <span className="flex items-center gap-1.5 text-slate-500"><div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div> Offline</span>}
+                {isSyncing ? <span className="flex items-center gap-1.5 text-blue-400"><RefreshCw size={10} className="animate-spin"/> Sincronizando...</span> : hasCredentials ? <span className="flex items-center gap-1.5 text-emerald-500/80"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Soft Cloud Online</span> : <span className="flex items-center gap-1.5 text-slate-500">Offline</span>}
             </div>
             <div className="flex items-center gap-2">
                 <span className="opacity-50">{lastSyncTime ? lastSyncTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
@@ -116,15 +104,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       </div>
 
       {isLogoutModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in border-t-4 border-slate-900 dark:border-slate-600">
                 <div className="p-6 text-center">
                     <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4"><LogOut size={32} className="text-red-600 dark:text-red-400 ml-1" /></div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Deseja realmente sair?</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Você será desconectado do sistema.</p>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Encerrar Sessão Soft?</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Seus dados em nuvem estão seguros.</p>
                     <div className="flex gap-3">
-                        <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">Não, voltar</button>
-                        <button onClick={confirmLogout} className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition shadow-lg shadow-red-500/20">Sim, sair</button>
+                        <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">Não</button>
+                        <button onClick={confirmLogout} className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition shadow-lg shadow-red-500/20">Sim, Sair</button>
                     </div>
                 </div>
             </div>

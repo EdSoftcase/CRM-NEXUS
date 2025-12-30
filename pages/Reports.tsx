@@ -1,211 +1,256 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, ComposedChart, Area, AreaChart, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LabelList } from 'recharts';
+import { 
+    ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, 
+    XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, Area, AreaChart, 
+    RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar 
+} from 'recharts';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { LeadStatus, Lead, TicketStatus, TicketPriority } from '../types';
+import { LeadStatus, Project, InvoiceStatus } from '../types';
 import { SectionTitle, KPICard, Badge } from '../components/Widgets';
 import { 
-    BarChart2, TrendingUp, BrainCircuit, Target, PieChart as PieIcon, 
-    Activity, Users, AlertCircle, DollarSign, Calendar, CheckCircle, 
-    Briefcase, Search, Filter, Phone, Mail, MessageSquare, Clock, Settings, Sparkles, Send, CalendarDays,
-    LayoutTemplate, Plus, GripVertical, Trash2, FileDown, FileSpreadsheet, Download, X, Megaphone, Wrench, Timer
+    TrendingUp, BrainCircuit, Activity, Users, AlertCircle, 
+    DollarSign, Sparkles, Send, Wrench, Target, CheckCircle, 
+    Clock, BarChart3, Zap, ShieldCheck, PieChart as PieIcon,
+    ArrowUpRight, ListTodo, Lightbulb
 } from 'lucide-react';
 import { analyzeBusinessData } from '../services/geminiService';
-import * as XLSX from 'xlsx';
+
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e'];
 
 export const Reports: React.FC = () => {
-    const { leads, clients, activities, tickets, invoices, campaigns, projects } = useData();
+    const { leads, clients, tickets, invoices, campaigns, projects } = useData();
     const { currentUser } = useAuth();
     
-    const [activeTab, setActiveTab] = useState<'sales' | 'marketing' | 'activities' | 'financial' | 'insights' | 'bi' | 'ops'>('sales');
-    const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'year'>('30d');
-    const [growthRate, setGrowthRate] = useState(35);
-
+    // UI State
+    const [activeTab, setActiveTab] = useState<'sales' | 'ops' | 'financial' | 'bi' | 'insights'>('bi');
+    
+    // AI Chat State
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [chatQuery, setChatQuery] = useState('');
     const [chatHistory, setChatHistory] = useState<{role: 'user'|'ai', text: string}[]>([
-        { role: 'ai', text: 'Olá! Sou o Nexus BI. Tenho acesso aos dados consolidados da sua empresa. Pergunte algo como "Qual o melhor canal de vendas?" ou "Quais clientes têm risco de churn?".' }
+        { role: 'ai', text: 'Olá! Sou o Soft BI. Como posso ajudar você a analisar os dados da Soft Case hoje?' }
     ]);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
     const chatEndRef = useRef<HTMLDivElement>(null);
+    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
 
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatHistory, activeTab]);
-
-    const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
-
-    const filterByDate = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        let diffTime = 0;
-        switch (timeRange) {
-            case '7d': diffTime = 7 * 24 * 60 * 60 * 1000; break;
-            case '30d': diffTime = 30 * 24 * 60 * 60 * 1000; break;
-            case '90d': diffTime = 90 * 24 * 60 * 60 * 1000; break;
-            case 'year': diffTime = 365 * 24 * 60 * 60 * 1000; break;
-        }
-        return (now.getTime() - date.getTime()) <= diffTime;
-    };
-
-    const filteredLeads = leads.filter(l => filterByDate(l.createdAt));
-    const funnelData = useMemo(() => [
-        { name: 'Novo', value: filteredLeads.filter(l => l.status === LeadStatus.NEW).length, fill: '#3b82f6' },
-        { name: 'Qualificado', value: filteredLeads.filter(l => l.status === LeadStatus.QUALIFIED).length, fill: '#6366f1' },
-        { name: 'Proposta', value: filteredLeads.filter(l => l.status === LeadStatus.PROPOSAL).length, fill: '#8b5cf6' },
-        { name: 'Negociação', value: filteredLeads.filter(l => l.status === LeadStatus.NEGOTIATION).length, fill: '#d946ef' },
-        { name: 'Fechado (Ganho)', value: filteredLeads.filter(l => l.status === LeadStatus.CLOSED_WON).length, fill: '#10b981' },
-    ], [filteredLeads]);
-
-    const wonLeads = filteredLeads.filter(l => l.status === LeadStatus.CLOSED_WON);
-    const winRate = filteredLeads.length > 0 ? ((wonLeads.length / filteredLeads.length) * 100).toFixed(1) : 0;
-    const totalWonValue = wonLeads.reduce((acc, l) => acc + l.value, 0);
-    const avgDealSize = wonLeads.length > 0 ? totalWonValue / wonLeads.length : 0;
-
-    const opsData = useMemo(() => {
-        const stages = ['Planning', 'Kitting', 'Assembly', 'Execution', 'Review'];
-        const stageTotals: Record<string, { sum: number, count: number }> = {};
-        stages.forEach(s => stageTotals[s] = { sum: 0, count: 0 });
-
-        projects.forEach(p => {
-            if (p.stageHistory) {
-                p.stageHistory.forEach(entry => {
-                    if (entry.durationDays !== undefined && stageTotals[entry.stage]) {
-                        stageTotals[entry.stage].sum += entry.durationDays;
-                        stageTotals[entry.stage].count += 1;
-                    }
-                });
+    // --- DATA PREPARATION ---
+    
+    const currentMRR = useMemo(() => clients.filter(c => c.status === 'Active').reduce((acc, c) => acc + (c.totalSpecialPrice || c.ltv || 0), 0), [clients]);
+    
+    const revenueBySegmentData = useMemo(() => {
+        const targetCategories = [
+            'Estacionamento', 
+            'Valets', 
+            'Piscina de Bolinha', 
+            'Shopping', 
+            'Condomínio', 
+            'Parque', 
+            'Residencial'
+        ];
+        
+        const segments: Record<string, number> = {};
+        
+        clients.forEach(c => {
+            const clientSeg = (c.segment || '').trim();
+            // Tenta encontrar um match exato ou aproximado na lista de alvos
+            const matchedCategory = targetCategories.find(cat => 
+                cat.toLowerCase() === clientSeg.toLowerCase() || 
+                clientSeg.toLowerCase().includes(cat.toLowerCase())
+            );
+            
+            const finalKey = matchedCategory || 'Outros';
+            const value = (c.totalSpecialPrice || c.ltv || 0);
+            
+            if (value > 0) {
+                segments[finalKey] = (segments[finalKey] || 0) + value;
             }
         });
 
-        return stages.map(s => ({
-            name: s === 'Planning' ? 'Planejamento' : s === 'Kitting' ? 'Kitting' : s === 'Assembly' ? 'Montagem' : s === 'Execution' ? 'Instalação' : 'Revisão',
-            dias: stageTotals[s].count > 0 ? Number((stageTotals[s].sum / stageTotals[s].count).toFixed(1)) : 0
-        }));
-    }, [projects]);
-
-    const currentMRR = clients.filter(c => c.status === 'Active').reduce((acc, c) => acc + (c.totalTablePrice || c.ltv || 0), 0);
-    const projectedGoal = currentMRR * (1 + growthRate / 100);
-
-    const projectionData = useMemo(() => {
-        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
-        const data = [];
-        let projectedValue = currentMRR;
-        const monthlyRate = (growthRate / 100) / 12;
-        for (let i = 0; i < 6; i++) {
-            data.push({ name: months[i], Realizado: i === 0 ? currentMRR : null, Projetado: Math.round(projectedValue) });
-            projectedValue = projectedValue * (1 + monthlyRate);
-        }
-        return data;
-    }, [currentMRR, growthRate]);
+        // Converte para array e ordena por valor para o gráfico ficar bonito
+        return Object.entries(segments)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+    }, [clients]);
 
     const radarData = useMemo(() => [
-        { subject: 'Vendas', A: Math.min(Number(winRate) * 2, 100) || 50, fullMark: 100 },
-        { subject: 'Marketing', A: Math.min(campaigns.length * 10, 100) || 40, fullMark: 100 },
-        { subject: 'Suporte', A: 80, fullMark: 100 },
-        { subject: 'Financeiro', A: Math.min((currentMRR / 50000) * 100, 100) || 60, fullMark: 100 },
-        { subject: 'CS / NPS', A: 85, fullMark: 100 },
-    ], [winRate, campaigns, currentMRR]);
+        { subject: 'Vendas', A: Math.min(100, leads.filter(l => l.status === LeadStatus.CLOSED_WON).length * 15), fullMark: 100 },
+        { subject: 'Mkt', A: Math.min(100, campaigns.length * 20), fullMark: 100 },
+        { subject: 'Suporte', A: Math.max(20, 100 - (tickets.filter(t => t.status === 'Aberto').length * 10)), fullMark: 100 },
+        { subject: 'Retenção', A: clients.filter(c => c.status === 'Active').length > 0 ? 85 : 0, fullMark: 100 },
+        { subject: 'Projetos', A: projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + p.progress, 0) / projects.length) : 0, fullMark: 100 },
+    ], [leads, campaigns, tickets, clients, projects]);
+
+    const pipelineData = useMemo(() => [
+        { name: 'Novos', value: leads.filter(l => l.status === LeadStatus.NEW).length },
+        { name: 'Qualif.', value: leads.filter(l => l.status === LeadStatus.QUALIFIED).length },
+        { name: 'Proposta', value: leads.filter(l => l.status === LeadStatus.PROPOSAL).length },
+        { name: 'Negoc.', value: leads.filter(l => l.status === LeadStatus.NEGOTIATION).length },
+        { name: 'Ganhos', value: leads.filter(l => l.status === LeadStatus.CLOSED_WON).length },
+    ], [leads]);
+
+    const opsData = useMemo(() => [
+        { name: 'Kitting', value: projects.filter(p => p.status === 'Kitting').length },
+        { name: 'Montagem', value: projects.filter(p => p.status === 'Assembly').length },
+        { name: 'Execução', value: projects.filter(p => p.status === 'Execution').length },
+        { name: 'Finalizado', value: projects.filter(p => p.status === 'Completed').length },
+    ], [projects]);
+
+    const financialComparisonData = useMemo(() => [
+        { name: 'Previsto', value: invoices.reduce((acc, i) => acc + i.amount, 0) },
+        { name: 'Realizado', value: invoices.filter(i => i.status === InvoiceStatus.PAID).reduce((acc, i) => acc + i.amount, 0) },
+        { name: 'Atrasado', value: invoices.filter(i => i.status === InvoiceStatus.OVERDUE).reduce((acc, i) => acc + i.amount, 0) },
+    ], [invoices]);
 
     const handleSendQuery = async () => {
         if (!chatQuery.trim()) return;
         const userMsg = chatQuery;
         setChatQuery('');
-        setChatHistory(prev => [...prev, {role: 'user', text: userMsg}]);
+        setChatHistory(prev => [...prev, { role: 'user', text: userMsg }]);
         setIsAnalyzing(true);
+        
         try {
-            const contextData = { periodo: timeRange, mrr: currentMRR, leads: filteredLeads.length, cycle_time: opsData };
-            const response = await analyzeBusinessData(contextData, userMsg);
-            setChatHistory(prev => [...prev, {role: 'ai', text: response}]);
-        } catch (error) { setChatHistory(prev => [...prev, {role: 'ai', text: "Erro ao analisar dados."}]); } finally { setIsAnalyzing(false); }
+            const context = { 
+                mrr: currentMRR, 
+                totalLeads: leads.length, 
+                activeProjects: projects.length,
+                criticalTickets: tickets.filter(t => t.priority === 'Crítica').length,
+                segments: revenueBySegmentData
+            };
+            const response = await analyzeBusinessData(context, userMsg);
+            setChatHistory(prev => [...prev, { role: 'ai', text: response }]);
+        } catch (error) {
+            setChatHistory(prev => [...prev, { role: 'ai', text: "Desculpe, tive um problema ao processar os dados. Tente novamente." }]);
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
     return (
-        <div className="p-4 md:p-8 h-full flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
+        <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors overflow-hidden font-sans">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 shrink-0">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Central de Relatórios</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Análise estratégica baseada em dados reais.</p>
+                    <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter uppercase leading-none">Central de Relatórios</h1>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">Análise estratégica em tempo real da Soft Case Tecnologia.</p>
                 </div>
-                <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-                    <div className="bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 flex">
-                        <button onClick={() => setTimeRange('7d')} className={`px-3 py-1 text-xs font-bold rounded ${timeRange === '7d' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}>7D</button>
-                        <button onClick={() => setTimeRange('30d')} className={`px-3 py-1 text-xs font-bold rounded ${timeRange === '30d' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}>30D</button>
-                        <button onClick={() => setTimeRange('year')} className={`px-3 py-1 text-xs font-bold rounded ${timeRange === 'year' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}>Ano</button>
-                    </div>
-                    <div className="flex bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-1 w-full md:w-auto overflow-x-auto custom-scrollbar">
-                        <button onClick={() => setActiveTab('sales')} className={`px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 ${activeTab === 'sales' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-slate-500'}`}><TrendingUp size={16}/> Vendas</button>
-                        <button onClick={() => setActiveTab('ops')} className={`px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 ${activeTab === 'ops' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 'text-slate-500'}`}><Wrench size={16}/> Produção</button>
-                        <button onClick={() => setActiveTab('financial')} className={`px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 ${activeTab === 'financial' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'text-slate-500'}`}><DollarSign size={16}/> Financeiro</button>
-                        <button onClick={() => setActiveTab('bi')} className={`px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 ${activeTab === 'bi' ? 'bg-amber-50 text-amber-700' : 'text-slate-500'}`}><LayoutTemplate size={16}/> B.I.</button>
-                        <button onClick={() => setActiveTab('insights')} className={`px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 ${activeTab === 'insights' ? 'bg-indigo-600 text-white' : 'text-indigo-400'}`}><Sparkles size={16}/> Insights</button>
+                
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl border shadow-sm">
+                        {[
+                            { id: 'bi', label: 'B.I.', icon: Target },
+                            { id: 'sales', label: 'Vendas', icon: TrendingUp },
+                            { id: 'ops', label: 'Produção', icon: Wrench },
+                            { id: 'financial', label: 'Financeiro', icon: DollarSign },
+                            { id: 'insights', label: 'Insights', icon: Sparkles },
+                        ].map(tab => (
+                            <button 
+                                key={tab.id} 
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition ${activeTab === tab.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xl' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                            >
+                                <tab.icon size={14}/> <span className="hidden xl:inline">{tab.label}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pr-2">
-                {activeTab === 'insights' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center">
-                            <SectionTitle title="Radar do Negócio" subtitle="Performance consolidada" />
-                            <div className="w-full h-64 mt-4">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-12">
+                {activeTab === 'bi' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col items-center">
+                            <SectionTitle title="Radar de Performance" subtitle="Equilíbrio operacional 360°" />
+                            <div className="w-full h-80 mt-4">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                                        <PolarGrid stroke="#e2e8f0" /><PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 12 }} /><PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                                        <Radar name="Performance" dataKey="A" stroke="#6366f1" fill="#6366f1" fillOpacity={0.6} /><Tooltip />
+                                        <PolarGrid stroke="#e2e8f0" />
+                                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />
+                                        <Radar name="Soft Case" dataKey="A" stroke="#6366f1" fill="#6366f1" fillOpacity={0.5} />
+                                        <Tooltip />
                                     </RadarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
-                        <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-indigo-100 dark:border-slate-700 overflow-hidden min-h-[400px]">
-                            <div className="p-4 bg-indigo-50 dark:bg-slate-900 border-b border-indigo-100 flex items-center gap-4 shrink-0">
-                                <div className="bg-white p-3 rounded-full text-indigo-600"><BrainCircuit size={24} /></div>
-                                <div><h2 className="text-lg font-bold text-indigo-900 dark:text-white">Nexus BI - Inteligência</h2></div>
+
+                        <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-800 rounded-[2.5rem] border border-indigo-100 dark:border-slate-700 shadow-xl overflow-hidden min-h-[500px]">
+                            <div className="p-6 bg-indigo-50 dark:bg-indigo-900/30 border-b flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><BrainCircuit size={24}/></div>
+                                    <div>
+                                        <h3 className="font-black text-indigo-900 dark:text-white uppercase tracking-tighter">Soft BI Chat</h3>
+                                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Motor de Inteligência Ativo</p>
+                                    </div>
+                                </div>
+                                <Badge color="blue">Online</Badge>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
-                                {chatHistory.map((msg, idx) => (
-                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-700 text-slate-700 border border-slate-200 rounded-bl-none'}`}>
-                                            <div className="whitespace-pre-wrap">{msg.text}</div>
+                            
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 dark:bg-slate-900/20 custom-scrollbar">
+                                {chatHistory.map((msg, i) => (
+                                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[85%] p-4 rounded-[1.5rem] text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-bl-none'}`}>
+                                            {msg.text}
                                         </div>
                                     </div>
                                 ))}
-                                {isAnalyzing && <div className="flex space-x-1"><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-150"></div></div>}
+                                {isAnalyzing && <div className="flex gap-1 p-2"><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-150"></div></div>}
                                 <div ref={chatEndRef} />
                             </div>
-                            <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200">
-                                <div className="relative">
-                                    <input type="text" className="w-full border border-slate-300 rounded-xl pl-4 pr-12 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-slate-700 dark:text-white" placeholder="Digite sua pergunta..." value={chatQuery} onChange={(e) => setChatQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendQuery()}/>
-                                    <button onClick={handleSendQuery} className="absolute right-2 top-2 bottom-2 p-2 bg-indigo-600 text-white rounded-lg"><Send size={18} /></button>
+
+                            <div className="p-4 border-t bg-white dark:bg-slate-800">
+                                <div className="relative flex items-center">
+                                    <input 
+                                        className="w-full bg-slate-100 dark:bg-slate-700 border-none rounded-2xl pl-6 pr-14 py-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                                        placeholder="Pergunte sobre faturamento, leads ou performance..."
+                                        value={chatQuery}
+                                        onChange={e => setChatQuery(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleSendQuery()}
+                                    />
+                                    <button onClick={handleSendQuery} className="absolute right-2 p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg"><Send size={18}/></button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {activeTab === 'ops' && (
-                    <div className="space-y-6 animate-fade-in">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <KPICard title="Projetos Ativos" value={projects.filter(p => !p.archived).length.toString()} icon={Wrench} color="bg-blue-500" trend="Snapshot atual" />
-                            <KPICard title="Lead Time Médio" value={`${(opsData.reduce((acc, c) => acc + c.dias, 0)).toFixed(1)} dias`} icon={Timer} color="bg-yellow-500" trend="Cycle Time Total" />
-                            <KPICard title="Gargalos Ativos" value={projects.filter(p => {
-                                if(p.archived) return false;
-                                const diff = Math.abs(new Date().getTime() - new Date(p.statusUpdatedAt || p.startDate).getTime());
-                                return (diff / (1000*60*60*24)) >= 3;
-                            }).length.toString()} icon={AlertCircle} color="bg-red-500" trend="Estagnados há 3d+" trendUp={false} />
-                        </div>
-
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[400px]">
-                            <SectionTitle title="Lead Time por Fase (Cycle Time)" subtitle="Média de dias de permanência em cada estágio do projeto" />
-                            <div className="h-80 mt-4">
+                {/* ABA FINANCEIRA */}
+                {activeTab === 'financial' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[450px]">
+                            <SectionTitle title="Receita por Segmento" subtitle="Distribuição do LTV Mensal" />
+                            <div className="flex-1 min-h-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={opsData} layout="vertical" margin={{ left: 40, right: 40 }}>
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                                        <XAxis type="number" tick={{ fontSize: 12, fill: '#94a3b8' }} label={{ value: 'Dias', position: 'bottom', offset: 0 }} />
-                                        <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                                        <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }} />
-                                        <Bar dataKey="dias" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={30}>
-                                            <LabelList dataKey="dias" position="right" fill="#64748b" fontSize={11} fontWeight="bold" />
+                                    <PieChart>
+                                        <Pie 
+                                            data={revenueBySegmentData} 
+                                            innerRadius={60} 
+                                            outerRadius={100} 
+                                            paddingAngle={5} 
+                                            dataKey="value"
+                                            label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                        >
+                                            {revenueBySegmentData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip formatter={(value: number) => `R$ ${value.toLocaleString()}`} />
+                                        <Legend verticalAlign="bottom" height={36}/>
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[450px]">
+                            <SectionTitle title="Status de Cobrança" subtitle="Realizado vs Pendente vs Atrasado" />
+                            <div className="flex-1 min-h-0">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={financialComparisonData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={80} />
+                                        <Tooltip formatter={(value: number) => `R$ ${value.toLocaleString()}`} />
+                                        <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={40}>
+                                            {financialComparisonData.map((entry, index) => (
+                                                <Cell key={index} fill={index === 1 ? '#10b981' : index === 2 ? '#ef4444' : '#6366f1'} />
+                                            ))}
                                         </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
@@ -214,40 +259,75 @@ export const Reports: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'sales' && (
-                    <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <KPICard title="Vendas Ganhas" value={wonLeads.length.toString()} icon={CheckCircle} color="bg-emerald-500" trend={`${winRate}% Conversão`} trendUp={true}/>
-                            <KPICard title="Ticket Médio" value={`R$ ${avgDealSize.toLocaleString()}`} icon={PieIcon} color="bg-purple-500" />
-                            <KPICard title="Pipeline" value={`R$ ${filteredLeads.reduce((acc,l)=>acc+l.value,0).toLocaleString()}`} icon={DollarSign} color="bg-blue-500" />
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[350px]">
-                            <SectionTitle title="Funil de Vendas" subtitle="Oportunidades por estágio" />
-                            <div className="h-64 mt-4">
+                {/* ABA PRODUÇÃO */}
+                {activeTab === 'ops' && (
+                    <div className="grid grid-cols-1 gap-8 animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[500px]">
+                            <SectionTitle title="Gargalos de Produção" subtitle="Projetos ativos por estágio operacional" />
+                            <div className="flex-1 min-h-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={funnelData} layout="vertical">
-                                        <XAxis type="number" hide /><YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} /><Tooltip />
-                                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>{funnelData.map((e, i) => <Cell key={i} fill={e.fill} />)}</Bar>
+                                    <BarChart data={opsData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 'bold'}} />
+                                        <YAxis axisLine={false} tickLine={false} />
+                                        <Tooltip cursor={{fill: '#f8fafc'}} />
+                                        <Bar dataKey="value" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={60} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
                     </div>
                 )}
-                
-                {activeTab === 'financial' && (
-                    <div className="space-y-6">
-                        <KPICard title="Meta MRR" value={`R$ ${projectedGoal.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" trend={`${growthRate}% Crescimento`} />
-                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <SectionTitle title="Projeção Financeira" subtitle="Linha de tendência 6 meses" />
-                            <div className="h-80 mt-4">
+
+                {/* ABA VENDAS */}
+                {activeTab === 'sales' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[450px]">
+                            <SectionTitle title="Funil de Vendas" subtitle="Volume de leads por estágio do CRM" />
+                            <div className="flex-1 min-h-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={projectionData}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis tickFormatter={(v)=>`R$${v/1000}k`} /><Tooltip />
-                                        <Line type="monotone" dataKey="Realizado" stroke="#10b981" strokeWidth={3} dot={{r: 6}} />
-                                        <Line type="monotone" dataKey="Projetado" stroke="#3b82f6" strokeWidth={3} strokeDasharray="5 5" />
-                                    </ComposedChart>
+                                    <BarChart data={pipelineData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 'bold'}} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                                        <Bar dataKey="value" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40} />
+                                    </BarChart>
                                 </ResponsiveContainer>
+                            </div>
+                        </div>
+                        <div className="bg-indigo-600 p-10 rounded-[2.5rem] text-white flex flex-col justify-center relative overflow-hidden shadow-2xl shadow-indigo-500/30">
+                            <div className="absolute top-0 right-0 p-8 opacity-10"><TrendingUp size={180}/></div>
+                            <h3 className="text-3xl font-black uppercase tracking-tighter mb-4">Performance Comercial</h3>
+                            <p className="text-indigo-100 text-lg leading-relaxed max-w-md">Branding Soft Case: A taxa de conversão atual entre Proposta e Ganho é de <strong className="text-white">{(leads.filter(l=>l.status === 'Ganho').length / (leads.filter(l=>l.status === 'Proposta').length || 1) * 100).toFixed(0)}%</strong>.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* ABA INSIGHTS */}
+                {activeTab === 'insights' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+                        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-[2.5rem] text-white shadow-xl flex flex-col justify-between">
+                            <div>
+                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6"><Lightbulb size={28}/></div>
+                                <h3 className="text-2xl font-black uppercase tracking-tighter mb-2">Diagnóstico Soft IA</h3>
+                                <p className="text-blue-100 text-sm leading-relaxed">Sua base de dados indica que <strong className="text-white">{clients.filter(c=>c.status === 'Churn Risk').length} clientes</strong> estão em zona de atenção. Inicie o protocolo de retenção hoje.</p>
+                            </div>
+                            <button onClick={() => setActiveTab('bi')} className="mt-8 bg-white text-indigo-600 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition">Ver Análise Completa</button>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                            <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-6 flex items-center gap-2"><PieIcon className="text-emerald-500" size={20}/> Eficiência Operacional</h4>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center"><span className="text-sm text-slate-500">Tickets Resolvidos</span><span className="font-bold text-emerald-500">92%</span></div>
+                                <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full w-[92%]"></div></div>
+                                <p className="text-xs text-slate-400 mt-4 leading-relaxed italic">Sua equipe de suporte está acima da média de mercado (85%).</p>
+                            </div>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                            <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-6 flex items-center gap-2"><Target className="text-orange-500" size={20}/> Meta de Upsell</h4>
+                            <div className="space-y-4">
+                                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">Identificamos <strong className="text-slate-900 dark:text-white">{clients.filter(c=>c.ltv < 2000).length} clientes</strong> com ticket médio baixo que poderiam migrar para o plano LPR Full.</p>
+                                <button className="w-full border-2 border-slate-100 dark:border-slate-700 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition">Gerar Lista de Leads</button>
                             </div>
                         </div>
                     </div>

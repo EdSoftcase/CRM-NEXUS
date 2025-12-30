@@ -59,6 +59,14 @@ export const checkBridgeStatus = async () => {
     }
 };
 
+export const fetchNewWhatsAppMessages = async () => {
+    try {
+        return await fetchBridge('/whatsapp/messages', { method: 'GET' }, 3000);
+    } catch (error) {
+        return [];
+    }
+};
+
 export const checkWhatsAppNumber = async (phone: string) => {
     const sanitizedNumber = sanitizePhone(phone);
     return await fetchBridge(`/whatsapp/check-number/${sanitizedNumber}`, { method: 'GET' });

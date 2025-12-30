@@ -24,6 +24,7 @@ const SMTP_CONFIG_FILE = path.join(__dirname, 'smtp-config.json');
 let qrCodeBase64 = "";
 let isReady = false;
 let clientInfo = null;
+let incomingMessagesBuffer = []; // Buffer para mensagens recebidas
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -45,6 +46,22 @@ client.on('ready', () => {
     isReady = true;
     qrCodeBase64 = "";
     clientInfo = client.info;
+});
+
+// --- NOVO: Listener de Mensagens Recebidas ---
+client.on('message', async (msg) => {
+    // Ignorar mensagens de grupos para não poluir o CRM (opcional)
+    if (msg.from.includes('@g.us')) return;
+
+    console.log(`Mensagem recebida de ${msg.from}: ${msg.body}`);
+    
+    incomingMessagesBuffer.push({
+        id: msg.id.id,
+        from: msg.from.replace('@c.us', ''),
+        body: msg.body,
+        timestamp: new Date().toISOString(),
+        notifyName: msg._data.notifyName || 'Cliente WhatsApp'
+    });
 });
 
 client.on('disconnected', (reason) => {
@@ -82,6 +99,13 @@ app.get('/status', (req, res) => {
         qr_code: qrCodeBase64,
         iugu: iugu ? 'CONFIGURED' : 'PENDING'
     });
+});
+
+// --- NOVO: Rota para o CRM buscar novas mensagens ---
+app.get('/whatsapp/messages', (req, res) => {
+    const messages = [...incomingMessagesBuffer];
+    incomingMessagesBuffer = []; // Limpa o buffer após a leitura
+    res.json(messages);
 });
 
 app.get('/whatsapp/check-number/:number', async (req, res) => {

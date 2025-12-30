@@ -1,260 +1,196 @@
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection } from '../services/supabaseClient';
-import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, AlertTriangle, User, Building2, Database, Save, Loader2, Info, ArrowLeft, KeyRound, CloudOff, Clock, UserPlus } from 'lucide-react';
-import { PrivacyPolicy } from '../components/PrivacyPolicy';
+import { useAuth, SUPER_ADMIN_EMAILS } from '../context/AuthContext';
+import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, Database, Loader2, Hash, AlertCircle, Terminal, Building2, User } from 'lucide-react';
+import { testSupabaseConnection, getSupabaseSchema } from '../services/supabaseClient';
 
 export const Login: React.FC = () => {
-  const { login, signUp, joinOrganization, sendRecoveryInvite, currentUser, currentOrganization, logout } = useAuth();
+  const { login, signUp } = useAuth();
   
-  // Setup State
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupForm, setSetupForm] = useState({ url: '', key: '' });
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
-  
-  // Login State
-  const [mode, setMode] = useState<'login' | 'signup' | 'join' | 'recovery'>('login');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
   
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isSubmitLoading, setIsSubmitLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  // Privacy Policy Modal State
-  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [dbInfo, setDbInfo] = useState<{status: string, ok: boolean} | null>(null);
 
   useEffect(() => {
-      const config = getSupabaseConfig();
-      // Se tivermos as credenciais padrão no client, config.url não será vazio.
-      // O setup só aparece se o usuário forçar explicitamente via flag ou se tudo estiver vazio.
-      if (!config.url || !config.key) {
-          setNeedsSetup(true);
-      } else if (localStorage.getItem('nexus_force_setup') === 'true') {
-          setNeedsSetup(true);
-      }
+      const checkDB = async () => {
+          const res = await testSupabaseConnection();
+          setDbInfo({ status: res.message, ok: res.success });
+      };
+      checkDB();
       
-      // Check for remembered email
       const savedEmail = localStorage.getItem('nexus_remember_email');
-      if (savedEmail) {
-          setEmail(savedEmail);
-          setRememberMe(true);
-      }
+      const lastSlug = localStorage.getItem('nexus_last_slug');
+      if (savedEmail) setEmail(savedEmail);
+      if (lastSlug) setOrgSlug(lastSlug);
   }, []);
 
-  if (currentUser && !currentOrganization) {
-      return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-              <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-4" />
-              <p className="text-slate-400 text-sm">Carregando dados da organização...</p>
-          </div>
-      );
-  }
+  const isMasterEmail = SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === email.trim().toLowerCase());
 
-  if (currentUser && currentOrganization?.status === 'pending') {
-      return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center animate-scale-in">
-                  <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                      <Clock size={32} className="text-yellow-600"/>
-                  </div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Empresa em Análise</h2>
-                  <p className="text-slate-500 mb-6">
-                      Sua organização <strong>{currentOrganization.name}</strong> foi criada e aguarda aprovação de um administrador do sistema.
-                  </p>
-                  <div className="flex gap-3 justify-center">
-                      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Verificar</button>
-                      <button onClick={logout} className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition">Sair</button>
-                  </div>
-              </div>
-          </div>
-      );
-  }
-
-  if (currentUser && currentUser.active === false) {
-      return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center animate-scale-in">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <User size={32} className="text-blue-600"/>
-                  </div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Cadastro Pendente</h2>
-                  <p className="text-slate-500 mb-6">
-                      Sua solicitação para entrar na organização foi enviada com sucesso. Aguarde a aprovação do administrador.
-                  </p>
-                  <div className="flex gap-3 justify-center">
-                      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Verificar</button>
-                      <button onClick={logout} className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition">Sair</button>
-                  </div>
-              </div>
-          </div>
-      );
-  }
-
-  const handleSetupSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setError('');
-      setIsTestingConnection(true);
-      saveSupabaseConfig(setupForm.url, setupForm.key);
-      const result = await testSupabaseConnection();
-      if (result.success) {
-          setSuccessMsg("Conexão bem sucedida! Recarregando...");
-          localStorage.removeItem('nexus_force_setup');
-          setTimeout(() => { window.location.reload(); }, 1000);
-      } else {
-          setError(result.message);
-          setIsTestingConnection(false);
-      }
+  const handleCopySQL = () => {
+      navigator.clipboard.writeText(getSupabaseSchema());
+      alert("Script SQL v39.0 copiado! Execute no SQL Editor do Supabase para consertar o banco.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError('');
-      setSuccessMsg('');
-      setLoading(true);
-
-      if (mode === 'login' && rememberMe) {
-          localStorage.setItem('nexus_remember_email', email);
-      }
+      setIsSubmitLoading(true);
 
       try {
-          if (mode === 'recovery') {
-              if (!email) { setError("Digite seu e-mail."); setLoading(false); return; }
-              await sendRecoveryInvite(email);
-              setSuccessMsg("Instruções enviadas para seu e-mail.");
-              setLoading(false);
-              return;
-          }
-
-          if (mode === 'signup') {
-              const result = await signUp(email, password, fullName, companyName);
-              if (result.error) { setError(result.error); setLoading(false); }
-              else { await login(email, password); }
-              return;
-          }
-
-          if (mode === 'join') {
-              const result = await joinOrganization(email, password, fullName, orgSlug);
-              if (result.error) { setError(result.error); setLoading(false); }
-              else { await login(email, password); }
-              return;
-          }
-
-          const result = await login(email, password);
-          if (result.error) {
-              setError(result.error.includes("Invalid login credentials") ? "Email ou senha incorretos." : result.error);
-              setLoading(false);
+          if (mode === 'login') {
+            const finalSlug = isMasterEmail ? (orgSlug || 'softcase') : orgSlug;
+            const result = await login(email, password, finalSlug);
+            if (result.error) {
+                setError(result.error);
+                setIsSubmitLoading(false);
+            } else {
+                localStorage.setItem('nexus_remember_email', email);
+                localStorage.setItem('nexus_last_slug', finalSlug);
+            }
+          } else {
+            const result = await signUp(email, password, fullName, companyName);
+            if (result.error) {
+                setError(result.error);
+                setIsSubmitLoading(false);
+            }
           }
       } catch (err: any) {
-          setError(err.message || "Ocorreu um erro inesperado.");
-          setLoading(false);
+          setError("Erro crítico ao tentar processar requisição.");
+          setIsSubmitLoading(false);
       }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px]"></div>
-      </div>
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{backgroundImage: 'radial-gradient(#3b82f6 1px, transparent 1px)', backgroundSize: '40px 40px'}}></div>
 
-      <div className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col md:flex-row max-w-4xl min-h-[550px] z-10 animate-fade-in">
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full overflow-hidden flex flex-col md:flex-row max-w-4xl min-h-[600px] z-10 animate-fade-in border border-slate-200 dark:border-slate-800">
           
-          <div className="hidden md:flex w-1/2 bg-blue-600 p-12 flex-col justify-between text-white relative overflow-hidden">
+          <div className="hidden md:flex w-1/2 bg-blue-600 p-12 flex-col justify-between text-white relative">
               <div className="relative z-10">
-                  <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center mb-6 shadow-lg">
-                      <span className="text-blue-600 font-bold text-2xl">S</span>
+                  <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center mb-8 shadow-2xl rotate-3">
+                      <span className="text-blue-600 font-black text-4xl">S</span>
                   </div>
-                  <h1 className="text-3xl font-bold mb-2">SOFT-CRM</h1>
-                  <p className="text-blue-100">Gestão corporativa inteligente e integrada.</p>
+                  <h1 className="text-5xl font-black mb-4 tracking-tighter uppercase">Soft Case</h1>
+                  <p className="text-blue-100 text-lg font-medium">Enterprise CRM v39.0</p>
+                  <p className="text-blue-200/60 text-sm mt-2">Segurança Bancária Ativa</p>
               </div>
-              <div className="relative z-10 space-y-4 text-sm">
-                  <div className="flex items-center gap-3"><ShieldCheck size={16}/><span>Segurança Enterprise</span></div>
-                  <div className="flex items-center gap-3"><Lock size={16}/><span>Isolamento de Dados</span></div>
-                  <div className="flex items-center gap-3"><Building2 size={16}/><span>SaaS Multi-tenant</span></div>
+              <div className="relative z-10 space-y-3">
+                  {dbInfo && (
+                      <div className={`p-4 rounded-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-bold ${dbInfo.ok ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-100' : 'bg-amber-500/20 border-amber-400/30 text-amber-100'}`}>
+                          <Database size={16}/>
+                          <span>Cloud Status: {dbInfo.status}</span>
+                      </div>
+                  )}
+                  <div className="flex items-center gap-4 bg-white/10 p-4 rounded-2xl border border-white/10 text-xs font-bold">
+                    <ShieldCheck size={20}/> 
+                    <span>Criptografia de Ponta a Ponta</span>
+                  </div>
               </div>
           </div>
 
-          <div className="w-full md:w-1/2 p-8 md:p-12 relative flex flex-col justify-center">
-              {needsSetup ? (
-                  <div className="animate-fade-in">
-                      <div className="mb-6">
-                          <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Database className="text-emerald-600"/> Setup Manual</h2>
-                          <p className="text-slate-500 text-sm mt-1">Configure um banco de dados customizado.</p>
-                      </div>
-                      <form onSubmit={handleSetupSubmit} className="space-y-4">
-                          <input required type="url" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Supabase URL" value={setupForm.url} onChange={e => setSetupForm({...setupForm, url: e.target.value})} />
-                          <input required type="password" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Anon Key" value={setupForm.key} onChange={e => setSetupForm({...setupForm, key: e.target.value})} />
-                          {error && <p className="text-red-600 text-xs">{error}</p>}
-                          <button type="submit" disabled={isTestingConnection} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg hover:bg-emerald-700 flex items-center justify-center gap-2">
-                              {isTestingConnection ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/> Conectar</>}
-                          </button>
-                          <button type="button" onClick={() => setNeedsSetup(false)} className="w-full text-slate-400 text-xs font-bold hover:underline py-2">Voltar ao Login Padrão</button>
-                      </form>
-                  </div>
-              ) : (
-                  <div className="flex flex-col h-full justify-center">
-                      <div className="mb-6">
-                          <h2 className="text-2xl font-bold text-slate-900">{mode === 'signup' ? 'Nova Conta' : mode === 'recovery' ? 'Recuperar Senha' : 'Acesse sua conta'}</h2>
-                          <p className="text-slate-500 text-sm mt-1">{mode === 'signup' ? 'Crie uma nova organização.' : 'Entre com suas credenciais corporativas.'}</p>
-                      </div>
+          <div className="w-full md:w-1/2 p-8 md:p-14 bg-white dark:bg-slate-900 flex flex-col justify-center">
+              <div className="mb-8">
+                  <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">
+                      {mode === 'login' ? 'Acessar Ambiente' : 'Criar Conta'}
+                  </h2>
+                  <p className="text-slate-500 text-sm mt-2">
+                      {mode === 'login' ? 'Entre na sua instância corporativa.' : 'Cadastre sua empresa no SOFT-CRM.'}
+                  </p>
+              </div>
 
-                      <form onSubmit={handleSubmit} className="space-y-4">
-                          {(mode === 'signup' || mode === 'join') && (
-                              <div className="space-y-4">
-                                  <div className="relative"><User className="absolute left-3 top-3 text-slate-400" size={18}/><input required className="pl-10 w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Seu Nome" value={fullName} onChange={(e) => setFullName(e.target.value)}/></div>
-                                  {mode === 'signup' ? (
-                                      <div className="relative"><Building2 className="absolute left-3 top-3 text-slate-400" size={18}/><input required className="pl-10 w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nome da Empresa" value={companyName} onChange={(e) => setCompanyName(e.target.value)}/></div>
-                                  ) : (
-                                      <div className="relative"><Building2 className="absolute left-3 top-3 text-slate-400" size={18}/><input required className="pl-10 w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Identificador da Empresa (Slug)" value={orgSlug} onChange={(e) => setOrgSlug(e.target.value)}/></div>
-                                  )}
-                              </div>
-                          )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  {mode === 'signup' && (
+                      <>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Razão Social / Empresa</label>
+                            <div className="relative">
+                                <Building2 className="absolute left-4 top-4 text-slate-400" size={20}/>
+                                <input required className="pl-12 w-full border-2 border-slate-100 rounded-2xl py-4 outline-none focus:border-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white font-medium" placeholder="Ex: Softpark Tecnologia" value={companyName} onChange={(e) => setCompanyName(e.target.value)}/>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Seu Nome Completo</label>
+                            <div className="relative">
+                                <User className="absolute left-4 top-4 text-slate-400" size={20}/>
+                                <input required className="pl-12 w-full border-2 border-slate-100 rounded-2xl py-4 outline-none focus:border-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white font-medium" placeholder="Ex: João Silva" value={fullName} onChange={(e) => setFullName(e.target.value)}/>
+                            </div>
+                        </div>
+                      </>
+                  )}
 
-                          <div className="relative"><Mail className="absolute left-3 top-3 text-slate-400" size={18}/><input required type="email" className="pl-10 w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)}/></div>
+                  {mode === 'login' && (
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Identificador da Empresa (Slug)</label>
+                        <div className="relative group">
+                            <Hash className={`absolute left-4 top-4 transition-colors ${isMasterEmail ? 'text-blue-600' : 'text-slate-400'}`} size={20}/>
+                            <input 
+                                required 
+                                className={`pl-12 w-full border-2 rounded-2xl py-4 outline-none transition-all font-bold text-slate-800 dark:text-white dark:bg-slate-800 ${isMasterEmail ? 'border-blue-500 bg-blue-50/50' : 'border-slate-100 focus:border-blue-600 bg-slate-50'}`} 
+                                placeholder="ex: softcase" 
+                                value={orgSlug} 
+                                onChange={(e) => setOrgSlug(e.target.value.toLowerCase().trim())}
+                            />
+                        </div>
+                    </div>
+                  )}
 
-                          {mode !== 'recovery' && (
-                              <div className="relative">
-                                  <Lock className="absolute left-3 top-3 text-slate-400" size={18}/><input required type={showPassword ? "text" : "password"} className="pl-10 w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Sua Senha" value={password} onChange={(e) => setPassword(e.target.value)}/>
-                                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-slate-400">{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
-                              </div>
-                          )}
-
-                          {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded border border-red-100">{error}</div>}
-                          {successMsg && <div className="text-green-700 text-xs bg-green-50 p-2 rounded border border-green-100">{successMsg}</div>}
-
-                          <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition flex items-center justify-center gap-2">
-                              {loading ? <Loader2 className="animate-spin" size={20}/> : <>{mode === 'recovery' ? 'Enviar' : mode === 'signup' ? 'Criar Empresa' : 'Entrar'} <ArrowRight size={18}/></>}
-                          </button>
-
-                          <div className="text-center pt-2">
-                              <button type="button" onClick={() => setShowPrivacyPolicy(true)} className="text-slate-400 text-xs hover:underline flex items-center justify-center gap-1 mx-auto"><ShieldCheck size={12}/> Política de Privacidade</button>
-                          </div>
-                      </form>
-                      
-                      <div className="text-center mt-6 pt-4 border-t border-slate-100 flex flex-col gap-2">
-                          {mode === 'login' ? (
-                              <div className="text-sm space-y-2">
-                                  <button onClick={() => setMode('join')} className="text-blue-600 font-bold hover:underline">Entrar em uma empresa</button>
-                                  <span className="mx-2 text-slate-300">|</span>
-                                  <button onClick={() => setMode('signup')} className="text-blue-600 font-bold hover:underline">Nova organização</button>
-                              </div>
-                          ) : (
-                              <button onClick={() => setMode('login')} className="text-slate-600 font-bold text-sm flex items-center justify-center gap-2"><ArrowLeft size={16}/> Voltar</button>
-                          )}
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">E-mail Corporativo</label>
+                      <div className="relative">
+                          <Mail className="absolute left-4 top-4 text-slate-400" size={20}/>
+                          <input required type="email" className="pl-12 w-full border-2 border-slate-100 rounded-2xl py-4 outline-none focus:border-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white font-medium" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)}/>
                       </div>
                   </div>
-              )}
+
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Senha</label>
+                      <div className="relative">
+                          <Lock className="absolute left-4 top-4 text-slate-400" size={20}/>
+                          <input required type={showPassword ? "text" : "password"} className="pl-12 w-full border-2 border-slate-100 rounded-2xl py-4 outline-none focus:border-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white font-medium" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}/>
+                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-slate-400 hover:text-blue-600 transition">{showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}</button>
+                      </div>
+                  </div>
+
+                  {error && (
+                      <div className="p-4 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-xs font-bold flex flex-col gap-3">
+                          <div className="flex items-center gap-2"><AlertCircle size={16}/> {error}</div>
+                          {isMasterEmail && (
+                              <button type="button" onClick={handleCopySQL} className="bg-red-600 text-white py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-red-700">
+                                  <Terminal size={14}/> COPIAR SQL FIX v39.0
+                              </button>
+                          )}
+                      </div>
+                  )}
+
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitLoading} 
+                    className="w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all bg-slate-900 text-white hover:bg-slate-800 shadow-2xl flex items-center justify-center gap-3 disabled:opacity-50"
+                  >
+                      {isSubmitLoading ? <Loader2 className="animate-spin" size={24}/> : (mode === 'login' ? <>ACESSAR AMBIENTE <ArrowRight size={20}/></> : <>CRIAR ORGANIZAÇÃO <ArrowRight size={20}/></>)}
+                  </button>
+
+                  <div className="pt-4 text-center">
+                      <button 
+                        type="button"
+                        onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+                        className="text-xs font-bold text-blue-600 hover:underline"
+                      >
+                          {mode === 'login' ? 'Ainda não tem conta? Criar nova organização' : 'Já possui conta? Voltar para o Login'}
+                      </button>
+                  </div>
+              </form>
           </div>
       </div>
-      <p className="mt-6 text-slate-600 text-xs opacity-30 font-mono">SOFT-CRM Enterprise • v3.2.0</p>
-      {showPrivacyPolicy && <PrivacyPolicy onClose={() => setShowPrivacyPolicy(false)} />}
     </div>
   );
 };

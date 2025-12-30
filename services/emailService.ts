@@ -36,6 +36,7 @@ export const sendEmail = async (toName: string, toEmail: string, subject: string
         </div>
     `;
 
+    // 1. TENTATIVA VIA SUPABASE (CLOUD REAL)
     if (supabase) {
         try {
             const { data, error } = await supabase.functions.invoke('send-email', {
@@ -46,23 +47,20 @@ export const sendEmail = async (toName: string, toEmail: string, subject: string
                     from: 'Softcase Tecnologia <onboarding@resend.dev>'
                 }
             });
-
-            if (!error) {
-                return { success: true, id: data?.id, method: 'CLOUD' };
-            }
-        } catch (err) {
-            console.warn('Erro ao invocar Edge Function.');
-        }
+            if (!error && data?.id) return { success: true, id: data.id, method: 'CLOUD' };
+        } catch (err) { console.warn('Falha em Cloud Email.'); }
     }
 
+    // 2. TENTATIVA VIA NEXUS BRIDGE (SMTP LOCAL)
     try {
         await sendBridgeEmail(toEmail, subject, htmlContent, fromName);
         return { success: true, message: "Enviado via Servidor Local (SMTP)", method: 'BRIDGE' };
     } catch (bridgeErr: any) {
-        console.log(`[MOCK EMAIL] Para: ${toEmail} | Conteúdo: ${message}`);
+        // 3. FALLBACK: SIMULAÇÃO (MOCK)
+        console.log(`[MOCK EMAIL] Destinatário: ${toEmail} | Título: ${subject}`);
         return { 
             success: true, 
-            warning: "E-mail simulado (Modo demonstração).",
+            warning: "E-mail simulado.",
             method: 'MOCK'
         };
     }

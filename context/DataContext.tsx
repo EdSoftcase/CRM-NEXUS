@@ -1,348 +1,304 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
     Lead, Client, Ticket, Issue, Invoice, Activity, Product, Project, 
     Campaign, MarketingContent, Workflow, ClientDocument, PortalSettings, 
     AuditLog, SystemNotification, ToastMessage, Competitor, MarketTrend, 
     ProspectingHistoryItem, CustomFieldDefinition, WebhookConfig, InboxConversation,
-    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, InboxMessage
+    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, Organization
 } from '../types';
-import { 
-    MOCK_LEADS, MOCK_CLIENTS, MOCK_TICKETS, MOCK_ISSUES, MOCK_INVOICES, 
-    MOCK_ACTIVITIES, MOCK_PRODUCTS, MOCK_PROJECTS, MOCK_CAMPAIGNS, 
-    MOCK_CONTENTS, MOCK_WORKFLOWS, MOCK_DOCUMENTS, MOCK_LOGS, 
-    MOCK_COMPETITORS, MOCK_MARKET_TRENDS, MOCK_CUSTOM_FIELDS, MOCK_WEBHOOKS,
-    MOCK_CONVERSATIONS, MOCK_PROPOSALS, MOCK_CATEGORIES
-} from '../constants';
 import { getSupabase } from '../services/supabaseClient';
+import { useAuth, SUPER_ADMIN_EMAILS } from './AuthContext';
+import { sendEmail } from '../services/emailService';
 
 interface DataContextType {
-  leads: Lead[];
-  clients: Client[];
-  tickets: Ticket[];
-  issues: Issue[];
-  invoices: Invoice[];
-  activities: Activity[];
-  products: Product[];
-  projects: Project[];
-  campaigns: Campaign[];
-  marketingContents: MarketingContent[];
-  workflows: Workflow[];
-  clientDocuments: ClientDocument[];
-  portalSettings: PortalSettings;
-  logs: AuditLog[];
-  notifications: SystemNotification[];
-  toasts: ToastMessage[];
-  competitors: Competitor[];
-  marketTrends: MarketTrend[];
-  prospectingHistory: ProspectingHistoryItem[];
-  disqualifiedProspects: string[];
-  customFields: CustomFieldDefinition[];
-  webhooks: WebhookConfig[];
-  inboxConversations: InboxConversation[];
-  proposals: Proposal[];
-  financialCategories: FinancialCategory[];
-  
-  isSyncing: boolean;
-  lastSyncTime: Date | null;
-  theme: 'light' | 'dark';
-  pushEnabled: boolean;
-
-  refreshData: () => Promise<void>;
-  syncLocalToCloud: () => Promise<void>;
-  toggleTheme: () => void;
-  togglePushNotifications: () => Promise<void>;
-  restoreDefaults: () => void;
-
-  addLead: (user: User | null, lead: Lead) => void;
-  updateLead: (user: User | null, lead: Lead) => void;
+  leads: Lead[]; clients: Client[]; tickets: Ticket[]; issues: Issue[];
+  invoices: Invoice[]; activities: Activity[]; products: Product[];
+  projects: Project[]; campaigns: Campaign[]; marketingContents: MarketingContent[];
+  workflows: Workflow[]; clientDocuments: ClientDocument[]; portalSettings: PortalSettings;
+  logs: AuditLog[]; notifications: SystemNotification[]; toasts: ToastMessage[];
+  competitors: Competitor[]; marketTrends: MarketTrend[]; prospectingHistory: ProspectingHistoryItem[];
+  disqualifiedProspects: string[]; customFields: CustomFieldDefinition[]; webhooks: WebhookConfig[];
+  inboxConversations: InboxConversation[]; proposals: Proposal[]; financialCategories: FinancialCategory[];
+  allOrganizations: Organization[];
+  isSyncing: boolean; lastSyncTime: Date | null; theme: 'light' | 'dark'; pushEnabled: boolean;
+  refreshData: () => Promise<void>; syncLocalToCloud: () => Promise<void>;
+  toggleTheme: () => void; togglePushNotifications: () => Promise<void>; restoreDefaults: () => void;
+  addLead: (user: User | null, lead: Lead) => void; updateLead: (user: User | null, lead: Lead) => void;
   updateLeadStatus: (user: User | null, leadId: string, status: LeadStatus) => void;
-
-  addClient: (user: User | null, client: Client) => void;
-  updateClient: (user: User | null, client: Client) => void;
+  addClient: (user: User | null, client: Client) => void; updateClient: (user: User | null, client: Client) => void;
   removeClient: (user: User | null, clientId: string, reason: string) => void;
   addClientsBulk: (user: User | null, clients: Client[]) => void;
   updateClientContact: (client: Client, activity?: Activity) => void;
-
-  addTicket: (user: User | null, ticket: Ticket) => void;
-  updateTicket: (user: User | null, ticketId: string, data: Partial<Ticket>) => void;
-
-  addInvoice: (user: User | null, invoice: Invoice) => void;
-  updateInvoice: (user: User | null, invoice: Invoice) => void;
+  addTicket: (user: User | null, ticket: Ticket) => void; updateTicket: (user: User | null, ticketId: string, data: Partial<Ticket>) => void;
+  addInvoice: (user: User | null, invoice: Invoice) => void; updateInvoice: (user: User | null, invoice: Invoice) => void;
   updateInvoiceStatus: (user: User | null, invoiceId: string, status: InvoiceStatus) => void;
   addInvoicesBulk: (user: User | null, invoices: Invoice[]) => void;
-
-  addActivity: (user: User | null, activity: Activity) => void;
-  updateActivity: (user: User | null, activity: Activity) => void;
+  addActivity: (user: User | null, activity: Activity) => void; updateActivity: (user: User | null, activity: Activity) => void;
   toggleActivity: (user: User | null, activityId: string) => void;
-
-  addProduct: (user: User | null, product: Product) => void;
-  updateProduct: (user: User | null, product: Product) => void;
+  addProduct: (user: User | null, product: Product) => void; updateProduct: (user: User | null, product: Product) => void;
   removeProduct: (user: User | null, productId: string, reason?: string) => void;
-
-  addProject: (user: User | null, project: Project) => void;
-  updateProject: (user: User | null, project: Project) => void;
+  addProject: (user: User | null, project: Project) => void; updateProject: (user: User | null, project: Project) => void;
   deleteProject: (user: User | null, projectId: string) => void;
-
-  addIssue: (user: User | null, issue: Issue) => void;
-  updateIssue: (user: User | null, issueId: string, data: Partial<Issue>) => void;
+  addIssue: (user: User | null, issue: Issue) => void; updateIssue: (user: User | null, issueId: string, data: Partial<Issue>) => void;
   addIssueNote: (user: User | null, issueId: string, text: string) => void;
-
-  addCampaign: (user: User | null, campaign: Campaign) => void;
-  updateCampaign: (user: User | null, campaign: Campaign) => void;
-
+  addCampaign: (user: User | null, campaign: Campaign) => void; updateCampaign: (user: User | null, campaign: Campaign) => void;
   addMarketingContent: (user: User | null, content: MarketingContent) => void;
   updateMarketingContent: (user: User | null, content: MarketingContent) => void;
   deleteMarketingContent: (user: User | null, contentId: string) => void;
-
   addWorkflow: (user: User | null, workflow: Workflow) => void;
   updateWorkflow: (user: User | null, workflow: Workflow) => void;
   deleteWorkflow: (user: User | null, workflowId: string) => void;
   triggerAutomation: (trigger: TriggerType, data: any) => void;
-
   addClientDocument: (user: User | null, doc: ClientDocument) => void;
   removeClientDocument: (user: User | null, docId: string) => void;
-
   updatePortalSettings: (user: User | null, settings: PortalSettings) => void;
-
   addLog: (log: AuditLog) => void;
-
+  logAction: (user: User | null, action: string, details: string, module: string) => void;
   addSystemNotification: (title: string, message: string, type?: 'info'|'warning'|'success'|'alert', relatedTo?: string) => void;
   markNotificationRead: (id: string) => void;
-
-  addToast: (message: Omit<ToastMessage, 'id'>) => void;
-  removeToast: (id: string) => void;
-
+  addToast: (message: Omit<ToastMessage, 'id'>) => void; removeToast: (id: string) => void;
   addCompetitor: (user: User | null, competitor: Competitor) => void;
   updateCompetitor: (user: User | null, competitor: Competitor) => void;
   deleteCompetitor: (user: User | null, competitorId: string) => void;
-
   setMarketTrends: (trends: MarketTrend[]) => void;
-
   addProspectingHistory: (item: ProspectingHistoryItem) => void;
-  clearProspectingHistory: () => void;
-  disqualifyProspect: (companyName: string) => void;
-
-  addCustomField: (field: CustomFieldDefinition) => void;
-  deleteCustomField: (id: string) => void;
-
-  addWebhook: (webhook: WebhookConfig) => void;
-  updateWebhook: (webhook: WebhookConfig) => void;
+  clearProspectingHistory: () => void; disqualifyProspect: (companyName: string) => void;
+  addCustomField: (field: CustomFieldDefinition) => void; deleteCustomField: (id: string) => void;
+  addWebhook: (webhook: WebhookConfig) => void; updateWebhook: (webhook: WebhookConfig) => void;
   deleteWebhook: (id: string) => void;
-  
   addProposal: (user: User | null, proposal: Proposal) => void;
   updateProposal: (user: User | null, proposal: Proposal) => void;
   removeProposal: (user: User | null, id: string, reason: string) => void;
-
   addFinancialCategory: (category: FinancialCategory) => void;
   deleteFinancialCategory: (id: string) => void;
-
-  addInboxInteraction: (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier?: string) => void;
+  addInboxInteraction: (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier?: string, sender?: 'user' | 'agent' | 'system') => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// --- UTILS: CASE CONVERTER ---
-const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-const toCamelCase = (str: string) => str.replace(/([-_][a-z])/ig, ($1) => $1.toUpperCase().replace('-', '').replace('_', ''));
-
-const convertKeys = (obj: any, converter: (s: string) => string): any => {
-    if (obj === null || obj === undefined) return obj;
-    if (Array.isArray(obj)) return obj.map(v => convertKeys(v, converter));
-    if (typeof obj === 'object' && obj.constructor === Object) {
-        return Object.keys(obj).reduce((acc, key) => ({
-            ...acc, [converter(key)]: convertKeys(obj[key], converter)
-        }), {});
+const mapKeysToApp = (obj: any): any => {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(mapKeysToApp);
+    const mapped: any = {};
+    for (const key in obj) {
+        let newKey = key;
+        if (key === 'organization_id') newKey = 'organizationId';
+        else if (key === 'created_at') newKey = 'createdAt';
+        else if (key === 'user_id') newKey = 'userId';
+        else if (key === 'user_name') newKey = 'userName';
+        else if (key === 'last_run') newKey = 'lastRun';
+        else if (key === 'last_analysis') newKey = 'lastAnalysis';
+        else if (key === 'company_name') newKey = 'companyName';
+        else if (key === 'match_score') newKey = 'matchScore';
+        else if (key === 'suggest_approach') newKey = 'suggestedApproach';
+        else if (key === 'contact_person') newKey = 'contactPerson';
+        else if (key === 'health_score') newKey = 'healthScore';
+        else if (key === 'last_contact') newKey = 'lastContact';
+        else if (key === 'due_date') newKey = 'dueDate';
+        else if (key === 'related_to') newKey = 'relatedTo';
+        else if (key === 'total_special_price') newKey = 'totalSpecialPrice';
+        else if (key === 'total_table_price') newKey = 'totalTablePrice';
+        else if (key === 'special_price') newKey = 'specialPrice';
+        else if (key === 'table_price') newKey = 'tablePrice';
+        else if (key === 'special_day') newKey = 'specialDay';
+        else if (key === 'pricing_table') newKey = 'pricingTable';
+        else if (key === 'cost_center_id') newKey = 'costCenterId';
+        mapped[newKey] = mapKeysToApp(obj[key]);
     }
-    return obj;
+    return mapped;
+};
+
+const mapKeysToDb = (obj: any): any => {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(mapKeysToDb);
+    const mapped: any = {};
+    for (const key in obj) {
+        let newKey = key;
+        if (key === 'organizationId') newKey = 'organization_id';
+        else if (key === 'createdAt') newKey = 'created_at';
+        else if (key === 'userId') newKey = 'user_id';
+        else if (key === 'userName') newKey = 'user_name';
+        else if (key === 'lastRun') newKey = 'last_run';
+        else if (key === 'lastAnalysis') newKey = 'last_analysis';
+        else if (key === 'companyName') newKey = 'company_name';
+        else if (key === 'matchScore') newKey = 'match_score';
+        else if (key === 'suggestedApproach') newKey = 'suggest_approach';
+        else if (key === 'contactPerson') newKey = 'contact_person';
+        else if (key === 'healthScore') newKey = 'health_score';
+        else if (key === 'lastContact') newKey = 'last_contact';
+        else if (key === 'dueDate') newKey = 'due_date';
+        else if (key === 'relatedTo') newKey = 'related_to';
+        else if (key === 'totalSpecialPrice') newKey = 'total_special_price';
+        else if (key === 'totalTablePrice') newKey = 'total_table_price';
+        else if (key === 'specialPrice') newKey = 'special_price';
+        else if (key === 'tablePrice') newKey = 'table_price';
+        else if (key === 'specialDay') newKey = 'special_day';
+        else if (key === 'pricingTable') newKey = 'pricing_table';
+        else if (key === 'costCenterId') newKey = 'cost_center_id';
+        mapped[newKey] = mapKeysToDb(obj[key]);
+    }
+    return mapped;
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [leads, setLeads] = useState<Lead[]>(() => JSON.parse(localStorage.getItem('nexus_leads') || '[]') || MOCK_LEADS);
-    const [clients, setClients] = useState<Client[]>(() => JSON.parse(localStorage.getItem('nexus_clients') || '[]') || MOCK_CLIENTS);
-    const [tickets, setTickets] = useState<Ticket[]>(() => JSON.parse(localStorage.getItem('nexus_tickets') || '[]') || MOCK_TICKETS);
-    const [issues, setIssues] = useState<Issue[]>(() => JSON.parse(localStorage.getItem('nexus_issues') || '[]') || MOCK_ISSUES);
-    const [invoices, setInvoices] = useState<Invoice[]>(() => JSON.parse(localStorage.getItem('nexus_invoices') || '[]') || MOCK_INVOICES);
-    const [activities, setActivities] = useState<Activity[]>(() => JSON.parse(localStorage.getItem('nexus_activities') || '[]') || MOCK_ACTIVITIES);
-    const [products, setProducts] = useState<Product[]>(() => JSON.parse(localStorage.getItem('nexus_products') || '[]') || MOCK_PRODUCTS);
-    const [projects, setProjects] = useState<Project[]>(() => JSON.parse(localStorage.getItem('nexus_projects') || '[]') || MOCK_PROJECTS);
-    const [campaigns, setCampaigns] = useState<Campaign[]>(() => JSON.parse(localStorage.getItem('nexus_campaigns') || '[]') || MOCK_CAMPAIGNS);
-    const [marketingContents, setMarketingContents] = useState<MarketingContent[]>(() => JSON.parse(localStorage.getItem('nexus_contents') || '[]') || MOCK_CONTENTS);
-    const [workflows, setWorkflows] = useState<Workflow[]>(() => JSON.parse(localStorage.getItem('nexus_workflows') || '[]') || MOCK_WORKFLOWS);
-    const [clientDocuments, setClientDocuments] = useState<ClientDocument[]>(() => JSON.parse(localStorage.getItem('nexus_documents') || '[]') || MOCK_DOCUMENTS);
-    const [logs, setLogs] = useState<AuditLog[]>(() => JSON.parse(localStorage.getItem('nexus_logs') || '[]') || MOCK_LOGS);
-    const [competitors, setCompetitors] = useState<Competitor[]>(() => JSON.parse(localStorage.getItem('nexus_competitors') || '[]') || MOCK_COMPETITORS);
-    const [marketTrends, setMarketTrendsState] = useState<MarketTrend[]>(() => JSON.parse(localStorage.getItem('nexus_market_trends') || '[]') || MOCK_MARKET_TRENDS);
-    const [proposals, setProposals] = useState<Proposal[]>(() => JSON.parse(localStorage.getItem('nexus_proposals') || '[]') || MOCK_PROPOSALS);
-    const [portalSettings, setPortalSettings] = useState<PortalSettings>(() => JSON.parse(localStorage.getItem('nexus_portal_settings') || '{}') || { organizationId: 'org-1', portalName: 'Portal do Cliente', primaryColor: '#4f46e5', allowInvoiceDownload: true, allowTicketCreation: true });
-    const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>(() => JSON.parse(localStorage.getItem('nexus_custom_fields') || '[]') || MOCK_CUSTOM_FIELDS);
-    const [webhooks, setWebhooks] = useState<WebhookConfig[]>(() => JSON.parse(localStorage.getItem('nexus_webhooks') || '[]') || MOCK_WEBHOOKS);
-    const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>(() => JSON.parse(localStorage.getItem('nexus_financial_categories') || '[]') || MOCK_CATEGORIES);
-    
+    const { currentUser } = useAuth();
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [tickets, setTickets] = useState<Ticket[]>([]);
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [workflows, setWorkflows] = useState<Workflow[]>([]);
+    const [logs, setLogs] = useState<AuditLog[]>([]);
+    const [competitors, setCompetitors] = useState<Competitor[]>([]);
+    const [proposals, setProposals] = useState<Proposal[]>([]);
+    const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+    const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+    const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
+    const [prospectingHistory, setProspectingHistory] = useState<ProspectingHistoryItem[]>([]);
+    const [disqualifiedProspects, setDisqualifiedProspects] = useState<string[]>([]);
     const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+    const [marketTrends, setMarketTrends] = useState<MarketTrend[]>([]);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-    const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('nexus_theme') as 'light'|'dark') || 'light');
-    const [pushEnabled, setPushEnabled] = useState(() => localStorage.getItem('nexus_push_enabled') === 'true');
-    const [prospectingHistory, setProspectingHistory] = useState<ProspectingHistoryItem[]>(() => JSON.parse(localStorage.getItem('nexus_prospecting_history') || '[]'));
-    const [disqualifiedProspects, setDisqualifiedProspects] = useState<string[]>(() => JSON.parse(localStorage.getItem('nexus_disqualified_prospects') || '[]'));
-    const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(() => JSON.parse(localStorage.getItem('nexus_inbox') || '[]') || MOCK_CONVERSATIONS);
+    const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('soft_theme') as 'light'|'dark') || 'light');
 
     const refreshData = useCallback(async () => {
+        const sb = getSupabase();
+        if (!sb || !currentUser) return;
         setIsSyncing(true);
-        const supabase = getSupabase();
-        if (!supabase) { setLastSyncTime(new Date()); setIsSyncing(false); return; }
+        const userEmail = (currentUser.email || '').toLowerCase().trim();
+        const isMaster = SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === userEmail);
         try {
-            const tables = ['leads', 'clients', 'tickets', 'invoices', 'activities', 'products', 'projects', 'competitors', 'audit_logs', 'custom_fields', 'webhooks', 'proposals', 'financial_categories'];
-            const promises = tables.map(t => supabase.from(t).select('*'));
-            const results = await Promise.allSettled(promises);
-            const setters: any = { leads: setLeads, clients: setClients, tickets: setTickets, invoices: setInvoices, activities: setActivities, products: setProducts, projects: setProjects, competitors: setCompetitors, audit_logs: setLogs, custom_fields: setCustomFields, webhooks: setWebhooks, proposals: setProposals, financial_categories: setFinancialCategories };
+            const tables = ['leads', 'clients', 'tickets', 'invoices', 'activities', 'products', 'projects', 'workflows', 'competitors', 'proposals', 'custom_fields', 'webhooks', 'prospecting_history', 'disqualified_prospects', 'audit_logs', 'market_trends'];
+            if (isMaster) tables.push('organizations');
+            const results = await Promise.allSettled(tables.map(t => {
+                let query = sb.from(t).select('*');
+                if (!isMaster && t !== 'organizations') query = query.eq('organization_id', currentUser.organizationId);
+                if (t === 'audit_logs') query = query.order('timestamp', { ascending: false }).limit(100);
+                return query;
+            }));
+            const setters: any = { 
+                leads: setLeads, clients: setClients, tickets: setTickets, invoices: setInvoices, 
+                activities: setActivities, products: setProducts, projects: setProjects, 
+                workflows: setWorkflows, competitors: setCompetitors, proposals: setProposals, 
+                organizations: setAllOrganizations, custom_fields: setCustomFields, 
+                webhooks: setWebhooks, prospecting_history: setProspectingHistory, 
+                audit_logs: setLogs, market_trends: setMarketTrends,
+                disqualified_prospects: (data: any[]) => setDisqualifiedProspects(data.map(d => d.company_name))
+            };
             results.forEach((res, idx) => {
                 const tableName = tables[idx];
                 if (res.status === 'fulfilled' && res.value.data) {
-                    const data = convertKeys(res.value.data, toCamelCase);
-                    setters[tableName](data);
+                    setters[tableName](mapKeysToApp(res.value.data));
                 }
             });
             setLastSyncTime(new Date());
         } catch (error: any) { console.error("Sync Failure", error); } finally { setIsSyncing(false); }
-    }, []);
+    }, [currentUser]);
 
-    useEffect(() => { refreshData(); }, [refreshData]);
+    useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
 
     const dbUpsert = async (table: string, data: any) => {
-        const supabase = getSupabase();
-        if (!supabase) return;
+        const sb = getSupabase();
+        if (!sb || !currentUser) return;
         try {
-            const payload = convertKeys(data, toSnakeCase);
-            const { error } = await supabase.from(table).upsert(payload);
-            if (error) throw error;
-        } catch (e: any) { console.error(`DB Upsert Error [${table}]:`, e.message || e); }
+            const payload = mapKeysToDb({ ...data, organizationId: currentUser.organizationId });
+            await sb.from(table).upsert(payload);
+        } catch (e) { console.error(`Upsert fail on ${table}`, e); }
     };
 
-    const dbDelete = async (table: string, id: string) => {
-        const supabase = getSupabase();
-        if (!supabase) return;
-        try { await supabase.from(table).delete().eq('id', id); } catch (e) { console.warn(`DB Delete Error [${table}]`, e); }
-    };
-
-    // PERSISTÊNCIA ADICIONAL PARA O INBOX
-    useEffect(() => { localStorage.setItem('nexus_inbox', JSON.stringify(inboxConversations)); }, [inboxConversations]);
-
-    const addInboxInteraction = (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier: string = '') => {
-        const timestamp = new Date().toISOString();
-        const newMessage: InboxMessage = { id: `MSG-${Date.now()}`, text, sender: 'agent', timestamp };
-
-        setInboxConversations(prev => {
-            const existingIdx = prev.findIndex(c => c.contactName === contactName && c.type === type);
-            if (existingIdx > -1) {
-                const updated = [...prev];
-                updated[existingIdx] = {
-                    ...updated[existingIdx],
-                    lastMessage: text,
-                    lastMessageAt: timestamp,
-                    messages: [...updated[existingIdx].messages, newMessage]
-                };
-                return updated;
-            } else {
-                const newConvo: InboxConversation = {
-                    id: `CONV-${Date.now()}`,
-                    contactName,
-                    contactIdentifier: contactIdentifier || 'Contato Direto',
-                    type,
-                    lastMessage: text,
-                    lastMessageAt: timestamp,
-                    unreadCount: 0,
-                    status: 'Open',
-                    messages: [newMessage]
-                };
-                return [newConvo, ...prev];
+    const triggerAutomation = async (trigger: TriggerType, data: any) => {
+        const matchingWorkflows = workflows.filter(w => w.active && w.trigger === trigger);
+        for (const wf of matchingWorkflows) {
+            const updatedWf = { ...wf, runs: wf.runs + 1, lastRun: new Date().toISOString() };
+            setWorkflows(prev => prev.map(w => w.id === wf.id ? updatedWf : w));
+            await dbUpsert('workflows', updatedWf);
+            for (const action of wf.actions) {
+                if (action.type === 'send_email') {
+                    const recipientEmail = data.email || (data.metadata?.email);
+                    if (recipientEmail) {
+                        const personalize = (text: string) => text.replace('[NOME]', (data.name || 'Cliente').split(' ')[0]).replace('[EMPRESA]', data.company || data.customer || 'Sua Empresa');
+                        await sendEmail(data.name || data.customer || 'Contato', recipientEmail, "Nexus Cloud: Automação Ativa", personalize(action.config.template || ""), currentUser?.name || 'Sistema');
+                    }
+                }
             }
-        });
-    };
-
-    const addLead = (user: User | null, lead: Lead) => { setLeads(prev => [...(prev || []), lead]); dbUpsert('leads', lead); };
-    const updateLead = (user: User | null, lead: Lead) => { setLeads(prev => (prev || []).map(l => l.id === lead.id ? lead : l)); dbUpsert('leads', lead); };
-    const updateLeadStatus = (user: User | null, leadId: string, status: LeadStatus) => { const lead = leads.find(l => l.id === leadId); if (lead) { const updatedLead = { ...lead, status }; updateLead(user, updatedLead); } };
-    const addClient = (user: User | null, client: Client) => { setClients(prev => [...(prev || []), client]); dbUpsert('clients', client); };
-    const updateClient = (user: User | null, client: Client) => { setClients(prev => (prev || []).map(c => c.id === client.id ? client : c)); dbUpsert('clients', client); };
-    const removeClient = (user: User | null, clientId: string, reason: string) => { setClients(prev => (prev || []).filter(c => c.id !== clientId)); dbDelete('clients', clientId); };
-    const addClientsBulk = async (user: User | null, newClients: Client[]) => {
-        setClients(prev => [...(prev || []), ...newClients]);
-        const supabase = getSupabase();
-        if (supabase) {
-            try {
-                const payloads = convertKeys(newClients.map(c => ({ ...c, organizationId: user?.organizationId })), toSnakeCase);
-                await supabase.from('clients').upsert(payloads);
-                addSystemNotification("Sucesso", "Importação sincronizada.", "success");
-            } catch (e: any) { console.error("Bulk Sync Error:", e); }
         }
     };
-    const updateClientContact = (client: Client, activity?: Activity) => { const updatedClient = { ...client, lastContact: new Date().toISOString() }; setClients(prev => (prev || []).map(c => c.id === client.id ? updatedClient : c)); dbUpsert('clients', updatedClient); if (activity) addActivity(null, activity); };
-    const addTicket = (user: User | null, ticket: Ticket) => { setTickets(prev => [...(prev || []), ticket]); dbUpsert('tickets', ticket); };
-    const updateTicket = (user: User | null, ticketId: string, data: Partial<Ticket>) => { setTickets(prev => (prev || []).map(t => t.id === ticketId ? { ...t, ...data } : t)); const ticket = tickets.find(t => t.id === ticketId); if (ticket) dbUpsert('tickets', { ...ticket, ...data }); };
-    const addInvoice = (user: User | null, invoice: Invoice) => { setInvoices(prev => [...(prev || []), invoice]); dbUpsert('invoices', invoice); };
-    const updateInvoice = (user: User | null, invoice: Invoice) => { setInvoices(prev => (prev || []).map(i => i.id === invoice.id ? invoice : i)); dbUpsert('invoices', invoice); };
-    const updateInvoiceStatus = (user: User | null, invoiceId: string, status: InvoiceStatus) => { setInvoices(prev => (prev || []).map(i => i.id === invoiceId ? { ...i, status } : i)); const invoice = invoices.find(i => i.id === invoiceId); if (invoice) dbUpsert('invoices', { ...invoice, status }); };
-    const addInvoicesBulk = (user: User | null, newInvoices: Invoice[]) => { setInvoices(prev => [...(prev || []), ...newInvoices]); newInvoices.forEach(i => dbUpsert('invoices', i)); };
-    const addActivity = (user: User | null, activity: Activity) => { setActivities(prev => [activity, ...(prev || [])]); dbUpsert('activities', activity); };
-    const updateActivity = (user: User | null, activity: Activity) => { setActivities(prev => (prev || []).map(a => a.id === activity.id ? activity : a)); dbUpsert('activities', activity); };
-    const toggleActivity = (user: User | null, activityId: string) => { setActivities(prev => (prev || []).map(a => { if (a.id === activityId) { const updated = { ...a, completed: !a.completed }; dbUpsert('activities', updated); return updated; } return a; })); };
-    const addProduct = (user: User | null, product: Product) => { setProducts(prev => [...(prev || []), product]); dbUpsert('products', product); };
-    const updateProduct = (user: User | null, product: Product) => { setProducts(prev => (prev || []).map(p => p.id === product.id ? product : p)); dbUpsert('products', product); };
-    const removeProduct = (user: User | null, productId: string) => { setProducts(prev => (prev || []).filter(p => p.id !== productId)); dbDelete('products', productId); };
-    const addProject = (user: User | null, project: Project) => { setProjects(prev => [...(prev || []), project]); dbUpsert('projects', project); };
-    const updateProject = (user: User | null, project: Project) => { setProjects(prev => (prev || []).map(p => p.id === project.id ? project : p)); dbUpsert('projects', project); };
-    const deleteProject = (user: User | null, projectId: string) => { setProjects(prev => (prev || []).filter(p => p.id !== projectId)); dbDelete('projects', projectId); };
-    const addIssue = (user: User | null, issue: Issue) => { setIssues(prev => [...(prev || []), issue]); dbUpsert('issues', issue); };
-    const updateIssue = (user: User | null, issueId: string, data: Partial<Issue>) => { setIssues(prev => (prev || []).map(i => i.id === issueId ? { ...i, ...data } : i)); const issue = issues.find(i => i.id === issueId); if(issue) dbUpsert('issues', {...issue, ...data}); };
-    const addIssueNote = (user: User | null, issueId: string, text: string) => { setIssues(prev => (prev || []).map(i => { if (i.id === issueId) { const note = { id: `note-${Date.now()}`, text, author: user?.name || 'Unknown', created_at: new Date().toISOString() }; return { ...i, notes: [...i.notes, note] }; } return i; })); };
-    const addCampaign = (user: User | null, campaign: Campaign) => { setCampaigns(prev => [...(prev || []), campaign]); };
-    const updateCampaign = (user: User | null, campaign: Campaign) => { setCampaigns(prev => (prev || []).map(c => c.id === campaign.id ? campaign : c)); };
-    const addMarketingContent = (user: User | null, content: MarketingContent) => { setMarketingContents(prev => [...(prev || []), content]); };
-    const updateMarketingContent = (user: User | null, content: MarketingContent) => { setMarketingContents(prev => (prev || []).map(c => c.id === content.id ? content : c)); };
-    const deleteMarketingContent = (user: User | null, contentId: string) => { setMarketingContents(prev => (prev || []).filter(c => c.id !== contentId)); };
-    const addWorkflow = (user: User | null, workflow: Workflow) => { setWorkflows(prev => [...(prev || []), workflow]); };
-    const updateWorkflow = (user: User | null, workflow: Workflow) => { setWorkflows(prev => (prev || []).map(w => w.id === workflow.id ? workflow : w)); };
-    const deleteWorkflow = (user: User | null, workflowId: string) => { setWorkflows(prev => (prev || []).filter(w => w.id !== workflowId)); };
-    const triggerAutomation = (trigger: TriggerType, data: any) => { /* RPA simulation */ };
-    const addClientDocument = (user: User | null, doc: ClientDocument) => { setClientDocuments(prev => [...(prev || []), doc]); dbUpsert('client_documents', doc); };
-    const removeClientDocument = (user: User | null, docId: string) => { setClientDocuments(prev => (prev || []).filter(d => d.id !== docId)); dbDelete('client_documents', docId); };
-    const updatePortalSettings = (user: User | null, settings: PortalSettings) => { setPortalSettings(settings); };
-    const addLog = (log: AuditLog) => { setLogs(prev => [log, ...(prev || [])]); dbUpsert('audit_logs', log); };
-    const addSystemNotification = (title: string, message: string, type: 'info'|'warning'|'success'|'alert'|'info' = 'info', relatedTo?: string) => { const notif: SystemNotification = { id: `NOTIF-${Date.now()}`, title, message, type, timestamp: new Date().toISOString(), read: false, relatedTo, organizationId: 'org-1' }; setNotifications(prev => [notif, ...(prev || [])]); addToast({ title, message, type }); };
-    const markNotificationRead = (id: string) => { setNotifications(prev => (prev || []).map(n => n.id === id ? { ...n, read: true } : n)); };
-    const addToast = (message: Omit<ToastMessage, 'id'>) => { const id = `TOAST-${Date.now()}`; setToasts(prev => [...(prev || []), { ...message, id }]); };
-    const removeToast = (id: string) => { setToasts(prev => (prev || []).filter(t => t.id !== id)); };
-    const addCompetitor = (user: User | null, competitor: Competitor) => { setCompetitors(prev => [...(prev || []), competitor]); dbUpsert('competitors', competitor); };
-    const updateCompetitor = (user: User | null, competitor: Competitor) => { setCompetitors(prev => (prev || []).map(c => c.id === competitor.id ? competitor : c)); dbUpsert('competitors', competitor); };
-    const deleteCompetitor = (user: User | null, competitorId: string) => { setCompetitors(prev => (prev || []).filter(c => c.id !== competitorId)); dbDelete('competitors', competitorId); };
-    const setMarketTrends = (trends: MarketTrend[]) => { setMarketTrendsState(trends); };
-    const addProspectingHistory = (item: ProspectingHistoryItem) => { setProspectingHistory(prev => [item, ...(prev || [])].slice(0, 50)); dbUpsert('prospecting_history', item); };
-    const clearProspectingHistory = () => setProspectingHistory([]);
-    const disqualifyProspect = (companyName: string) => { setDisqualifiedProspects(prev => [...(prev || []), companyName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")]); };
-    const addCustomField = (field: CustomFieldDefinition) => { setCustomFields(prev => [...(prev || []), field]); dbUpsert('custom_fields', field); };
-    const deleteCustomField = (id: string) => { setCustomFields(prev => (prev || []).filter(f => f.id !== id)); dbDelete('custom_fields', id); };
-    const addWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => [...(prev || []), webhook]); dbUpsert('webhooks', webhook); };
-    const updateWebhook = (webhook: WebhookConfig) => { setWebhooks(prev => (prev || []).map(w => w.id === webhook.id ? webhook : w)); dbUpsert('webhooks', webhook); };
-    const deleteWebhook = (id: string) => { setWebhooks(prev => (prev || []).filter(w => w.id !== id)); dbDelete('webhooks', id); };
-    
-    const addProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => [...(prev || []), proposal]); dbUpsert('proposals', proposal); };
-    const updateProposal = (user: User | null, proposal: Proposal) => { setProposals(prev => (prev || []).map(p => p.id === proposal.id ? proposal : p)); dbUpsert('proposals', proposal); };
-    const removeProposal = (user: User | null, id: string, reason: string) => { setProposals(prev => (prev || []).filter(p => p.id !== id)); dbDelete('proposals', id); };
-    const addFinancialCategory = (category: FinancialCategory) => { setFinancialCategories(prev => [...(prev || []), category]); dbUpsert('financial_categories', category); };
-    const deleteFinancialCategory = (id: string) => { setFinancialCategories(prev => (prev || []).filter(c => c.id !== id)); dbDelete('financial_categories', id); };
 
-    const syncLocalToCloud = async () => { await refreshData(); };
+    // Fix: Declaring toggleTheme and its effect to resolve shorthand property error and ensure theme persistence
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
-    const togglePushNotifications = async () => { if (!('Notification' in window)) return; const permission = await Notification.requestPermission(); if (permission === 'granted') { setPushEnabled(true); localStorage.setItem('nexus_push_enabled', 'true'); } };
-    const restoreDefaults = () => { if(confirm("Apagar tudo e restaurar demos?")) { localStorage.clear(); window.location.reload(); } };
+
+    useEffect(() => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        localStorage.setItem('soft_theme', theme);
+    }, [theme]);
 
     return (
         <DataContext.Provider value={{
-            leads: leads || [], clients: clients || [], tickets: tickets || [], issues: issues || [], invoices: invoices || [], activities: activities || [], products: products || [], projects: projects || [], campaigns: campaigns || [], marketingContents: marketingContents || [], workflows: workflows || [], clientDocuments: clientDocuments || [], portalSettings, logs: logs || [], notifications: notifications || [], toasts: toasts || [], competitors: competitors || [], marketTrends: marketTrends || [], prospectingHistory: prospectingHistory || [], disqualifiedProspects: disqualifiedProspects || [], customFields: customFields || [], webhooks: webhooks || [], inboxConversations: inboxConversations || [], proposals: proposals || [], financialCategories: financialCategories || [],
-            isSyncing, lastSyncTime, theme, pushEnabled, refreshData, syncLocalToCloud, toggleTheme, togglePushNotifications, restoreDefaults, addLead, updateLead, updateLeadStatus, addClient, updateClient, removeClient, addClientsBulk, updateClientContact, addTicket, updateTicket, addInvoice, updateInvoice, updateInvoiceStatus, addInvoicesBulk, addActivity, updateActivity, toggleActivity, addProduct, updateProduct, removeProduct, addProject, updateProject, deleteProject, addIssue, updateIssue, addIssueNote, addCampaign, updateCampaign, addMarketingContent, updateMarketingContent, deleteMarketingContent, addWorkflow, updateWorkflow, deleteWorkflow, triggerAutomation, addClientDocument, removeClientDocument, updatePortalSettings, addLog, addSystemNotification, markNotificationRead, addToast, removeToast, addCompetitor, updateCompetitor, deleteCompetitor, setMarketTrends, addProspectingHistory, clearProspectingHistory, disqualifyProspect, addCustomField, deleteCustomField, addWebhook, updateWebhook, deleteWebhook, addProposal, updateProposal, removeProposal, addFinancialCategory, deleteFinancialCategory, addInboxInteraction
+            leads, clients, tickets, issues: [], invoices, activities, products, projects, campaigns: [], marketingContents: [], workflows, clientDocuments: [], portalSettings: {} as any, logs, notifications, toasts, competitors, marketTrends, prospectingHistory, disqualifiedProspects, customFields, webhooks, inboxConversations: [], proposals, financialCategories: [], allOrganizations,
+            isSyncing, lastSyncTime, theme, pushEnabled: false, refreshData, syncLocalToCloud: refreshData, toggleTheme, restoreDefaults: () => {}, 
+            addLead: async (u,l) => { setLeads(p=>[...p,l]); await dbUpsert('leads', l); triggerAutomation('lead_created', l); },
+            updateLead: async (u,l) => { setLeads(p=>p.map(x=>x.id===l.id?l:x)); await dbUpsert('leads', l); },
+            updateLeadStatus: async (u,id,s) => { const l = leads.find(x=>x.id===id); if(l){ const n = {...l, status: s}; setLeads(p=>p.map(x=>x.id===id?n:x)); await dbUpsert('leads', n); if(s === 'Ganho') triggerAutomation('deal_won', n); } },
+            addClient: (u,c) => { setClients(p=>[...p,c]); dbUpsert('clients', c); },
+            updateClient: (u,c) => { setClients(p=>p.map(x=>x.id===c.id?c:x)); dbUpsert('clients', c); },
+            removeClient: (u,id) => { setClients(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('clients').delete().eq('id', id); },
+            addClientsBulk: (u, list) => { setClients(p=>[...p, ...list]); list.forEach(item => dbUpsert('clients', item)); },
+            updateClientContact: (c, a) => { if(a) { setActivities(p=>[a, ...p]); dbUpsert('activities', a); } },
+            addTicket: (u,t) => { setTickets(p=>[...p,t]); dbUpsert('tickets', t); triggerAutomation('ticket_created', t); },
+            updateTicket: (u,id,d) => { const t = tickets.find(x=>x.id===id); if(t){ const n = {...t, ...d}; setTickets(p=>p.map(x=>x.id===id?n:x)); dbUpsert('tickets', n); } },
+            addInvoice: (u,i) => { setInvoices(p=>[...p,i]); dbUpsert('invoices', i); },
+            updateInvoice: (u,i) => { setInvoices(p=>p.map(x=>x.id===i.id?i:x)); dbUpsert('invoices', i); },
+            updateInvoiceStatus: (u,id,s) => { const i = invoices.find(x=>x.id===id); if(i){ const n = {...i, status: s}; setInvoices(p=>p.map(x=>x.id===id?n:x)); dbUpsert('invoices', n); } },
+            addInvoicesBulk: (u,list) => { setInvoices(p=>[...p, ...list]); list.forEach(item => dbUpsert('invoices', item)); },
+            addActivity: (u,a) => { setActivities(p=>[a, ...p]); dbUpsert('activities', a); },
+            updateActivity: (u,a) => { setActivities(p=>p.map(x=>x.id===a.id?a:x)); dbUpsert('activities', a); },
+            toggleActivity: (u,id) => { const a = activities.find(x=>x.id===id); if(a){ const n = {...a, completed: !a.completed}; setActivities(p=>p.map(x=>x.id===id?n:x)); dbUpsert('activities', n); } },
+            addProduct: (u,product) => { setProducts(prev=>[...prev,product]); dbUpsert('products', product); },
+            updateProduct: (u,product) => { setProducts(prev=>prev.map(x=>x.id===product.id?product:x)); dbUpsert('products', product); },
+            removeProduct: (u,id) => { setProducts(prev => prev.filter(x => x.id !== id)); getSupabase()?.from('products').delete().eq('id', id); },
+            addProject: (u,project) => { setProjects(prev=>[...prev,project]); dbUpsert('projects', project); },
+            updateProject: (u,project) => { setProjects(prev=>prev.map(x=>x.id===project.id?project:x)); dbUpsert('projects', project); },
+            deleteProject: (u,id) => { setProjects(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('projects').delete().eq('id', id); },
+            addWorkflow: (u,wf) => { setWorkflows(prev => [...prev, wf]); dbUpsert('workflows', wf); },
+            updateWorkflow: (u,wf) => { setWorkflows(prev => prev.map(x => x.id === wf.id ? wf : x)); dbUpsert('workflows', wf); },
+            deleteWorkflow: (u,id) => { setWorkflows(prev => prev.filter(x => x.id !== id)); getSupabase()?.from('workflows').delete().eq('id', id); },
+            triggerAutomation,
+            addIssue: () => {}, updateIssue: () => {}, addIssueNote: () => {}, addCampaign: () => {}, updateCampaign: () => {}, addMarketingContent: () => {}, updateMarketingContent: () => {}, deleteMarketingContent: () => {}, addClientDocument: () => {}, removeClientDocument: () => {}, updatePortalSettings: () => {}, 
+            addLog: (log) => { setLogs(p=>[log, ...p]); dbUpsert('audit_logs', log); }, 
+            logAction: (user, action, details, module) => { 
+                const log: AuditLog = { id: `LOG-${Date.now()}`, timestamp: new Date().toISOString(), userId: user?.id || 'sys', userName: user?.name || 'System', action, details, module, organizationId: user?.organizationId };
+                setLogs(p=>[log, ...p]); dbUpsert('audit_logs', log);
+            },
+            addSystemNotification: (t,m,tp) => { const n = { id: Date.now().toString(), title: t, message: m, type: tp as any, timestamp: new Date().toISOString(), read: false }; setNotifications(p=>[n,...p]); }, markNotificationRead: (id) => { setNotifications(p=>p.map(x=>x.id===id?({...x,read:true}):x)); }, addToast: (m) => { const t = {...m, id: Date.now().toString()}; setToasts(p=>[...p,t]); }, removeToast: (id) => { setToasts(p=>p.filter(x=>x.id!==id)); }, 
+            addCompetitor: (u,c) => { setCompetitors(p=>[...p,c]); dbUpsert('competitors', c); },
+            updateCompetitor: (u,c) => { setCompetitors(p=>p.map(x=>x.id===c.id?c:x)); dbUpsert('competitors', c); },
+            deleteCompetitor: (u,id) => { setCompetitors(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('competitors').delete().eq('id', id); },
+            setMarketTrends: async (t) => { 
+                setMarketTrends(t); 
+                const sb = getSupabase();
+                if (sb) {
+                    await sb.from('market_trends').delete().eq('organization_id', currentUser?.organizationId);
+                    for (const trend of t) {
+                        await sb.from('market_trends').insert(mapKeysToDb({ ...trend, id: `TR-${Math.random().toString(36).substr(2, 9)}`, organizationId: currentUser?.organizationId }));
+                    }
+                }
+            }, 
+            addProspectingHistory: (item) => { setProspectingHistory(p => [item, ...p]); dbUpsert('prospecting_history', item); },
+            clearProspectingHistory: () => { setProspectingHistory([]); getSupabase()?.from('prospecting_history').delete().eq('organization_id', currentUser?.organizationId); },
+            disqualifyProspect: (name) => { setDisqualifiedProspects(p => [...p, name]); dbUpsert('disqualified_prospects', { id: `DQ-${Date.now()}`, company_name: name }); },
+            addCustomField: (f) => { setCustomFields(p=>[...p,f]); dbUpsert('custom_fields', f); }, 
+            deleteCustomField: (id) => { setCustomFields(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('custom_fields').delete().eq('id', id); }, 
+            addWebhook: (w) => { setWebhooks(p=>[...p,w]); dbUpsert('webhooks', w); }, 
+            updateWebhook: (w) => { setWebhooks(p=>p.map(x=>x.id===w.id?w:x)); dbUpsert('webhooks', w); }, 
+            deleteWebhook: (id) => { setWebhooks(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('webhooks').delete().eq('id', id); },
+            addProposal: (u,proposal) => { setProposals(prev=>[...prev,proposal]); dbUpsert('proposals', proposal); },
+            updateProposal: (u,proposal) => { setProposals(prev=>prev.map(x=>x.id===proposal.id?proposal:x)); dbUpsert('proposals', proposal); },
+            removeProposal: (u,id) => { setProposals(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('proposals').delete().eq('id', id); },
+            addFinancialCategory: () => {}, deleteFinancialCategory: () => {}, addInboxInteraction: () => {}
         }}>
             {children}
         </DataContext.Provider>
@@ -351,6 +307,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useData = () => {
     const context = useContext(DataContext);
-    if (context === undefined) { throw new Error('useData must be used within a DataProvider'); }
+    if (context === undefined) throw new Error('useData must be used within a DataProvider');
     return context;
 };
