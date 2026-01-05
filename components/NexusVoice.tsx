@@ -172,7 +172,7 @@ export const NexusVoice: React.FC = () => {
         return (
             <button 
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-6 right-24 z-[8000] p-4 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center animate-fade-in"
+                className="fixed bottom-4 right-20 z-[10000] p-4 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center animate-fade-in"
                 title="Nexus Voice"
             >
                 <Phone size={24} />
@@ -181,7 +181,7 @@ export const NexusVoice: React.FC = () => {
     }
 
     return (
-        <div className={`fixed bottom-6 right-24 z-[9000] bg-slate-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 border border-slate-700 ${isMinimized ? 'w-72 h-16' : 'w-80 h-[500px] max-h-[80vh]'}`}>
+        <div className={`fixed bottom-4 right-20 z-[10000] bg-slate-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 border border-slate-700 ${isMinimized ? 'w-72 h-16' : 'w-80 h-[500px] max-h-[80vh]'}`}>
             
             {/* Header */}
             <div className="bg-slate-800 p-3 flex justify-between items-center cursor-grab active:cursor-grabbing border-b border-slate-700 shrink-0">

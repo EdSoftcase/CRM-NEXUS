@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Mic, Send, X, Loader2, PlayCircle, StopCircle, CheckCircle, AlertCircle } from 'lucide-react';
 import { interpretCommand } from '../services/geminiService';
@@ -127,10 +128,10 @@ export const AIAssistant: React.FC = () => {
 
     return (
         <>
-            {/* Floating Button */}
+            {/* Floating Button - Positioned safe from modal footer */}
             <button 
                 onClick={() => setIsOpen(!isOpen)}
-                className={`fixed bottom-6 right-6 z-[9000] p-4 rounded-full shadow-2xl transition-all duration-300 flex items-center justify-center
+                className={`fixed bottom-4 right-4 z-[10000] p-4 rounded-full shadow-2xl transition-all duration-300 flex items-center justify-center
                     ${isOpen ? 'bg-slate-800 rotate-90 scale-90' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-110 animate-pulse-slow'}
                 `}
             >
@@ -139,7 +140,7 @@ export const AIAssistant: React.FC = () => {
 
             {/* Panel */}
             {isOpen && (
-                <div className="fixed bottom-24 right-6 z-[9000] w-80 md:w-96 bg-white/90 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in origin-bottom-right h-[500px]">
+                <div className="fixed bottom-20 right-4 z-[10000] w-[calc(100%-2rem)] sm:w-96 bg-white/90 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in origin-bottom-right h-[500px]">
                     
                     {/* Header */}
                     <div className="p-4 bg-slate-900 text-white flex items-center gap-3">

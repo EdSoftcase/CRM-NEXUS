@@ -8,7 +8,8 @@ export const MOCK_ORGANIZATIONS: Organization[] = [
         slug: 'softcase', 
         plan: 'Enterprise',
         subscription_status: 'active',
-        licenseExpiresAt: '2025-12-31T00:00:00Z'
+        status: 'active',
+        licenseExpiresAt: '2026-12-31T00:00:00Z'
     },
 ];
 

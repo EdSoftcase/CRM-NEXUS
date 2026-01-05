@@ -68,7 +68,7 @@ const AppContent: React.FC = () => {
   if (isOrgPending && !isSuperAdmin) {
       return (
           <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
-              <ShieldAlert size={64} className="text-indigo-500 mb-6"/>
+              < ShieldAlert size={64} className="text-indigo-500 mb-6"/>
               <h2 className="text-2xl font-black mb-4">Acesso sob Análise</h2>
               <p className="text-slate-400 mb-8 max-w-md">Olá {currentUser.name}, seu ambiente aguarda liberação do administrador Master.</p>
               <div className="flex gap-4">
@@ -113,17 +113,25 @@ const AppLayout: React.FC<{
         <NexusVoice />
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} activeModule={activeModule} onNavigate={onNavigate} />
         <main className="flex-1 h-full flex flex-col overflow-hidden relative w-full">
-          <header className="flex w-full h-16 items-center justify-between px-8 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 z-20">
-              <div className="flex items-center gap-2">
-                  <Badge color="blue">{currentOrganization?.name || 'SOFT-CRM'}</Badge>
+          <header className="flex w-full h-16 items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 z-20">
+              <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setIsSidebarOpen(true)}
+                    className="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    <Menu size={24} />
+                  </button>
+                  <div className="hidden sm:block">
+                    <Badge color="blue">{currentOrganization?.name || 'SOFT-CRM'}</Badge>
+                  </div>
               </div>
               <div className="flex items-center gap-3">
-                  {isSuperAdmin && <Badge color="purple">MASTER ACCESS</Badge>}
+                  {isSuperAdmin && <div className="hidden xs:block"><Badge color="purple">MASTER ACCESS</Badge></div>}
                   <div className="text-right">
                       <p className="text-xs font-bold">{currentUser?.name}</p>
                       <p className="text-[10px] text-slate-500 uppercase">{currentUser?.role}</p>
                   </div>
-                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center font-bold">{currentUser?.avatar}</div>
+                  <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold border dark:border-slate-700">{currentUser?.avatar}</div>
               </div>
           </header>
           <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0">

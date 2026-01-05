@@ -113,30 +113,22 @@ export const Clients: React.FC = () => {
         event.target.value = '';
     };
 
-    // --- BULK WHATSAPP LOGIC ---
     const startBulkWhatsApp = async () => {
         if (!bulkMessage.trim()) return;
-        
         const clientsWithPhone = clients.filter(c => c.phone && c.phone.replace(/\D/g, '').length >= 10);
-        if (clientsWithPhone.length === 0) {
-            alert("Nenhum cliente com telefone válido na carteira.");
-            return;
-        }
+        if (clientsWithPhone.length === 0) return;
 
         setIsSendingBulk(true);
         setStopBulk(false);
-        setBulkProgress({ current: 0, total: clientsWithPhone.length, status: 'Iniciando motor de disparo...', nextIn: 0 });
+        setBulkProgress({ current: 0, total: clientsWithPhone.length, status: 'Iniciando...', nextIn: 0 });
 
         for (let i = 0; i < clientsWithPhone.length; i++) {
             if (stopBulk) break;
-
             const client = clientsWithPhone[i];
             setBulkProgress(prev => ({ ...prev, current: i + 1, status: `Enviando para: ${client.name}` }));
-
             try {
                 const personalizedMsg = bulkMessage.replace('[NOME]', client.name.split(' ')[0]);
                 await sendBridgeWhatsApp(client.phone, personalizedMsg);
-                
                 addActivity(currentUser, {
                     id: `ACT-MASS-${Date.now()}-${i}`,
                     title: 'WhatsApp Massa Enviado',
@@ -145,39 +137,24 @@ export const Clients: React.FC = () => {
                     completed: true,
                     relatedTo: client.name,
                     assignee: currentUser?.id || 'system',
-                    description: `Mensagem em massa enviada via motor cadenciado: ${personalizedMsg}`
+                    description: personalizedMsg
                 });
-            } catch (e) {
-                console.error("Falha no disparo individual:", e);
-            }
+            } catch (e) { console.error(e); }
 
             if (i < clientsWithPhone.length - 1) {
                 const randomMinutes = parseFloat((Math.random() * (7 - 2) + 2).toFixed(2));
-                const delayMs = randomMinutes * 60 * 1000;
-                
-                setBulkProgress(prev => ({ 
-                    ...prev, 
-                    status: `Aguardando intervalo anti-ban...`,
-                    nextIn: randomMinutes 
-                }));
-
+                setBulkProgress(prev => ({ ...prev, status: `Aguardando anti-ban...`, nextIn: randomMinutes }));
                 let remaining = randomMinutes;
                 while (remaining > 0) {
                     if (stopBulk) break;
                     await new Promise(r => setTimeout(r, 10000)); 
                     remaining -= 0.166; 
                     setBulkProgress(prev => ({ ...prev, nextIn: Math.max(0, remaining) }));
-                    if (remaining <= 0) break;
                 }
             }
         }
-
         setIsSendingBulk(false);
-        if (!stopBulk) {
-            addSystemNotification("Sucesso", "Disparo em massa concluído!", "success");
-            alert("Disparo concluído com sucesso!");
-            setIsBulkModalOpen(false);
-        }
+        setIsBulkModalOpen(false);
     };
 
     const handleSaveClient = (e: React.FormEvent) => {
@@ -210,249 +187,142 @@ export const Clients: React.FC = () => {
                                  (c.unit && c.unit.toLowerCase().includes(searchTerm.toLowerCase())) ||
                                  (c.contractId && c.contractId.toLowerCase().includes(searchTerm.toLowerCase())) ||
                                  (c.document && c.document.includes(searchTerm));
-            
             const matchesStatus = statusFilter === 'All' || c.status === statusFilter;
             const matchesSegment = segmentFilter === 'All' || c.segment === segmentFilter;
-
             return matchesSearch && matchesStatus && matchesSegment;
         });
     }, [clients, searchTerm, statusFilter, segmentFilter]);
 
     return (
-        <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors min-h-0">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-6 shrink-0">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Unidades & Contratos</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Gestão financeira e operacional da base de clientes.</p>
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Unidades & Contratos</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Gestão operacional da base de clientes.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setIsBulkModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition shadow-md">
-                        <MessageCircle size={18}/> Disparar para Todos
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full md:w-auto">
+                    <button onClick={() => setIsBulkModalOpen(true)} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition shadow-md whitespace-nowrap">
+                        <MessageCircle size={16}/> Massa
                     </button>
-                    <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition text-sm font-medium shadow-sm">
-                        <Download size={18}/> Modelo Vazio
+                    <button onClick={handleDownloadTemplate} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 text-xs font-bold shadow-sm">
+                        <Download size={16}/> Modelo
                     </button>
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition shadow-md">
-                        <Upload size={18}/> Importar Excel
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition shadow-md">
+                        <Upload size={16}/> Importar
                     </button>
                     <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                    <button onClick={() => { setCurrentClient({ status: 'Active', segment: 'Estacionamento', ltv: 0 }); setIsEditing(false); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition shadow-sm">
+                    <button onClick={() => { setCurrentClient({ status: 'Active', segment: 'Estacionamento', ltv: 0 }); setIsEditing(false); setIsModalOpen(true); }} className="col-span-2 sm:col-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition shadow-lg">
                         <Plus size={18}/> Nova Unidade
                     </button>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/50">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 overflow-hidden min-h-0">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex flex-wrap items-center gap-4 bg-slate-50/50 dark:bg-slate-900/50">
                     <div className="relative flex-1 min-w-[200px]">
                         <Search className="absolute left-3 top-2.5 text-slate-400" size={18}/>
-                        <input type="text" placeholder="Buscar unidade ou documento..." className="w-full pl-10 pr-4 py-2 rounded-lg border bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                        <input type="text" placeholder="Buscar unidade ou documento..." className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-transparent bg-white dark:bg-slate-800 text-sm focus:border-blue-500 outline-none transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Filter size={16} className="text-slate-400"/>
-                        <select 
-                            className="bg-white dark:bg-slate-800 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
+                        <select className="bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                             <option value="All">Todos Status</option>
                             <option value="Active">Ativos</option>
                             <option value="Churn Risk">Em Risco</option>
                             <option value="Inactive">Inativos</option>
                         </select>
-                        <select 
-                            className="bg-white dark:bg-slate-800 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                            value={segmentFilter}
-                            onChange={(e) => setSegmentFilter(e.target.value)}
-                        >
+                        <select className="bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none" value={segmentFilter} onChange={(e) => setSegmentFilter(e.target.value)}>
                             {segments.map(s => <option key={s} value={s}>{s === 'All' ? 'Todos Segmentos' : s}</option>)}
                         </select>
                     </div>
 
-                    <Badge color="blue">{filteredClients.length} Registros</Badge>
+                    <div className="ml-auto"><Badge color="blue">{filteredClients.length} Unidades</Badge></div>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-50 uppercase text-[10px] font-bold sticky top-0 shadow-sm z-10">
-                            <tr>
-                                <th className="p-4">Contrato / Unidade</th>
-                                <th className="p-4">Vagas / Fluxo</th>
-                                <th className="p-4 text-right">R$ Especial Total</th>
-                                <th className="p-4 text-right">R$ Tabela Total</th>
-                                <th className="p-4 text-center">Status</th>
-                                <th className="p-4 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            {filteredClients.map(client => (
-                                <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer group" onClick={() => setSelectedClientFor360(client)}>
-                                    <td className="p-4">
-                                        <p className="font-bold text-slate-900 dark:text-white leading-tight">{client.unit || client.name}</p>
-                                        <div className="flex flex-col gap-0.5 mt-1">
-                                            {client.document && (
-                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
-                                                    <ShieldCheck size={10} className="text-blue-500"/> {client.document}
-                                                </p>
-                                            )}
-                                            {client.phone && (
-                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                                    <Phone size={10} className="text-indigo-500"/> {client.phone}
-                                                </p>
-                                            )}
-                                            <p className="text-[10px] text-slate-400 font-mono">{client.contractId || 'S/ CONTRATO'}</p>
-                                        </div>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-col text-xs">
-                                            <span className="font-bold text-slate-700 dark:text-slate-300">{client.parkingSpots || 0} vagas</span>
-                                            <span className="text-slate-400">Veículos: {client.vehicleCount || 0}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <p className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">R$ {(client.totalSpecialPrice || client.ltv || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                                        <p className="text-[9px] text-slate-400 uppercase font-bold">Valor Mensal</p>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <p className="font-mono font-bold text-slate-500 dark:text-slate-400">R$ {(client.totalTablePrice || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                                        <p className="text-[9px] text-slate-400 uppercase">Preço Base</p>
-                                    </td>
-                                    <td className="p-4 text-center">
-                                        <Badge color={client.status === 'Active' ? 'green' : client.status === 'Churn Risk' ? 'yellow' : 'red'}>
-                                            {client.status === 'Active' ? 'Ativo' : client.status === 'Inactive' ? 'Inativo' : 'Risco'}
-                                        </Badge>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setCurrentClient(client); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 transition"><Edit2 size={16}/></button>
-                                            <button onClick={(e) => { e.stopPropagation(); if(confirm("Excluir unidade?")) removeClient(currentUser, client.id, "Manual"); }} className="p-1.5 text-slate-400 hover:text-red-600 transition"><Trash2 size={16}/></button>
-                                        </div>
-                                    </td>
+                
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <div className="min-w-[900px]">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-900 text-[10px] font-black uppercase text-slate-400 sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th className="p-4">Contrato / Unidade</th>
+                                    <th className="p-4">Vagas / Fluxo</th>
+                                    <th className="p-4 text-right">R$ Especial (LTV)</th>
+                                    <th className="p-4 text-right">R$ Tabela Base</th>
+                                    <th className="p-4 text-center">Status</th>
+                                    <th className="p-4 text-right">Ações</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {filteredClients.map(client => (
+                                    <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer group" onClick={() => setSelectedClientFor360(client)}>
+                                        <td className="p-4">
+                                            <p className="font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-tight">{client.unit || client.name}</p>
+                                            <div className="flex gap-2 mt-1">
+                                                <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1"><ShieldCheck size={10} className="text-blue-500"/> {client.document || 'S/ DOCUMENTO'}</p>
+                                                <p className="text-[10px] text-slate-400 font-mono">{client.contractId || 'S/ CONTRATO'}</p>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex flex-col">
+                                                <span className="font-black text-slate-700 dark:text-slate-300 text-xs">{client.parkingSpots || 0} VAGAS</span>
+                                                <span className="text-[10px] text-slate-400 uppercase font-bold">Veículos: {client.vehicleCount || 0}</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-right whitespace-nowrap">
+                                            <p className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">R$ {(client.totalSpecialPrice || client.ltv || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                        </td>
+                                        <td className="p-4 text-right whitespace-nowrap">
+                                            <p className="font-mono font-bold text-slate-400">R$ {(client.totalTablePrice || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <Badge color={client.status === 'Active' ? 'green' : client.status === 'Churn Risk' ? 'yellow' : 'red'}>
+                                                {client.status === 'Active' ? 'ATIVO' : client.status === 'Inactive' ? 'INATIVO' : 'RISCO'}
+                                            </Badge>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setCurrentClient(client); setIsModalOpen(true); }} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition"><Edit2 size={16}/></button>
+                                                <button onClick={(e) => { e.stopPropagation(); if(confirm("Excluir unidade?")) removeClient(currentUser, client.id, "Manual"); }} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition"><Trash2 size={16}/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredClients.length === 0 && (
+                                    <tr><td colSpan={6} className="p-20 text-center text-slate-400 italic font-bold">Nenhum registro localizado.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
-            {/* BULK WHATSAPP MODAL */}
-            {isBulkModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                            <h3 className="font-bold text-xl flex items-center gap-2">
-                                <MessageCircle className="text-emerald-600"/> Disparo em Lote (Anti-Ban)
-                            </h3>
-                            <button onClick={() => !isSendingBulk && setIsBulkModalOpen(false)} disabled={isSendingBulk} className="text-slate-400 hover:text-slate-600 disabled:opacity-30">
-                                <X size={24}/>
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            {!isSendingBulk ? (
-                                <>
-                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-start gap-3">
-                                        <ShieldCheck className="text-blue-600 dark:text-blue-400 shrink-0" size={24}/>
-                                        <div>
-                                            <h4 className="font-bold text-blue-900 dark:text-blue-200 text-sm">Segurança Inteligente Ativa</h4>
-                                            <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">O disparo será feito com intervalos variáveis entre 2 e 7 minutos para proteger seu número. Use [NOME] para personalizar.</p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-widest">Mensagem de Disparo</label>
-                                        <textarea 
-                                            className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-4 h-48 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-white resize-none text-sm shadow-inner"
-                                            placeholder="Olá [NOME], passando para informar que..."
-                                            value={bulkMessage}
-                                            onChange={e => setBulkMessage(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs text-slate-400">
-                                        <span>Total de Clientes: <strong>{clients.length}</strong></span>
-                                        <span>Estimativa: <strong>~{clients.length * 4} mins</strong></span>
-                                    </div>
-                                    <button 
-                                        onClick={startBulkWhatsApp}
-                                        disabled={!bulkMessage.trim()}
-                                        className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                                    >
-                                        <Send size={20}/> INICIAR CAMPANHA DE DISPARO
-                                    </button>
-                                </>
-                            ) : (
-                                <div className="py-8 flex flex-col items-center text-center space-y-6">
-                                    <div className="relative">
-                                        <div className="w-24 h-24 rounded-full border-4 border-slate-100 dark:border-slate-700 border-t-emerald-500 animate-spin"></div>
-                                        <div className="absolute inset-0 flex items-center justify-center">
-                                            <span className="text-xl font-black text-emerald-600">{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="space-y-2">
-                                        <h4 className="font-bold text-lg text-slate-800 dark:text-white">{bulkProgress.status}</h4>
-                                        <p className="text-sm text-slate-500">{bulkProgress.current} de {bulkProgress.total} mensagens processadas</p>
-                                    </div>
-
-                                    {bulkProgress.nextIn > 0 && (
-                                        <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800 flex items-center gap-3">
-                                            <Timer className="text-amber-600 animate-pulse" size={20}/>
-                                            <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
-                                                Próximo envio em {bulkProgress.nextIn.toFixed(1)} minutos...
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-                                        <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}></div>
-                                    </div>
-
-                                    <button 
-                                        onClick={() => setStopBulk(true)}
-                                        className="mt-4 px-6 py-2 border border-red-200 text-red-500 rounded-lg text-sm font-bold hover:bg-red-50 transition flex items-center gap-2"
-                                    >
-                                        <StopCircle size={18}/> Parar Campanha
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden animate-scale-in">
-                        <div className="p-6 border-b flex justify-between items-center">
-                            <h3 className="font-bold text-xl">{isEditing ? 'Editar Registro' : 'Novo Registro'}</h3>
-                            <button onClick={() => setIsModalOpen(false)}><X/></button>
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-fade-in overflow-y-auto">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl md:rounded-[3rem] shadow-2xl overflow-hidden animate-scale-in my-auto border border-slate-200 dark:border-slate-800">
+                        <div className="p-6 md:p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <h3 className="font-black text-xl uppercase tracking-tighter">{isEditing ? 'Editar Unidade' : 'Novo Contrato'}</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-red-500 transition"><X size={24}/></button>
                         </div>
-                        <form onSubmit={handleSaveClient} className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome da Unidade</label>
-                                    <input required className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.name || ''} onChange={e => setCurrentClient({...currentClient, name: e.target.value})} />
+                        <form onSubmit={handleSaveClient} className="p-6 md:p-8 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="md:col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Nome da Unidade / Razão Social</label>
+                                    <input required className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={currentClient.name || ''} onChange={e => setCurrentClient({...currentClient, name: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">CNPJ / CPF</label>
-                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.document || ''} onChange={e => setCurrentClient({...currentClient, document: e.target.value})} />
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">CNPJ / CPF</label>
+                                    <input className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={currentClient.document || ''} onChange={e => setCurrentClient({...currentClient, document: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Telefone</label>
-                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.phone || ''} onChange={e => setCurrentClient({...currentClient, phone: e.target.value})} />
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Telefone Principal</label>
+                                    <input className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={currentClient.phone || ''} onChange={e => setCurrentClient({...currentClient, phone: e.target.value})} />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">E-mail</label>
-                                    <input type="email" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.email || ''} onChange={e => setCurrentClient({...currentClient, email: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">ID Contrato</label>
-                                    <input className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white" value={currentClient.contractId || ''} onChange={e => setCurrentClient({...currentClient, contractId: e.target.value})} />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Valor Mensal Especial (LTV)</label>
-                                    <input type="number" step="0.01" className="w-full border rounded p-2.5 bg-white dark:bg-slate-700 dark:text-white font-mono" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: Number(e.target.value), totalSpecialPrice: Number(e.target.value)})} />
+                                <div className="md:col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Valor Mensal Especial (LTV)</label>
+                                    <input type="number" step="0.01" className="w-full border-2 border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 font-black text-2xl text-indigo-600 bg-indigo-50/30 dark:bg-indigo-950/20 outline-none" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: Number(e.target.value), totalSpecialPrice: Number(e.target.value)})} />
                                 </div>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 shadow-md">Salvar Unidade</button>
+                            <button type="submit" className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl hover:bg-indigo-700 transition shadow-2xl shadow-indigo-500/30 uppercase tracking-widest text-xs">Confirmar Registro</button>
                         </form>
                     </div>
                 </div>

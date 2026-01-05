@@ -53,15 +53,11 @@ export const sendEmail = async (toName: string, toEmail: string, subject: string
 
     // 2. TENTATIVA VIA NEXUS BRIDGE (SMTP LOCAL)
     try {
-        await sendBridgeEmail(toEmail, subject, htmlContent, fromName);
+        const result = await sendBridgeEmail(toEmail, subject, htmlContent, fromName);
+        if (result.error) throw new Error(result.error);
         return { success: true, message: "Enviado via Servidor Local (SMTP)", method: 'BRIDGE' };
     } catch (bridgeErr: any) {
-        // 3. FALLBACK: SIMULAÇÃO (MOCK)
-        console.log(`[MOCK EMAIL] Destinatário: ${toEmail} | Título: ${subject}`);
-        return { 
-            success: true, 
-            warning: "E-mail simulado.",
-            method: 'MOCK'
-        };
+        console.error("Erro Crítico de Envio:", bridgeErr.message);
+        throw new Error(bridgeErr.message || "Erro no envio pelo Bridge.");
     }
 };

@@ -1,10 +1,11 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
     Lead, Client, Ticket, Issue, Invoice, Activity, Product, Project, 
     Campaign, MarketingContent, Workflow, ClientDocument, PortalSettings, 
     AuditLog, SystemNotification, ToastMessage, Competitor, MarketTrend, 
     ProspectingHistoryItem, CustomFieldDefinition, WebhookConfig, InboxConversation,
-    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, Organization
+    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, Organization, InboxMessage
 } from '../types';
 import { getSupabase } from '../services/supabaseClient';
 import { useAuth, SUPER_ADMIN_EMAILS } from './AuthContext';
@@ -69,9 +70,9 @@ interface DataContextType {
   addProposal: (user: User | null, proposal: Proposal) => void;
   updateProposal: (user: User | null, proposal: Proposal) => void;
   removeProposal: (user: User | null, id: string, reason: string) => void;
-  addFinancialCategory: (category: FinancialCategory) => void;
-  deleteFinancialCategory: (id: string) => void;
-  addInboxInteraction: (contactName: string, type: 'WhatsApp' | 'Email', text: string, contactIdentifier?: string, sender?: 'user' | 'agent' | 'system') => void;
+  addFinancialCategory: (user: User | null, category: FinancialCategory) => void;
+  deleteFinancialCategory: (user: User | null, id: string) => void;
+  addInboxInteraction: (contactName: string, type: 'WhatsApp' | 'Email' | 'Ticket', text: string, contactIdentifier?: string, sender?: 'user' | 'agent' | 'system') => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -103,6 +104,20 @@ const mapKeysToApp = (obj: any): any => {
         else if (key === 'special_day') newKey = 'specialDay';
         else if (key === 'pricing_table') newKey = 'pricingTable';
         else if (key === 'cost_center_id') newKey = 'costCenterId';
+        else if (key === 'lead_id') newKey = 'leadId';
+        else if (key === 'client_id') newKey = 'clientId';
+        else if (key === 'client_email') newKey = 'clientEmail';
+        else if (key === 'client_name') newKey = 'clientName';
+        else if (key === 'created_date') newKey = 'createdDate';
+        else if (key === 'valid_until') newKey = 'validUntil';
+        else if (key === 'signed_at') newKey = 'signedAt';
+        else if (key === 'signed_by_ip') newKey = 'signedByIp';
+        else if (key === 'monthly_cost') newKey = 'monthlyCost';
+        else if (key === 'setup_cost') newKey = 'setupCost';
+        else if (key === 'last_message_at') newKey = 'lastMessageAt';
+        else if (key === 'contact_identifier') newKey = 'contactIdentifier';
+        else if (key === 'unread_count') newKey = 'unreadCount';
+        else if (key === 'last_message') newKey = 'lastMessage';
         mapped[newKey] = mapKeysToApp(obj[key]);
     }
     return mapped;
@@ -135,6 +150,20 @@ const mapKeysToDb = (obj: any): any => {
         else if (key === 'specialDay') newKey = 'special_day';
         else if (key === 'pricingTable') newKey = 'pricing_table';
         else if (key === 'costCenterId') newKey = 'cost_center_id';
+        else if (key === 'leadId') newKey = 'lead_id';
+        else if (key === 'clientId') newKey = 'client_id';
+        else if (key === 'clientEmail') newKey = 'client_email';
+        else if (key === 'clientName') newKey = 'client_name';
+        else if (key === 'createdDate') newKey = 'created_date';
+        else if (key === 'validUntil') newKey = 'valid_until';
+        else if (key === 'signedAt') newKey = 'signed_at';
+        else if (key === 'signedByIp') newKey = 'signed_by_ip';
+        else if (key === 'monthlyCost') newKey = 'monthly_cost';
+        else if (key === 'setupCost') newKey = 'setup_cost';
+        else if (key === 'lastMessageAt') newKey = 'last_message_at';
+        else if (key === 'contactIdentifier') newKey = 'contact_identifier';
+        else if (key === 'unreadCount') newKey = 'unread_count';
+        else if (key === 'lastMessage') newKey = 'last_message';
         mapped[newKey] = mapKeysToDb(obj[key]);
     }
     return mapped;
@@ -161,6 +190,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [notifications, setNotifications] = useState<SystemNotification[]>([]);
     const [marketTrends, setMarketTrends] = useState<MarketTrend[]>([]);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
+    const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>([]);
+    const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>([]);
+    
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
     const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('soft_theme') as 'light'|'dark') || 'light');
@@ -172,7 +204,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const userEmail = (currentUser.email || '').toLowerCase().trim();
         const isMaster = SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === userEmail);
         try {
-            const tables = ['leads', 'clients', 'tickets', 'invoices', 'activities', 'products', 'projects', 'workflows', 'competitors', 'proposals', 'custom_fields', 'webhooks', 'prospecting_history', 'disqualified_prospects', 'audit_logs', 'market_trends'];
+            const tables = [
+                'leads', 'clients', 'tickets', 'invoices', 'activities', 
+                'products', 'projects', 'workflows', 'competitors', 
+                'proposals', 'custom_fields', 'webhooks', 'prospecting_history', 
+                'disqualified_prospects', 'audit_logs', 'market_trends', 
+                'inbox_conversations', 'financial_categories'
+            ];
             if (isMaster) tables.push('organizations');
             const results = await Promise.allSettled(tables.map(t => {
                 let query = sb.from(t).select('*');
@@ -187,6 +225,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 organizations: setAllOrganizations, custom_fields: setCustomFields, 
                 webhooks: setWebhooks, prospecting_history: setProspectingHistory, 
                 audit_logs: setLogs, market_trends: setMarketTrends,
+                inbox_conversations: setInboxConversations,
+                financial_categories: setFinancialCategories,
                 disqualified_prospects: (data: any[]) => setDisqualifiedProspects(data.map(d => d.company_name))
             };
             results.forEach((res, idx) => {
@@ -205,30 +245,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const sb = getSupabase();
         if (!sb || !currentUser) return;
         try {
-            const payload = mapKeysToDb({ ...data, organizationId: currentUser.organizationId });
+            const payload = mapKeysToDb({ 
+                ...data, 
+                organizationId: data.organizationId || currentUser.organizationId 
+            });
             await sb.from(table).upsert(payload);
         } catch (e) { console.error(`Upsert fail on ${table}`, e); }
     };
 
-    const triggerAutomation = async (trigger: TriggerType, data: any) => {
-        const matchingWorkflows = workflows.filter(w => w.active && w.trigger === trigger);
-        for (const wf of matchingWorkflows) {
-            const updatedWf = { ...wf, runs: wf.runs + 1, lastRun: new Date().toISOString() };
-            setWorkflows(prev => prev.map(w => w.id === wf.id ? updatedWf : w));
-            await dbUpsert('workflows', updatedWf);
-            for (const action of wf.actions) {
-                if (action.type === 'send_email') {
-                    const recipientEmail = data.email || (data.metadata?.email);
-                    if (recipientEmail) {
-                        const personalize = (text: string) => text.replace('[NOME]', (data.name || 'Cliente').split(' ')[0]).replace('[EMPRESA]', data.company || data.customer || 'Sua Empresa');
-                        await sendEmail(data.name || data.customer || 'Contato', recipientEmail, "Nexus Cloud: Automação Ativa", personalize(action.config.template || ""), currentUser?.name || 'Sistema');
-                    }
-                }
-            }
-        }
-    };
-
-    // Fix: Declaring toggleTheme and its effect to resolve shorthand property error and ensure theme persistence
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
     useEffect(() => {
@@ -238,17 +262,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return (
         <DataContext.Provider value={{
-            leads, clients, tickets, issues: [], invoices, activities, products, projects, campaigns: [], marketingContents: [], workflows, clientDocuments: [], portalSettings: {} as any, logs, notifications, toasts, competitors, marketTrends, prospectingHistory, disqualifiedProspects, customFields, webhooks, inboxConversations: [], proposals, financialCategories: [], allOrganizations,
+            leads, clients, tickets, issues: [], invoices, activities, products, projects, campaigns: [], marketingContents: [], workflows, clientDocuments: [], portalSettings: {} as any, logs, notifications, toasts, competitors, marketTrends, prospectingHistory, disqualifiedProspects, customFields, webhooks, inboxConversations, proposals, financialCategories, allOrganizations,
             isSyncing, lastSyncTime, theme, pushEnabled: false, refreshData, syncLocalToCloud: refreshData, toggleTheme, restoreDefaults: () => {}, 
-            addLead: async (u,l) => { setLeads(p=>[...p,l]); await dbUpsert('leads', l); triggerAutomation('lead_created', l); },
+            addLead: async (u,l) => { setLeads(p=>[...p,l]); await dbUpsert('leads', l); },
             updateLead: async (u,l) => { setLeads(p=>p.map(x=>x.id===l.id?l:x)); await dbUpsert('leads', l); },
-            updateLeadStatus: async (u,id,s) => { const l = leads.find(x=>x.id===id); if(l){ const n = {...l, status: s}; setLeads(p=>p.map(x=>x.id===id?n:x)); await dbUpsert('leads', n); if(s === 'Ganho') triggerAutomation('deal_won', n); } },
+            updateLeadStatus: async (u,id,s) => { const l = leads.find(x=>x.id===id); if(l){ const n = {...l, status: s}; setLeads(p=>p.map(x=>x.id===id?n:x)); await dbUpsert('leads', n); } },
             addClient: (u,c) => { setClients(p=>[...p,c]); dbUpsert('clients', c); },
             updateClient: (u,c) => { setClients(p=>p.map(x=>x.id===c.id?c:x)); dbUpsert('clients', c); },
             removeClient: (u,id) => { setClients(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('clients').delete().eq('id', id); },
             addClientsBulk: (u, list) => { setClients(p=>[...p, ...list]); list.forEach(item => dbUpsert('clients', item)); },
             updateClientContact: (c, a) => { if(a) { setActivities(p=>[a, ...p]); dbUpsert('activities', a); } },
-            addTicket: (u,t) => { setTickets(p=>[...p,t]); dbUpsert('tickets', t); triggerAutomation('ticket_created', t); },
+            addTicket: (u,t) => { setTickets(p=>[...p,t]); dbUpsert('tickets', t); },
             updateTicket: (u,id,d) => { const t = tickets.find(x=>x.id===id); if(t){ const n = {...t, ...d}; setTickets(p=>p.map(x=>x.id===id?n:x)); dbUpsert('tickets', n); } },
             addInvoice: (u,i) => { setInvoices(p=>[...p,i]); dbUpsert('invoices', i); },
             updateInvoice: (u,i) => { setInvoices(p=>p.map(x=>x.id===i.id?i:x)); dbUpsert('invoices', i); },
@@ -266,7 +290,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addWorkflow: (u,wf) => { setWorkflows(prev => [...prev, wf]); dbUpsert('workflows', wf); },
             updateWorkflow: (u,wf) => { setWorkflows(prev => prev.map(x => x.id === wf.id ? wf : x)); dbUpsert('workflows', wf); },
             deleteWorkflow: (u,id) => { setWorkflows(prev => prev.filter(x => x.id !== id)); getSupabase()?.from('workflows').delete().eq('id', id); },
-            triggerAutomation,
+            triggerAutomation: () => {},
             addIssue: () => {}, updateIssue: () => {}, addIssueNote: () => {}, addCampaign: () => {}, updateCampaign: () => {}, addMarketingContent: () => {}, updateMarketingContent: () => {}, deleteMarketingContent: () => {}, addClientDocument: () => {}, removeClientDocument: () => {}, updatePortalSettings: () => {}, 
             addLog: (log) => { setLogs(p=>[log, ...p]); dbUpsert('audit_logs', log); }, 
             logAction: (user, action, details, module) => { 
@@ -277,19 +301,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addCompetitor: (u,c) => { setCompetitors(p=>[...p,c]); dbUpsert('competitors', c); },
             updateCompetitor: (u,c) => { setCompetitors(p=>p.map(x=>x.id===c.id?c:x)); dbUpsert('competitors', c); },
             deleteCompetitor: (u,id) => { setCompetitors(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('competitors').delete().eq('id', id); },
-            setMarketTrends: async (t) => { 
-                setMarketTrends(t); 
-                const sb = getSupabase();
-                if (sb) {
-                    await sb.from('market_trends').delete().eq('organization_id', currentUser?.organizationId);
-                    for (const trend of t) {
-                        await sb.from('market_trends').insert(mapKeysToDb({ ...trend, id: `TR-${Math.random().toString(36).substr(2, 9)}`, organizationId: currentUser?.organizationId }));
-                    }
-                }
-            }, 
+            setMarketTrends: async (t) => { setMarketTrends(t); }, 
             addProspectingHistory: (item) => { setProspectingHistory(p => [item, ...p]); dbUpsert('prospecting_history', item); },
-            clearProspectingHistory: () => { setProspectingHistory([]); getSupabase()?.from('prospecting_history').delete().eq('organization_id', currentUser?.organizationId); },
-            disqualifyProspect: (name) => { setDisqualifiedProspects(p => [...p, name]); dbUpsert('disqualified_prospects', { id: `DQ-${Date.now()}`, company_name: name }); },
+            clearProspectingHistory: () => { setProspectingHistory([]); },
+            disqualifyProspect: (name) => { setDisqualifiedProspects(p => [...p, name]); },
             addCustomField: (f) => { setCustomFields(p=>[...p,f]); dbUpsert('custom_fields', f); }, 
             deleteCustomField: (id) => { setCustomFields(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('custom_fields').delete().eq('id', id); }, 
             addWebhook: (w) => { setWebhooks(p=>[...p,w]); dbUpsert('webhooks', w); }, 
@@ -298,7 +313,40 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addProposal: (u,proposal) => { setProposals(prev=>[...prev,proposal]); dbUpsert('proposals', proposal); },
             updateProposal: (u,proposal) => { setProposals(prev=>prev.map(x=>x.id===proposal.id?proposal:x)); dbUpsert('proposals', proposal); },
             removeProposal: (u,id) => { setProposals(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('proposals').delete().eq('id', id); },
-            addFinancialCategory: () => {}, deleteFinancialCategory: () => {}, addInboxInteraction: () => {}
+            addFinancialCategory: (user, category) => { setFinancialCategories(prev => [...prev, category]); dbUpsert('financial_categories', category); },
+            deleteFinancialCategory: (user, id) => { setFinancialCategories(prev => prev.filter(c => c.id !== id)); getSupabase()?.from('financial_categories').delete().eq('id', id); },
+            addInboxInteraction: (contactName, type, text, contactIdentifier, sender = 'agent') => {
+                // Fix: Explicitly casting sender to the expected union type '"user" | "agent" | "system"'
+                const newMessage: InboxMessage = { id: `msg-${Date.now()}`, text, sender: sender as 'user' | 'agent' | 'system', timestamp: new Date().toISOString() };
+                setInboxConversations(prev => {
+                    const existingIdx = prev.findIndex(c => c.contactName === contactName);
+                    if (existingIdx > -1) {
+                        const updated = [...prev];
+                        updated[existingIdx] = { 
+                            ...updated[existingIdx], 
+                            lastMessage: text, 
+                            lastMessageAt: newMessage.timestamp,
+                            messages: [...(updated[existingIdx].messages || []), newMessage]
+                        };
+                        dbUpsert('inbox_conversations', updated[existingIdx]);
+                        return updated;
+                    } else {
+                        const newConvo: InboxConversation = {
+                            id: `conv-${Date.now()}`,
+                            contactName,
+                            contactIdentifier: contactIdentifier || '',
+                            type,
+                            lastMessage: text,
+                            lastMessageAt: newMessage.timestamp,
+                            unreadCount: 0,
+                            status: 'Open',
+                            messages: [newMessage]
+                        };
+                        dbUpsert('inbox_conversations', newConvo);
+                        return [newConvo, ...prev];
+                    }
+                });
+            }
         }}>
             {children}
         </DataContext.Provider>

@@ -10,7 +10,8 @@ import { SignaturePad } from '../../components/SignaturePad';
 
 export const ClientProposals: React.FC = () => {
   const { currentUser } = useAuth();
-  const { proposals, clients, updateProposal, addProject, addIssue, addSystemNotification } = useData();
+  // Fix: Adding refreshData to the destructured properties from useData hook
+  const { proposals, clients, updateProposal, addProject, addIssue, addSystemNotification, refreshData } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null); 
   const [isDownloading, setIsDownloading] = useState(false);
@@ -23,21 +24,24 @@ export const ClientProposals: React.FC = () => {
   [clients, currentUser]);
 
   const myProposals = useMemo(() => {
-    if (!currentClient || !currentUser) return [];
+    if (!currentUser) return [];
     
     const normalize = (s: string) => (s || '').trim().toLowerCase();
-    const clientName = normalize(currentClient.name);
-    const clientContact = normalize(currentClient.contactPerson);
-    const clientEmail = normalize(currentUser.email || '');
+    const userEmail = normalize(currentUser.email || '');
 
     return proposals.filter(p => {
+        // Regra de segurança: A proposta deve estar em estado Enviada ou Aceita
         if (p.status === 'Draft') return false;
-        if (p.clientId && p.clientId === currentClient.id) return true;
-        if (p.clientEmail && normalize(p.clientEmail) === clientEmail) return true;
-        const propCompany = normalize(p.companyName);
-        if (propCompany && (propCompany === clientName || propCompany.includes(clientName) || clientName.includes(propCompany))) return true;
-        const propClientName = normalize(p.clientName);
-        if (propClientName && (propClientName === clientContact || propClientName === clientName)) return true;
+        
+        // Match 1: Pelo ID vinculado do cliente
+        if (currentClient && p.clientId === currentClient.id) return true;
+        
+        // Match 2: Pelo e-mail cadastrado na proposta
+        if (p.clientEmail && normalize(p.clientEmail) === userEmail) return true;
+        
+        // Match 3: Pelo nome da empresa (reserva)
+        if (currentClient && p.companyName && normalize(p.companyName) === normalize(currentClient.name)) return true;
+
         return false;
     }).filter(p => 
         p.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -144,7 +148,7 @@ export const ClientProposals: React.FC = () => {
       alert("Contrato assinado com sucesso! O setor de Kitting já visualiza seu pedido.");
   };
 
-  if (!currentClient) return null;
+  if (!currentUser) return null;
 
   return (
     <div className="space-y-6">
@@ -177,6 +181,8 @@ export const ClientProposals: React.FC = () => {
             <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
                 <FileText size={48} className="mx-auto text-slate-300 mb-4"/>
                 <p className="text-slate-500 font-medium">Nenhuma proposta disponível no momento.</p>
+                {/* Fix: refreshData is now available from the hook destructuring */}
+                <button onClick={() => refreshData()} className="mt-4 text-sm font-bold text-blue-600 underline">Atualizar Dados</button>
             </div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

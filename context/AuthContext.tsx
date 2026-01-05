@@ -3,6 +3,7 @@ import React, { createContext, useState, useContext, ReactNode, useEffect, useCa
 import { User, Role, PermissionMatrix, PermissionAction, Organization, Client } from '../types';
 import { MOCK_USERS } from '../constants';
 import { getSupabase } from '../services/supabaseClient';
+import { sendEmail } from '../services/emailService';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -16,7 +17,6 @@ interface AuthContextType {
   updatePermission: (role: Role, module: string, action: PermissionAction, value: boolean) => void;
   updateUser: (data: Partial<User>) => void;
   changePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  // Fix: Added missing createClientAccess to AuthContextType interface
   createClientAccess: (client: Client, email: string) => Promise<{ success: boolean; password?: string; error?: string }>;
   sendRecoveryInvite: (email: string) => Promise<{ success: boolean; error?: string }>;
   approveOrganization: (orgId: string) => Promise<boolean>;
@@ -27,10 +27,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const SUPER_ADMIN_EMAILS = [
-    'edscon.softcase@gmail.com',
-    'edson.softcase@gmail.com', 
-    'edson@gmail.com',
-    'superadmin@nexus.com'
+    'edson.softcase@gmail.com'
 ];
 
 const MASTER_ORG_ID = 'org-1';
@@ -54,7 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const buildMasterProfile = (userId: string, email: string) => {
     setCurrentUser({ 
         id: userId, 
-        name: 'Edson (Master)', 
+        name: 'Edson Softcase', 
         email: email, 
         role: 'admin', 
         avatar: 'E', 
@@ -79,7 +76,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const isMaster = SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === userEmail);
 
     try {
-      const { data: profile } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
+      const { data: profile, error: profileError } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
 
       if (profile) {
         const { data: org } = await sb.from('organizations').select('*').eq('id', profile.organization_id).maybeSingle();
@@ -94,6 +91,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 role: (isMaster ? 'admin' : (profile.role || 'sales')) as Role, 
                 avatar: (profile.full_name || 'U').charAt(0), 
                 organizationId: profile.organization_id, 
+                relatedClientId: profile.related_client_id,
                 active: profile.active !== false 
             });
             setCurrentOrganization(org);
@@ -101,7 +99,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else if (isMaster) {
         buildMasterProfile(userId, userEmail);
       } else {
-        await sb.auth.signOut();
+        // Se for login de cliente novo, talvez o perfil demore 1s para aparecer no cache do Supabase
+        // Tentamos uma segunda busca rápida se o e-mail não for Master
+        await new Promise(r => setTimeout(r, 800));
+        const { data: retryProfile } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
+        if (retryProfile) {
+            const { data: org } = await sb.from('organizations').select('*').eq('id', retryProfile.organization_id).maybeSingle();
+            setCurrentUser({ 
+                id: retryProfile.id, 
+                name: retryProfile.full_name || 'Usuário', 
+                email: userEmail, 
+                role: retryProfile.role as Role, 
+                avatar: (retryProfile.full_name || 'U').charAt(0), 
+                organizationId: retryProfile.organization_id, 
+                relatedClientId: retryProfile.related_client_id,
+                active: true 
+            });
+            setCurrentOrganization(org);
+        } else {
+            await sb.auth.signOut();
+        }
       }
     } catch (e) {
       if (isMaster) buildMasterProfile(userId, userEmail);
@@ -145,7 +162,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signUp = async (email: string, password: string, fullName: string, companyName: string): Promise<{ error?: string, success?: boolean }> => {
     const sb = getSupabase();
-    if (!sb) return { error: "Serviço indisponível." };
+    if (!sb) return { error: "Serviço de cadastro indisponível." };
 
     try {
       const { data: authData, error: authError } = await sb.auth.signUp({
@@ -155,37 +172,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (authError) return { error: authError.message };
-      if (!authData.user) return { error: "Erro ao criar usuário." };
+      if (!authData.user) return { error: "Erro ao criar credenciais." };
 
       const userId = authData.user.id;
       const orgId = `org-${Date.now()}`;
       const slug = companyName.toLowerCase().trim().replace(/[^a-z0-9]/g, '-');
 
-      const { error: orgError } = await sb.from('organizations').insert({
-        id: orgId,
-        name: companyName,
-        slug: slug,
-        status: 'pending',
-        plan: 'Standard'
-      });
-
-      if (orgError) return { error: "Erro ao registrar empresa: " + orgError.message };
-
-      const { error: profileError } = await sb.from('profiles').insert({
-        id: userId,
-        organization_id: orgId,
-        full_name: fullName,
-        email: email,
-        role: 'admin',
-        active: true
-      });
-
-      if (profileError) return { error: "Erro ao criar perfil administrativo." };
+      await sb.from('organizations').insert({ id: orgId, name: companyName, slug, status: 'pending', plan: 'Standard' });
+      await sb.from('profiles').insert({ id: userId, organization_id: orgId, full_name: fullName, email, role: 'admin', active: true });
 
       await fetchProfileAndOrg(userId, email);
       return { success: true };
     } catch (err: any) {
-      return { error: err.message || "Erro desconhecido no cadastro." };
+      return { error: "Erro no processamento do cadastro." };
     }
   };
 
@@ -204,41 +203,83 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: !error, error: error?.message };
   };
 
-  const approveOrganization = async (orgId: string): Promise<boolean> => {
-      const res = await updateOrganizationStatus(orgId, 'active');
-      return res.success;
+  const createClientAccess = async (client: Client, email: string): Promise<{ success: boolean; password?: string; error?: string }> => {
+    const sb = getSupabase();
+    if (!sb) return { success: false, error: "Cloud offline." };
+
+    const targetEmail = email.trim().toLowerCase();
+    const tempPassword = Math.random().toString(36).slice(-10) + "@S1";
+
+    try {
+      const { data: authData, error: authError } = await sb.auth.signUp({
+        email: targetEmail,
+        password: tempPassword,
+        options: {
+          data: { 
+              full_name: client.contactPerson || client.name,
+              related_client_id: client.id 
+          }
+        }
+      });
+
+      if (authError) {
+          if (authError.message.includes("already registered")) {
+              const { data: existingProfile } = await sb.from('profiles').select('id').eq('email', targetEmail).maybeSingle();
+              if (existingProfile) {
+                  await sb.from('profiles').update({
+                      role: 'client',
+                      related_client_id: client.id,
+                      active: true
+                  }).eq('id', existingProfile.id);
+                  return { success: true, error: "Usuário vinculado ao perfil existente." };
+              }
+              return { success: false, error: "E-mail em uso em outra organização." };
+          }
+          return { success: false, error: authError.message };
+      }
+
+      if (!authData.user) return { success: false, error: "Erro Auth." };
+
+      const { error: profileError } = await sb.from('profiles').upsert({
+        id: authData.user.id,
+        organization_id: currentUser?.organizationId || MASTER_ORG_ID,
+        full_name: client.contactPerson || client.name,
+        email: targetEmail,
+        role: 'client',
+        related_client_id: client.id, // VÍNCULO CHAVE
+        active: true
+      });
+
+      if (profileError) return { success: false, error: "Erro Perfil: " + profileError.message };
+
+      sendEmail(
+          client.contactPerson,
+          targetEmail,
+          "Acesso ao Portal - Softpark",
+          `Seu acesso foi liberado.\n\nLogin: ${targetEmail}\nSenha: ${tempPassword}`,
+          currentUser?.name || 'Softpark'
+      ).catch(() => {});
+
+      return { success: true, password: tempPassword };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   };
 
   const updateOrganizationStatus = async (orgId: string, status: 'active' | 'pending' | 'suspended'): Promise<{ success: boolean; error?: string }> => {
       const sb = getSupabase();
-      if (!sb) return { success: false, error: "Conexão perdida com o servidor." };
-      
-      console.log(`[Master Action] Attempting status update to: ${status} for org: ${orgId}`);
-      
+      if (!sb) return { success: false, error: "Erro de conexão." };
       try {
-        // Atualiza o status e a flag de subscrição para garantir bloqueio total se suspenso
-        const { error, count } = await sb
-            .from('organizations')
-            .update({ 
-                status: status,
-                subscription_status: status === 'suspended' ? 'blocked' : 'active'
-            })
-            .eq('id', orgId)
-            .select('*', { count: 'exact' });
-        
-        if (error) {
-            console.error("[Master SaaS Error]", error);
-            return { success: false, error: error.message };
-        }
+        const { error } = await sb.from('organizations').update({ status }).eq('id', orgId);
+        return { success: !error, error: error?.message };
+      } catch (err: any) { return { success: false, error: err.message }; }
+  };
 
-        if (count === 0) {
-            return { success: false, error: "Nenhuma organização encontrada ou permissão RLS negada." };
-        }
-
-        return { success: true };
-      } catch (err: any) {
-          return { success: false, error: err.message };
-      }
+  const sendRecoveryInvite = async (email: string) => {
+      const sb = getSupabase();
+      if (!sb) return { success: false, error: "Sem conexão." };
+      const { error } = await sb.auth.resetPasswordForEmail(email);
+      return { success: !error, error: error?.message };
   };
 
   return (
@@ -247,10 +288,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login, signUp, logout, hasPermission: () => true, updatePermission: () => {}, 
         updateUser: (data) => setCurrentUser(p => p ? {...p, ...data} : null), 
         changePassword,
-        // Fix: Added dummy implementation for createClientAccess and provided it in value
-        createClientAccess: async () => ({ success: true }),
-        sendRecoveryInvite: async () => ({success: true}), 
-        approveOrganization,
+        createClientAccess,
+        sendRecoveryInvite, 
+        approveOrganization: async (id) => (await updateOrganizationStatus(id, 'active')).success,
         updateOrganizationStatus
     }}>
       {children}
