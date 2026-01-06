@@ -50,90 +50,80 @@ export const testSupabaseConnection = async () => {
 };
 
 export const getSupabaseSchema = () => {
-  return `-- SOFT-CRM ENTERPRISE - SQL MASTER RESET v44.0
--- FOCO: PERSISTÊNCIA COMPLETA DO SOFT FLOW (RPA)
+  return `-- SOFT-CRM ENTERPRISE - SQL MASTER RESET v56.0
+-- CORREÇÃO DEFINITIVA: INVOICES, PROJECTS E RLS SECURITY
 
--- 1. ESTRUTURA CORE E PERMISSÕES
+-- 1. RESET DE SCHEMA
 ALTER SCHEMA public OWNER TO postgres;
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role, postgres;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role, postgres;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
--- 2. TABELA DE PRODUTOS
-CREATE TABLE IF NOT EXISTS public.products (
+-- 2. TABELA INVOICES (RECONSTRUÇÃO SEGURA)
+CREATE TABLE IF NOT EXISTS public.invoices (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
+    type TEXT DEFAULT 'Income',
+    customer TEXT,
+    amount NUMERIC,
+    due_date TIMESTAMPTZ,
+    status TEXT,
     description TEXT,
-    price NUMERIC DEFAULT 0,
-    sku TEXT,
-    category TEXT,
-    active BOOLEAN DEFAULT true,
-    cost_center_id TEXT,
     organization_id TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT now()
 );
-ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
 
--- 3. TABELA DE AUDITORIA (LOGS)
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-    id TEXT PRIMARY KEY,
-    timestamp TIMESTAMPTZ DEFAULT now(),
-    user_id TEXT,
-    user_name TEXT,
-    action TEXT,
-    details TEXT,
-    module TEXT,
-    organization_id TEXT
-);
-ALTER TABLE public.audit_logs DISABLE ROW LEVEL SECURITY;
+-- Forçar adição da coluna type se não existir
+DO $$ BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='type') THEN
+        ALTER TABLE public.invoices ADD COLUMN type TEXT DEFAULT 'Income';
+    END IF;
+END $$;
 
--- 4. TABELA DE WORKFLOWS (SOFT FLOW)
-CREATE TABLE IF NOT EXISTS public.workflows (
+ALTER TABLE public.invoices DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.invoices TO anon, authenticated, service_role, postgres;
+
+-- 3. TABELA PROJECTS
+CREATE TABLE IF NOT EXISTS public.projects (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    active BOOLEAN DEFAULT true,
-    trigger TEXT NOT NULL,
-    actions JSONB DEFAULT '[]'::jsonb,
-    runs INTEGER DEFAULT 0,
-    last_run TIMESTAMPTZ,
+    title TEXT,
+    client_name TEXT,
+    status TEXT,
+    progress NUMERIC,
+    start_date TIMESTAMPTZ,
+    deadline TIMESTAMPTZ,
+    manager TEXT,
+    tasks JSONB DEFAULT '[]'::jsonb,
+    products JSONB DEFAULT '[]'::jsonb,
+    description TEXT,
     organization_id TEXT,
+    proposal_id TEXT,
+    archived BOOLEAN DEFAULT false,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    status_updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.projects TO anon, authenticated, service_role, postgres;
+
+-- 4. TABELA ACTIVITIES
+CREATE TABLE IF NOT EXISTS public.activities (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    type TEXT,
+    due_date TIMESTAMPTZ,
+    completed BOOLEAN DEFAULT false,
+    related_to TEXT,
+    assignee TEXT,
+    organization_id TEXT,
+    description TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT now()
 );
-ALTER TABLE public.workflows DISABLE ROW LEVEL SECURITY;
 
--- 5. TABELA DE CONCORRENTES
-CREATE TABLE IF NOT EXISTS public.competitors (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    website TEXT,
-    sector TEXT,
-    last_analysis TIMESTAMPTZ,
-    swot JSONB DEFAULT '{}'::jsonb,
-    battlecard JSONB DEFAULT '{}'::jsonb,
-    organization_id TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.competitors DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activities DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.activities TO anon, authenticated, service_role, postgres;
 
--- 6. TABELA DE HISTÓRICO DE PROSPECÇÃO
-CREATE TABLE IF NOT EXISTS public.prospecting_history (
-    id TEXT PRIMARY KEY,
-    timestamp TIMESTAMPTZ DEFAULT now(),
-    industry TEXT,
-    location TEXT,
-    keywords TEXT,
-    results JSONB DEFAULT '[]'::jsonb,
-    organization_id TEXT
-);
-ALTER TABLE public.prospecting_history DISABLE ROW LEVEL SECURITY;
-
--- 7. TABELA DE DESQUALIFICADOS
-CREATE TABLE IF NOT EXISTS public.disqualified_prospects (
-    id TEXT PRIMARY KEY,
-    company_name TEXT NOT NULL,
-    organization_id TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.disqualified_prospects DISABLE ROW LEVEL SECURITY;
-
-NOTIFY pgrst, 'reload schema';`;
+-- 5. RECARREGAR CACHE
+NOTIFY pgrst, 'reload schema';
+`;
 };

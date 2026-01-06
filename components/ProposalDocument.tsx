@@ -30,8 +30,8 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
     const equipmentSubtotal = equipmentItems.reduce((acc, item) => acc + getItemSubtotal(item), 0);
     const servicesSubtotal = serviceItems.reduce((acc, item) => acc + getItemSubtotal(item), 0);
 
-    const finalSetupValue = (data.setupCost || 0);
-    const finalMonthlyValue = (data.monthlyCost || 0);
+    const finalSetupValue = (data.setupCost || 0) + equipmentSubtotal;
+    const finalMonthlyValue = (data.monthlyCost || 0) + servicesSubtotal;
 
     return (
     <div id={id} className="bg-white w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl text-slate-800 flex flex-col relative printable-area mx-auto font-sans">
@@ -77,10 +77,22 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
             <p className="text-[11px] text-slate-700 leading-relaxed text-justify whitespace-pre-wrap">{data.introduction}</p>
         </div>
 
-        {/* 2. Catálogo de Itens */}
+        {/* NOVO: 2. Escopo Técnico */}
+        {data.scope && data.scope.length > 0 && (
+            <div className="mb-6">
+                <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">2. Escopo do Fornecimento</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                    {data.scope.map((s, i) => (
+                        <li key={i} className="text-[10px] text-slate-700 font-medium">{s}</li>
+                    ))}
+                </ul>
+            </div>
+        )}
+
+        {/* 3. Catálogo de Itens */}
         {data.items && data.items.length > 0 && (
             <div className="mb-6">
-                <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">2. Composição da Solução</h3>
+                <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">{data.scope?.length ? '3' : '2'}. Composição da Solução</h3>
                 <table className="w-full text-[10px] border border-slate-200">
                     <thead className="bg-slate-950 text-white font-bold uppercase">
                         <tr>
@@ -111,9 +123,9 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
             </div>
         )}
 
-        {/* 3. SLA Section (NORMATIVA) */}
+        {/* 4. SLA Section (NORMATIVA) */}
         <div className="mb-6">
-            <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">3. Acordo de Nível de Serviço (SLA)</h3>
+            <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">{data.scope?.length ? '4' : '3'}. Acordo de Nível de Serviço (SLA)</h3>
             <table className="w-full text-[10px] border border-slate-200 text-center">
                 <thead className="bg-slate-100 font-bold uppercase">
                     <tr>
@@ -183,7 +195,7 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
 
             {/* 5. Termos e Condições */}
             <div className="mb-6">
-                <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">4. Termos e Condições Gerais</h3>
+                <h3 className="text-xs font-black text-slate-900 uppercase border-b border-slate-200 pb-1 mb-2">{data.scope?.length ? '5' : '4'}. Termos e Condições Gerais</h3>
                 <p className="text-[9px] text-slate-500 text-justify leading-relaxed whitespace-pre-wrap">{data.terms}</p>
             </div>
 

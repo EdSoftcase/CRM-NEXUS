@@ -41,13 +41,13 @@ import { ClientDashboard } from './pages/portal/ClientDashboard';
 import { ClientFinancial } from './pages/portal/ClientFinancial';
 import { ClientProposals } from './pages/portal/ClientProposals';
 import { ClientSupport } from './pages/portal/ClientSupport';
+import { ClientSolutions } from './pages/portal/ClientSolutions';
 
 const AppContent: React.FC = () => {
   const { currentUser, loading, currentOrganization, logout } = useAuth();
   const [activeModule, setActiveModule] = useState(() => localStorage.getItem('nexus_active_module') || 'dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // DISJUNTOR LOCAL: Garante saída da Splash após 7s não importa o que aconteça
   const [forceReady, setForceReady] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setForceReady(true), 7000);
@@ -91,13 +91,13 @@ const AppLayout: React.FC<{
 }> = ({ activeModule, onNavigate, isSidebarOpen, setIsSidebarOpen }) => {
     const { currentUser, currentOrganization } = useAuth();
     const { theme } = useData(); 
-    const isSuperAdmin = currentUser?.email && SUPER_ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
 
     if (currentUser?.role === 'client') {
         return (
           <PortalLayout activeModule={activeModule} onNavigate={onNavigate}>
               {activeModule === 'portal-dashboard' && <ClientDashboard onNavigate={onNavigate} />}
               {activeModule === 'portal-financial' && <ClientFinancial />}
+              {activeModule === 'portal-solutions' && <ClientSolutions />}
               {activeModule === 'portal-proposals' && <ClientProposals />}
               {activeModule === 'portal-tickets' && <ClientSupport />}
           </PortalLayout>
@@ -112,7 +112,7 @@ const AppLayout: React.FC<{
         <AIAssistant />
         <NexusVoice />
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} activeModule={activeModule} onNavigate={onNavigate} />
-        <main className="flex-1 h-full flex flex-col overflow-hidden relative w-full">
+        <main className="flex-1 h-full flex flex-col overflow-hidden relative w-full transition-all duration-300">
           <header className="flex w-full h-16 items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 z-20">
               <div className="flex items-center gap-3">
                   <button 
@@ -126,7 +126,6 @@ const AppLayout: React.FC<{
                   </div>
               </div>
               <div className="flex items-center gap-3">
-                  {isSuperAdmin && <div className="hidden xs:block"><Badge color="purple">MASTER ACCESS</Badge></div>}
                   <div className="text-right">
                       <p className="text-xs font-bold">{currentUser?.name}</p>
                       <p className="text-[10px] text-slate-500 uppercase">{currentUser?.role}</p>
@@ -134,7 +133,7 @@ const AppLayout: React.FC<{
                   <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold border dark:border-slate-700">{currentUser?.avatar}</div>
               </div>
           </header>
-          <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0">
+          <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth">
               {activeModule === 'dashboard' && <Dashboard onNavigate={onNavigate} />}
               {activeModule === 'contact-center' && <Dashboard onNavigate={onNavigate} viewMode="contact-center" />} 
               {activeModule === 'commercial' && <Commercial />}

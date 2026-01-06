@@ -36,7 +36,7 @@ export const Login: React.FC = () => {
 
   const handleCopySQL = () => {
       navigator.clipboard.writeText(getSupabaseSchema());
-      alert("Script SQL v39.0 copiado! Execute no SQL Editor do Supabase para consertar o banco.");
+      alert("Script SQL v46.0 copiado! Execute no SQL Editor do Supabase para liberar o RLS das propostas.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,7 +80,7 @@ export const Login: React.FC = () => {
                       <span className="text-blue-600 font-black text-4xl">S</span>
                   </div>
                   <h1 className="text-5xl font-black mb-4 tracking-tighter uppercase">Soft Case</h1>
-                  <p className="text-blue-100 text-lg font-medium">Enterprise CRM v39.0</p>
+                  <p className="text-blue-100 text-lg font-medium">Enterprise CRM v46.0</p>
                   <p className="text-blue-200/60 text-sm mt-2">Segurança Bancária Ativa</p>
               </div>
               <div className="relative z-10 space-y-3">
@@ -165,7 +165,7 @@ export const Login: React.FC = () => {
                           <div className="flex items-center gap-2"><AlertCircle size={16}/> {error}</div>
                           {isMasterEmail && (
                               <button type="button" onClick={handleCopySQL} className="bg-red-600 text-white py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-red-700">
-                                  <Terminal size={14}/> COPIAR SQL FIX v39.0
+                                  <Terminal size={14}/> COPIAR SQL FIX v46.0
                               </button>
                           )}
                       </div>

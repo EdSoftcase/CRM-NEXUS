@@ -1,15 +1,15 @@
 
+// Fix: Added React import to resolve "Cannot find namespace 'React'" errors in JSX usage.
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
     Lead, Client, Ticket, Issue, Invoice, Activity, Product, Project, 
     Campaign, MarketingContent, Workflow, ClientDocument, PortalSettings, 
     AuditLog, SystemNotification, ToastMessage, Competitor, MarketTrend, 
     ProspectingHistoryItem, CustomFieldDefinition, WebhookConfig, InboxConversation,
-    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, Organization, InboxMessage
+    User, LeadStatus, InvoiceStatus, TicketStatus, TriggerType, Proposal, FinancialCategory, Organization, InboxMessage, ProjectTask
 } from '../types';
 import { getSupabase } from '../services/supabaseClient';
 import { useAuth, SUPER_ADMIN_EMAILS } from './AuthContext';
-import { sendEmail } from '../services/emailService';
 
 interface DataContextType {
   leads: Lead[]; clients: Client[]; tickets: Ticket[]; issues: Issue[];
@@ -81,43 +81,48 @@ const mapKeysToApp = (obj: any): any => {
     if (!obj || typeof obj !== 'object') return obj;
     if (Array.isArray(obj)) return obj.map(mapKeysToApp);
     const mapped: any = {};
+    const mapping: Record<string, string> = {
+        'organization_id': 'organizationId',
+        'created_at': 'createdAt',
+        'user_id': 'userId',
+        'user_name': 'userName',
+        'company_name': 'companyName',
+        'contact_person': 'contactPerson',
+        'health_score': 'healthScore',
+        'last_contact': 'lastContact',
+        'due_date': 'dueDate',
+        'related_to': 'relatedTo',
+        'total_special_price': 'totalSpecialPrice',
+        'total_table_price': 'totalTablePrice',
+        'special_price': 'specialPrice',
+        'table_price': 'tablePrice',
+        'special_day': 'specialDay',
+        'pricing_table': 'pricingTable',
+        'lead_id': 'leadId',
+        'client_id': 'clientId',
+        'client_email': 'clientEmail',
+        'client_name': 'clientName',
+        'created_date': 'createdDate',
+        'valid_until': 'validUntil',
+        'signed_at': 'signedAt',
+        'signed_by_ip': 'signedByIp',
+        'monthly_cost': 'monthlyCost',
+        'setup_cost': 'setupCost',
+        'custom_clause': 'customClause',
+        'consultant_name': 'consultantName',
+        'consultant_email': 'consultantEmail',
+        'consultant_phone': 'consultantPhone',
+        'includes_development': 'includesDevelopment',
+        'contracted_products': 'contractedProducts',
+        'proposal_id': 'proposalId',
+        'completed_at': 'completedAt',
+        'start_date': 'startDate',
+        'lost_reason': 'lostReason',
+        'status_updated_at': 'statusUpdatedAt'
+    };
+
     for (const key in obj) {
-        let newKey = key;
-        if (key === 'organization_id') newKey = 'organizationId';
-        else if (key === 'created_at') newKey = 'createdAt';
-        else if (key === 'user_id') newKey = 'userId';
-        else if (key === 'user_name') newKey = 'userName';
-        else if (key === 'last_run') newKey = 'lastRun';
-        else if (key === 'last_analysis') newKey = 'lastAnalysis';
-        else if (key === 'company_name') newKey = 'companyName';
-        else if (key === 'match_score') newKey = 'matchScore';
-        else if (key === 'suggest_approach') newKey = 'suggestedApproach';
-        else if (key === 'contact_person') newKey = 'contactPerson';
-        else if (key === 'health_score') newKey = 'healthScore';
-        else if (key === 'last_contact') newKey = 'lastContact';
-        else if (key === 'due_date') newKey = 'dueDate';
-        else if (key === 'related_to') newKey = 'relatedTo';
-        else if (key === 'total_special_price') newKey = 'totalSpecialPrice';
-        else if (key === 'total_table_price') newKey = 'totalTablePrice';
-        else if (key === 'special_price') newKey = 'specialPrice';
-        else if (key === 'table_price') newKey = 'tablePrice';
-        else if (key === 'special_day') newKey = 'specialDay';
-        else if (key === 'pricing_table') newKey = 'pricingTable';
-        else if (key === 'cost_center_id') newKey = 'costCenterId';
-        else if (key === 'lead_id') newKey = 'leadId';
-        else if (key === 'client_id') newKey = 'clientId';
-        else if (key === 'client_email') newKey = 'clientEmail';
-        else if (key === 'client_name') newKey = 'clientName';
-        else if (key === 'created_date') newKey = 'createdDate';
-        else if (key === 'valid_until') newKey = 'validUntil';
-        else if (key === 'signed_at') newKey = 'signedAt';
-        else if (key === 'signed_by_ip') newKey = 'signedByIp';
-        else if (key === 'monthly_cost') newKey = 'monthlyCost';
-        else if (key === 'setup_cost') newKey = 'setupCost';
-        else if (key === 'last_message_at') newKey = 'lastMessageAt';
-        else if (key === 'contact_identifier') newKey = 'contactIdentifier';
-        else if (key === 'unread_count') newKey = 'unreadCount';
-        else if (key === 'last_message') newKey = 'lastMessage';
+        const newKey = mapping[key] || key;
         mapped[newKey] = mapKeysToApp(obj[key]);
     }
     return mapped;
@@ -127,43 +132,48 @@ const mapKeysToDb = (obj: any): any => {
     if (!obj || typeof obj !== 'object') return obj;
     if (Array.isArray(obj)) return obj.map(mapKeysToDb);
     const mapped: any = {};
+    const mapping: Record<string, string> = {
+        'organizationId': 'organization_id',
+        'createdAt': 'created_at',
+        'userId': 'user_id',
+        'userName': 'user_name',
+        'companyName': 'company_name',
+        'contactPerson': 'contact_person',
+        'healthScore': 'health_score',
+        'lastContact': 'last_contact',
+        'dueDate': 'due_date',
+        'relatedTo': 'related_to',
+        'totalSpecialPrice': 'total_special_price',
+        'totalTablePrice': 'total_table_price',
+        'specialPrice': 'special_price',
+        'tablePrice': 'table_price',
+        'specialDay': 'special_day',
+        'pricingTable': 'pricing_table',
+        'leadId': 'lead_id',
+        'clientId': 'client_id',
+        'clientEmail': 'client_email',
+        'clientName': 'client_name',
+        'createdDate': 'created_date',
+        'validUntil': 'valid_until',
+        'signedAt': 'signed_at',
+        'signedByIp': 'signed_by_ip',
+        'monthlyCost': 'monthly_cost',
+        'setupCost': 'setup_cost',
+        'customClause': 'custom_clause',
+        'consultantName': 'consultant_name',
+        'consultantEmail': 'consultant_email',
+        'consultantPhone': 'consultant_phone',
+        'includesDevelopment': 'includes_development',
+        'contractedProducts': 'contracted_products',
+        'proposalId': 'proposal_id',
+        'completedAt': 'completed_at',
+        'startDate': 'start_date',
+        'lostReason': 'lost_reason',
+        'statusUpdatedAt': 'status_updated_at'
+    };
+
     for (const key in obj) {
-        let newKey = key;
-        if (key === 'organizationId') newKey = 'organization_id';
-        else if (key === 'createdAt') newKey = 'created_at';
-        else if (key === 'userId') newKey = 'user_id';
-        else if (key === 'userName') newKey = 'user_name';
-        else if (key === 'lastRun') newKey = 'last_run';
-        else if (key === 'lastAnalysis') newKey = 'last_analysis';
-        else if (key === 'companyName') newKey = 'company_name';
-        else if (key === 'matchScore') newKey = 'match_score';
-        else if (key === 'suggestedApproach') newKey = 'suggest_approach';
-        else if (key === 'contactPerson') newKey = 'contact_person';
-        else if (key === 'healthScore') newKey = 'health_score';
-        else if (key === 'lastContact') newKey = 'last_contact';
-        else if (key === 'dueDate') newKey = 'due_date';
-        else if (key === 'relatedTo') newKey = 'related_to';
-        else if (key === 'totalSpecialPrice') newKey = 'total_special_price';
-        else if (key === 'totalTablePrice') newKey = 'total_table_price';
-        else if (key === 'specialPrice') newKey = 'special_price';
-        else if (key === 'tablePrice') newKey = 'table_price';
-        else if (key === 'specialDay') newKey = 'special_day';
-        else if (key === 'pricingTable') newKey = 'pricing_table';
-        else if (key === 'costCenterId') newKey = 'cost_center_id';
-        else if (key === 'leadId') newKey = 'lead_id';
-        else if (key === 'clientId') newKey = 'client_id';
-        else if (key === 'clientEmail') newKey = 'client_email';
-        else if (key === 'clientName') newKey = 'client_name';
-        else if (key === 'createdDate') newKey = 'created_date';
-        else if (key === 'validUntil') newKey = 'valid_until';
-        else if (key === 'signedAt') newKey = 'signed_at';
-        else if (key === 'signedByIp') newKey = 'signed_by_ip';
-        else if (key === 'monthlyCost') newKey = 'monthly_cost';
-        else if (key === 'setupCost') newKey = 'setup_cost';
-        else if (key === 'lastMessageAt') newKey = 'last_message_at';
-        else if (key === 'contactIdentifier') newKey = 'contact_identifier';
-        else if (key === 'unreadCount') newKey = 'unread_count';
-        else if (key === 'lastMessage') newKey = 'last_message';
+        const newKey = mapping[key] || key;
         mapped[newKey] = mapKeysToDb(obj[key]);
     }
     return mapped;
@@ -249,9 +259,105 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 ...data, 
                 organizationId: data.organizationId || currentUser.organizationId 
             });
-            await sb.from(table).upsert(payload);
-        } catch (e) { console.error(`Upsert fail on ${table}`, e); }
+
+            const { error } = await sb.from(table).upsert(payload);
+            if (error) {
+                const errorMessage = error.message || JSON.stringify(error);
+                
+                if (errorMessage.includes("row-level security policy")) {
+                    console.error(`RLS Violation on ${table}. Please run SQL MASTER RESET v56.0 in Settings > SQL Patch.`);
+                }
+
+                if (errorMessage.includes("column") || errorMessage.includes("cache") || errorMessage.includes("schema")) {
+                   const { proposal_id, lost_reason, status_updated_at, metadata, type, ...safePayload } = payload;
+                   const { error: retryError } = await sb.from(table).upsert(safePayload);
+                   if (retryError) throw retryError;
+                } else {
+                   throw error;
+                }
+            }
+        } catch (e: any) { 
+            console.error(`Upsert sync failed on ${table}. Local data preserved.`, e.message || e);
+        }
     };
+
+    // --- AUTO CONVERSION & INVENTORY UPDATE ---
+    useEffect(() => {
+        const autoConvertProposals = async () => {
+            if (!currentUser || proposals.length === 0 || isSyncing) return;
+
+            const signedWithoutProject = proposals.filter(p => 
+                p.status === 'Accepted' && 
+                !projects.some(proj => proj.proposalId === p.id)
+            );
+
+            if (signedWithoutProject.length > 0) {
+                for (const proposal of signedWithoutProject) {
+                    // 1. EXTRAIR PRODUTOS PARA PROJETO E INVENTÁRIO
+                    const productItems = (proposal.items || [])
+                        .filter(i => i.category === 'Product')
+                        .map(i => `${i.quantity}x ${i.name}`);
+                    
+                    const productNamesOnly = (proposal.items || [])
+                        .map(i => i.name);
+
+                    // 2. ATUALIZAR INVENTÁRIO DO CLIENTE (PARA APARECER NA ABA SOLUÇÕES)
+                    const targetClient = clients.find(c => 
+                        (proposal.clientId && c.id === proposal.clientId) || 
+                        (c.name.toLowerCase() === proposal.companyName.toLowerCase())
+                    );
+
+                    if (targetClient) {
+                        const currentContracted = targetClient.contractedProducts || [];
+                        const updatedContracted = Array.from(new Set([...currentContracted, ...productNamesOnly]));
+                        
+                        const updatedClient = {
+                            ...targetClient,
+                            contractedProducts: updatedContracted
+                        };
+                        
+                        setClients(prev => prev.map(c => c.id === targetClient.id ? updatedClient : c));
+                        await dbUpsert('clients', updatedClient);
+                        console.log(`Inventory updated for client ${targetClient.name}`);
+                    }
+
+                    // 3. CRIAR PROJETO
+                    const tasks: ProjectTask[] = [
+                        { id: `tk-1-${Date.now()}`, title: 'Kitting: Separar e validar equipamentos', status: 'Pending' },
+                        ...productItems.map((p, i) => ({ id: `tk-p-${i}-${Date.now()}`, title: `Montagem: ${p}`, status: 'Pending' })),
+                        { id: `tk-last-${Date.now()}`, title: 'Go-Live: Configuração final e treinamento', status: 'Pending' }
+                    ];
+
+                    const newProject: Project = {
+                        id: `PROJ-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                        title: `Implantação: ${proposal.title}`,
+                        clientName: proposal.companyName, 
+                        status: 'Kitting', 
+                        progress: 25,
+                        startDate: new Date().toISOString(),
+                        deadline: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), 
+                        manager: 'Nexus Auto-Flow', 
+                        description: `Projeto gerado automaticamente via Assinatura Digital.`,
+                        tasks, 
+                        products: productItems,
+                        proposalId: proposal.id,
+                        organizationId: proposal.organizationId || currentUser.organizationId,
+                        statusUpdatedAt: new Date().toISOString()
+                    };
+
+                    setProjects(prev => [...prev, newProject]);
+                    try {
+                        await dbUpsert('projects', newProject);
+                    } catch (e) {
+                        console.warn("Auto-convert project cloud sync failed, kept locally.", e);
+                    }
+                }
+            }
+        };
+
+        const timer = setTimeout(autoConvertProposals, 3000); 
+        return () => clearTimeout(timer);
+    }, [proposals, projects, clients, currentUser, isSyncing]);
 
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
@@ -271,7 +377,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             updateClient: (u,c) => { setClients(p=>p.map(x=>x.id===c.id?c:x)); dbUpsert('clients', c); },
             removeClient: (u,id) => { setClients(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('clients').delete().eq('id', id); },
             addClientsBulk: (u, list) => { setClients(p=>[...p, ...list]); list.forEach(item => dbUpsert('clients', item)); },
-            updateClientContact: (c, a) => { if(a) { setActivities(p=>[a, ...p]); dbUpsert('activities', a); } },
+            updateClientContact: (client, activity) => { if(activity) { setActivities(p=>[activity, ...p]); dbUpsert('activities', activity); } },
             addTicket: (u,t) => { setTickets(p=>[...p,t]); dbUpsert('tickets', t); },
             updateTicket: (u,id,d) => { const t = tickets.find(x=>x.id===id); if(t){ const n = {...t, ...d}; setTickets(p=>p.map(x=>x.id===id?n:x)); dbUpsert('tickets', n); } },
             addInvoice: (u,i) => { setInvoices(p=>[...p,i]); dbUpsert('invoices', i); },
@@ -289,7 +395,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             deleteProject: (u,id) => { setProjects(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('projects').delete().eq('id', id); },
             addWorkflow: (u,wf) => { setWorkflows(prev => [...prev, wf]); dbUpsert('workflows', wf); },
             updateWorkflow: (u,wf) => { setWorkflows(prev => prev.map(x => x.id === wf.id ? wf : x)); dbUpsert('workflows', wf); },
-            deleteWorkflow: (u,id) => { setWorkflows(prev => prev.filter(x => x.id !== id)); getSupabase()?.from('workflows').delete().eq('id', id); },
+            deleteWorkflow: (u,id) => { setWorkflows(prev => prev.filter(x => x.id !== id)); getSupabase()?.from('projects').delete().eq('id', id); },
             triggerAutomation: () => {},
             addIssue: () => {}, updateIssue: () => {}, addIssueNote: () => {}, addCampaign: () => {}, updateCampaign: () => {}, addMarketingContent: () => {}, updateMarketingContent: () => {}, deleteMarketingContent: () => {}, addClientDocument: () => {}, removeClientDocument: () => {}, updatePortalSettings: () => {}, 
             addLog: (log) => { setLogs(p=>[log, ...p]); dbUpsert('audit_logs', log); }, 
@@ -311,12 +417,75 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             updateWebhook: (w) => { setWebhooks(p=>p.map(x=>x.id===w.id?w:x)); dbUpsert('webhooks', w); }, 
             deleteWebhook: (id) => { setWebhooks(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('webhooks').delete().eq('id', id); },
             addProposal: (u,proposal) => { setProposals(prev=>[...prev,proposal]); dbUpsert('proposals', proposal); },
-            updateProposal: (u,proposal) => { setProposals(prev=>prev.map(x=>x.id===proposal.id?proposal:x)); dbUpsert('proposals', proposal); },
+            updateProposal: async (u,proposal) => { 
+                const original = proposals.find(p => p.id === proposal.id);
+                const isNewlyAccepted = proposal.status === 'Accepted' && original?.status !== 'Accepted';
+                
+                const finalProposal = {
+                    ...proposal,
+                    organizationId: proposal.organizationId || original?.organizationId || u?.organizationId
+                };
+                
+                setProposals(prev=>prev.map(x=>x.id===proposal.id ? finalProposal : x)); 
+                await dbUpsert('proposals', finalProposal); 
+
+                if (isNewlyAccepted) {
+                    const productItems = (proposal.items || [])
+                        .filter(i => i.category === 'Product')
+                        .map(i => `${i.quantity}x ${i.name}`);
+
+                    // ATUALIZAÇÃO MANUAL IMEDIATA DO INVENTÁRIO
+                    const productNamesOnly = (proposal.items || [])
+                        .map(i => i.name);
+
+                    const targetClient = clients.find(c => 
+                        (proposal.clientId && c.id === proposal.clientId) || 
+                        (c.name.toLowerCase() === proposal.companyName.toLowerCase())
+                    );
+
+                    if (targetClient) {
+                        const currentContracted = targetClient.contractedProducts || [];
+                        const updatedContracted = Array.from(new Set([...currentContracted, ...productNamesOnly]));
+                        const updatedClient = { ...targetClient, contractedProducts: updatedContracted };
+                        setClients(prev => prev.map(c => c.id === targetClient.id ? updatedClient : c));
+                        await dbUpsert('clients', updatedClient);
+                    }
+                    
+                    const tasks: ProjectTask[] = [
+                        { id: `tk-1-${Date.now()}`, title: 'Kitting: Separar e validar equipamentos', status: 'Pending' },
+                        ...productItems.map((p, i) => ({ id: `tk-p-${i}-${Date.now()}`, title: `Montagem: ${p}`, status: 'Pending' })),
+                        { id: `tk-last-${Date.now()}`, title: 'Go-Live: Configuração final e treinamento', status: 'Pending' }
+                    ];
+
+                    const newProject: Project = {
+                        id: `PROJ-${Date.now()}`,
+                        title: `Implantação: ${proposal.title}`,
+                        clientName: proposal.companyName, 
+                        status: 'Kitting', 
+                        progress: 25,
+                        startDate: new Date().toISOString(),
+                        deadline: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), 
+                        manager: 'Operações Softpark', 
+                        description: `Projeto gerado via assinatura digital.`,
+                        tasks, 
+                        products: productItems,
+                        proposalId: proposal.id,
+                        organizationId: finalProposal.organizationId,
+                        statusUpdatedAt: new Date().toISOString()
+                    };
+
+                    setProjects(prev => [...prev, newProject]);
+                    try {
+                        await dbUpsert('projects', newProject);
+                    } catch (e) {
+                        console.warn("Auto-convert project sync error", e);
+                    }
+                }
+            },
             removeProposal: (u,id) => { setProposals(p=>p.filter(x=>x.id!==id)); getSupabase()?.from('proposals').delete().eq('id', id); },
             addFinancialCategory: (user, category) => { setFinancialCategories(prev => [...prev, category]); dbUpsert('financial_categories', category); },
             deleteFinancialCategory: (user, id) => { setFinancialCategories(prev => prev.filter(c => c.id !== id)); getSupabase()?.from('financial_categories').delete().eq('id', id); },
             addInboxInteraction: (contactName, type, text, contactIdentifier, sender = 'agent') => {
-                // Fix: Explicitly casting sender to the expected union type '"user" | "agent" | "system"'
                 const newMessage: InboxMessage = { id: `msg-${Date.now()}`, text, sender: sender as 'user' | 'agent' | 'system', timestamp: new Date().toISOString() };
                 setInboxConversations(prev => {
                     const existingIdx = prev.findIndex(c => c.contactName === contactName);
