@@ -36,7 +36,7 @@ export const Proposals: React.FC = () => {
 
     const [formData, setFormData] = useState({
         leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
-        unit: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
+        unit: '', groupName: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
         introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
         scope: [] as string[], items: [] as ProposalItem[], includesDevelopment: false
     });
@@ -78,7 +78,7 @@ export const Proposals: React.FC = () => {
         
         const clientResults = clients
             .filter(c => c.name.toLowerCase().includes(query) || c.contactPerson.toLowerCase().includes(query))
-            .map(c => ({ id: c.id, name: c.contactPerson, company: c.name, type: 'client' as const, email: c.email, unit: c.unit }));
+            .map(c => ({ id: c.id, name: c.contactPerson, company: c.name, type: 'client' as const, email: c.email, unit: c.unit, groupName: c.groupName }));
 
         return [...leadResults, ...clientResults];
     }, [leads, clients, targetSearch]);
@@ -88,11 +88,11 @@ export const Proposals: React.FC = () => {
         setTargetSearch(target.company);
         if (target.type === 'lead') {
             setFormData(prev => ({
-                ...prev, leadId: target.id, clientId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '',
+                ...prev, leadId: target.id, clientId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '', groupName: '',
             }));
         } else {
             setFormData(prev => ({
-                ...prev, clientId: target.id, leadId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '', unit: target.unit || ''
+                ...prev, clientId: target.id, leadId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '', unit: target.unit || '', groupName: (target.groupName || '').toUpperCase()
             }));
         }
         setIsTargetDropdownOpen(false);
@@ -115,7 +115,15 @@ export const Proposals: React.FC = () => {
             return;
         }
         setIsSaving(true);
-        const proposalData: Proposal = {
+        
+        let finalGroupName = formData.groupName;
+        // Tenta buscar o groupName do objeto cliente se não estiver preenchido no form
+        if (!finalGroupName) {
+            const matchedClient = clients.find(c => c.name.trim().toUpperCase() === formData.companyName.trim().toUpperCase());
+            if (matchedClient) finalGroupName = (matchedClient.groupName || '').toUpperCase();
+        }
+
+        const proposalData: any = {
             id: editingId || `PC-${Date.now()}`,
             title: formData.title,
             leadId: targetType === 'lead' ? formData.leadId : undefined,
@@ -123,6 +131,7 @@ export const Proposals: React.FC = () => {
             clientEmail: formData.clientEmail,
             clientName: formData.clientName,
             companyName: formData.companyName,
+            groupName: finalGroupName.trim().toUpperCase(),
             unit: formData.unit,
             items: formData.items,
             customClause: formData.customClause,
@@ -141,11 +150,21 @@ export const Proposals: React.FC = () => {
         };
 
         try {
-            if (editingId) await updateProposal(currentUser, proposalData);
-            else await addProposal(currentUser, proposalData);
-            addSystemNotification("Sucesso", "Proposta salva.", "success");
+            if (editingId) {
+                await updateProposal(currentUser, proposalData);
+            } else {
+                await addProposal(currentUser, proposalData);
+            }
+            addSystemNotification("Sucesso", "Proposta salva e sincronizada.", "success");
             setView('list');
-        } catch (e) { console.error(e); } finally { setIsSaving(false); }
+            setEditingId(null);
+        } catch (e: any) { 
+            console.error("Erro detalhado ao salvar proposta:", e);
+            // Agora o 'e.message' não será mais [object Object] devido à correção no DataContext
+            addSystemNotification("Falha Crítica", e.message || "Verifique se a tabela de propostas existe no seu Supabase.", "alert");
+        } finally { 
+            setIsSaving(false); 
+        }
     };
 
     const filteredProposals = useMemo(() => {
@@ -164,7 +183,17 @@ export const Proposals: React.FC = () => {
                             <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Propostas</h1>
                             <p className="text-slate-500 font-medium">Orçamentos e conversão comercial.</p>
                         </div>
-                        <button onClick={() => { setEditingId(null); setTargetSearch(''); setView('create'); }} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-500/20 flex items-center gap-2">
+                        <button onClick={() => { 
+                            setEditingId(null); 
+                            setTargetSearch(''); 
+                            setFormData({
+                                leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
+                                unit: '', groupName: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
+                                introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
+                                scope: [], items: [], includesDevelopment: false
+                            });
+                            setView('create'); 
+                        }} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-500/20 flex items-center gap-2">
                             <Plus size={18}/> Gerar Proposta
                         </button>
                     </div>
@@ -189,7 +218,12 @@ export const Proposals: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                     {filteredProposals.map(prop => (
-                                        <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition cursor-pointer group" onClick={() => { setEditingId(prop.id); setTargetSearch(prop.companyName || ''); setFormData({...prop, setupCost: prop.setupCost || 0, monthlyCost: prop.monthlyCost || 0, scope: prop.scope || [], items: prop.items || []} as any); setView('create'); }}>
+                                        <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition cursor-pointer group" onClick={() => { 
+                                            setEditingId(prop.id); 
+                                            setTargetSearch(prop.companyName || ''); 
+                                            setFormData({...prop, setupCost: prop.setupCost || 0, monthlyCost: prop.monthlyCost || 0, scope: prop.scope || [], items: prop.items || []} as any); 
+                                            setView('create'); 
+                                        }}>
                                             <td className="p-6">
                                                 <p className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-lg">{prop.title}</p>
                                                 <p className="text-[10px] text-slate-400 uppercase font-black mt-1 flex items-center gap-2">
@@ -222,7 +256,7 @@ export const Proposals: React.FC = () => {
                                 <button onClick={() => handleSave(false)} disabled={isSaving} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 transition">
                                     {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
                                 </button>
-                                <button onClick={() => handleSave(true)} disabled={isSaving} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg">
+                                <button onClick={() => handleSave(true)} title="Salvar e Enviar para o Portal" disabled={isSaving} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg">
                                     <Send size={18}/>
                                 </button>
                             </div>
@@ -291,7 +325,6 @@ export const Proposals: React.FC = () => {
                                 <input type="text" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" placeholder="Título da Proposta (ex: Projeto LPR V1)" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                             </div>
 
-                            {/* SEÇÃO DE ESCOPO TÉCNICO */}
                             <div className="space-y-4">
                                 <SectionTitle title="Escopo do Projeto" />
                                 <div className="flex gap-2">
@@ -374,7 +407,6 @@ export const Proposals: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* DIREITA: PREVIEW */}
                     <div className="flex-1 p-10 overflow-y-auto custom-scrollbar flex justify-center bg-slate-200 dark:bg-slate-950">
                         <div className="transform origin-top scale-[0.85] lg:scale-100 w-[210mm] pointer-events-none rounded-lg shadow-2xl">
                             <ProposalDocument data={{

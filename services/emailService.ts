@@ -11,6 +11,12 @@ export interface EmailTemplate {
 
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
     {
+        id: 'credentials',
+        label: 'Acesso ao Portal (Novo)',
+        subject: 'Seu acesso ao Portal SOFT-CRM foi liberado',
+        body: `Olá [Nome],\n\nÉ um prazer ter você conosco! Seu acesso ao nosso Portal do Cliente foi liberado.\n\nAtravés dele você poderá acompanhar faturas, assinar contratos e abrir chamados de suporte.\n\n**Seus dados de acesso:**\nURL: [PortalURL]\nLogin: [Email]\nSenha Provisória: [Senha]\n\nPor segurança, recomendamos alterar sua senha no primeiro acesso.\n\nAtenciosamente,\nEquipe Softcase`
+    },
+    {
         id: 'intro',
         label: 'Apresentação Softcase (LPR)',
         subject: 'Automação e Controle para seu Estacionamento',

@@ -1,13 +1,14 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { 
     DollarSign, FileText, LifeBuoy, AlertCircle, 
     CheckCircle, Wallet, ArrowRight, Clock, 
     Loader2, ShieldCheck, Zap, TrendingUp,
-    Activity, Download, MessageSquare
+    Activity, Download, MessageSquare, Building2, SearchX, Link as LinkIcon
 } from 'lucide-react';
+import { Badge } from '../../components/Widgets';
 import { InvoiceStatus, TicketStatus } from '../../types';
 
 interface ClientDashboardProps {
@@ -16,130 +17,117 @@ interface ClientDashboardProps {
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) => {
   const { currentUser } = useAuth();
-  const { invoices, proposals, tickets, clients, lastSyncTime } = useData();
+  const { invoices, proposals, tickets, clients, isSyncing } = useData();
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
-  const currentClient = useMemo(() => {
-    if (!currentUser) return null;
-    return clients.find(c => c.id === currentUser.relatedClientId) || 
-           clients.find(c => c.email?.toLowerCase().trim() === currentUser.email?.toLowerCase().trim());
-  }, [clients, currentUser]);
+  useEffect(() => {
+    if (!isSyncing) setInitialLoadDone(true);
+  }, [isSyncing]);
 
-  const pendingInvoices = useMemo(() => 
-    invoices.filter(i => i.customer === currentClient?.name && i.status !== InvoiceStatus.PAID), 
-  [invoices, currentClient]);
+  const pendingInvoices = useMemo(() => invoices.filter(i => i.status !== InvoiceStatus.PAID), [invoices]);
+  const openTickets = useMemo(() => tickets.filter(t => t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED), [tickets]);
+  
+  // Cálculo robusto do total em aberto
+  const totalBalanceDue = useMemo(() => {
+    return pendingInvoices.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  }, [pendingInvoices]);
 
-  const openTickets = useMemo(() => 
-    tickets.filter(t => t.customer === currentClient?.name && t.status !== TicketStatus.CLOSED), 
-  [tickets, currentClient]);
-
-  if (!currentClient) return <div className="p-20 text-center animate-pulse text-slate-400 font-bold uppercase tracking-widest">Sincronizando Perfil...</div>;
+  if (isSyncing || !initialLoadDone) {
+    return (
+        <div className="h-[60vh] flex flex-col items-center justify-center animate-fade-in">
+            <Loader2 className="text-indigo-600 animate-spin mb-4" size={48}/>
+            <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Sincronizando dados...</p>
+        </div>
+    );
+  }
 
   return (
-    <div className="space-y-10">
-        {/* Welcome Section */}
+    <div className="space-y-10 animate-fade-in">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-                <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase">Painel da Unidade</h1>
-                <p className="text-slate-500 font-medium mt-1">Bem-vindo, {currentUser?.name}. Aqui está o resumo da {currentClient.name}.</p>
-            </div>
-            <div className="bg-white px-6 py-3 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                    <ShieldCheck size={24}/>
+                <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Painel do Cliente</h1>
+                <div className="flex flex-wrap items-center gap-4 mt-3">
+                    <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest flex items-center gap-1.5">
+                        <Building2 size={12}/> {currentUser?.email}
+                    </p>
+                    {currentUser?.managedGroupName && (
+                        <div className="bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full flex items-center gap-2">
+                             <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Grupo:</span>
+                             <span className="text-[10px] font-black text-indigo-600 uppercase">{currentUser.managedGroupName}</span>
+                        </div>
+                    )}
                 </div>
+            </div>
+            <div className="bg-white px-6 py-4 rounded-[1.5rem] border border-slate-200 shadow-sm flex items-center gap-4">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><ShieldCheck size={24}/></div>
                 <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sistema LPR</p>
-                    <p className="text-sm font-bold text-slate-900 uppercase">Monitorado & Ativo</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status de Gestão</p>
+                    <p className="text-sm font-bold text-slate-900 uppercase">{clients.length} Unidades Operacionais</p>
                 </div>
             </div>
         </div>
 
-        {/* Quick Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl w-fit mb-4"><Zap size={24}/></div>
-                <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Health Score</h3>
-                <p className="text-2xl font-black text-slate-900">{currentClient.healthScore || 100}/100</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <Building2 className="text-indigo-600 mb-4" size={20}/>
+                <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Unidades Ativas</h3>
+                <p className="text-2xl font-black text-slate-900">{clients.length}</p>
             </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl w-fit mb-4"><DollarSign size={24}/></div>
-                <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Faturas Pendentes</h3>
-                <p className="text-2xl font-black text-slate-900">{pendingInvoices.length}</p>
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <DollarSign className="text-emerald-600 mb-4" size={20}/>
+                <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Total em Aberto</h3>
+                <p className="text-2xl font-black text-emerald-600">
+                    R$ {totalBalanceDue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                </p>
             </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl w-fit mb-4"><FileText size={24}/></div>
-                <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Contratos</h3>
-                <p className="text-2xl font-black text-slate-900">{proposals.filter(p => p.status === 'Accepted').length}</p>
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <FileText className="text-blue-600 mb-4" size={20}/>
+                <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Contratos</h3>
+                <p className="text-2xl font-black text-slate-900">{proposals.length}</p>
             </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl w-fit mb-4"><LifeBuoy size={24}/></div>
-                <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Suporte Aberto</h3>
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <LifeBuoy className="text-amber-600 mb-4" size={20}/>
+                <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Suporte</h3>
                 <p className="text-2xl font-black text-slate-900">{openTickets.length}</p>
             </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            {/* Feed de Atividade */}
             <div className="lg:col-span-2 space-y-6">
-                <h3 className="font-black text-xl uppercase tracking-tighter flex items-center gap-3">
-                    <Activity size={24} className="text-indigo-600"/> Últimas Movimentações
-                </h3>
+                <h3 className="font-black text-xl uppercase tracking-tighter">Próximos Vencimentos</h3>
                 <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="divide-y">
-                        {pendingInvoices.slice(0, 3).map(inv => (
-                            <div key={inv.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div className="divide-y divide-slate-50">
+                        {pendingInvoices.length > 0 ? pendingInvoices.slice(0, 5).map(inv => (
+                            <div key={inv.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors group">
                                 <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><Clock size={20}/></div>
+                                    <div className="p-3 bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 rounded-2xl transition-colors"><Clock size={20}/></div>
                                     <div>
-                                        <p className="font-bold text-slate-900 uppercase text-xs">Fatura Pendente</p>
-                                        <p className="text-xs text-slate-500">Vencimento em {new Date(inv.dueDate).toLocaleDateString()}</p>
+                                        <p className="font-black text-slate-900 uppercase text-[10px] tracking-tight">{inv.customer}</p>
+                                        <p className="text-xs font-bold text-slate-600">{inv.description}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => onNavigate('portal-financial')} className="text-indigo-600 font-bold text-xs hover:underline">PAGAR AGORA &rarr;</button>
-                            </div>
-                        ))}
-                        {openTickets.slice(0, 2).map(t => (
-                            <div key={t.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><MessageSquare size={20}/></div>
-                                    <div>
-                                        <p className="font-bold text-slate-900 uppercase text-xs">Ticket Atualizado</p>
-                                        <p className="text-xs text-slate-500">{t.subject}</p>
-                                    </div>
+                                <div className="text-right">
+                                    <p className="font-black text-slate-900 text-sm">
+                                        R$ {(Number(inv.amount) || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                    </p>
                                 </div>
-                                <button onClick={() => onNavigate('portal-tickets')} className="text-indigo-600 font-bold text-xs hover:underline">VER CHAT &rarr;</button>
                             </div>
-                        ))}
-                    </div>
-                    <div className="p-6 bg-slate-50 text-center">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Última Sincronização: {lastSyncTime?.toLocaleTimeString() || 'Agora'}</p>
+                        )) : <div className="p-16 text-center text-slate-400 font-bold uppercase text-[10px]">Sem pendências financeiras.</div>}
                     </div>
                 </div>
             </div>
-
-            {/* Sidebar de Ações Rápidas */}
             <div className="space-y-6">
-                <h3 className="font-black text-xl uppercase tracking-tighter flex items-center gap-3">
-                    <Zap size={24} className="text-amber-500"/> Acesso Rápido
-                </h3>
-                <div className="space-y-4">
-                    <button onClick={() => onNavigate('portal-tickets')} className="w-full p-6 bg-indigo-600 text-white rounded-[2rem] text-left hover:bg-indigo-700 transition shadow-xl shadow-indigo-600/20 group">
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Precisa de Ajuda?</p>
-                        <p className="font-bold text-lg mb-4 leading-tight">Solicitar Suporte Técnico</p>
-                        <div className="flex items-center gap-2 text-xs font-bold group-hover:gap-4 transition-all">
-                            ABRIR CHAMADO <ArrowRight size={16}/>
+                <h3 className="font-black text-xl uppercase tracking-tighter">Sua Carteira</h3>
+                <div className="space-y-3">
+                    {clients.map(unit => (
+                        <div key={unit.id} className="bg-white p-5 rounded-[2rem] border border-slate-200 flex items-center justify-between group hover:border-indigo-400 transition-all">
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-400">{unit.name.charAt(0)}</div>
+                                <div className="min-w-0"><p className="text-xs font-black text-slate-800 uppercase truncate max-w-[140px]">{unit.name}</p></div>
+                            </div>
+                            <Badge color={unit.status === 'Active' ? 'green' : 'red'}>{unit.status === 'Active' ? 'OK' : 'RISCO'}</Badge>
                         </div>
-                    </button>
-                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Central de Downloads</p>
-                         <button className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition text-sm font-bold text-slate-700">
-                             <span className="flex items-center gap-3"><FileText size={18} className="text-slate-400"/> Manual LPR</span>
-                             <Download size={16} className="text-indigo-600"/>
-                         </button>
-                         <button className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition text-sm font-bold text-slate-700">
-                             <span className="flex items-center gap-3"><ShieldCheck size={18} className="text-slate-400"/> Termos de Uso</span>
-                             <Download size={16} className="text-indigo-600"/>
-                         </button>
-                    </div>
+                    ))}
                 </div>
             </div>
         </div>

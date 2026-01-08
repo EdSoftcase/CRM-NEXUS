@@ -1,39 +1,21 @@
 
 import React, { useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Lead, LeadStatus } from '../types';
 import { 
-    Users, Plus, Search, Filter, MessageCircle, Mail, 
-    MoreVertical, Archive, Trash2, Edit2, Phone, X, 
-    CheckCircle, AlertCircle, Loader2, Send, Server, User,
-    ArrowUpDown, SortAsc, SortDesc, CalendarDays
+    Users, Plus, Search, MessageCircle, Mail, 
+    Trash2, Edit2, X, Loader2, Send, Server, User
 } from 'lucide-react';
-import { Badge } from '../components/Widgets';
-import { SendEmailModal } from '../components/SendEmailModal';
 import { sendBridgeWhatsApp } from '../services/bridgeService';
-
-// WhatsApp Templates Atualizados
-const whatsappTemplates = [
-    { label: 'Apresentação LPR', text: 'Olá! Tudo bem? Sou da Softcase. Desenvolvemos soluções de automação para estacionamentos com LPR, controle total da operação e redução de perdas. Posso te explicar em 2 minutos como funciona?' },
-    { label: 'Follow-up', text: 'Olá [Nome], tudo bem? Gostaria de saber se conseguiu avaliar a proposta que te enviei sobre a automação do seu estacionamento.' },
-    { label: 'Agendamento', text: 'Oi [Nome], podemos agendar uma conversa rápida de 5 minutos para eu te mostrar como o LPR da Softcase pode eliminar suas perdas manuais?' }
-];
-
-type SortOption = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc' | 'value-desc';
+import { SendEmailModal } from '../components/SendEmailModal';
 
 export const Commercial: React.FC = () => {
-    const { leads, updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification, addInboxInteraction } = useData();
+    const { leads = [], updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification, addInboxInteraction } = useData();
     const { currentUser } = useAuth();
 
-    const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState<LeadStatus | 'All'>('All');
-    const [sortOrder, setSortOrder] = useState<SortOption>('date-desc');
-
     const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
-    const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
@@ -41,33 +23,18 @@ export const Commercial: React.FC = () => {
     const [emailLead, setEmailLead] = useState<Lead | null>(null);
     const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
-    const [cancelReason, setCancelReason] = useState('');
     const [whatsAppMessage, setWhatsAppMessage] = useState('');
-    const [useBridgeWhatsApp, setUseBridgeWhatsApp] = useState(false);
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
-
-    const [leadForm, setLeadForm] = useState<Partial<Lead>>({ status: LeadStatus.NEW, source: 'Manual' });
-    const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+    const [leadForm, setLeadForm] = useState<Partial<Lead>>({ name: '', company: '', email: '', phone: '', value: 0 });
 
     const filteredLeads = useMemo(() => {
-        const result = leads.filter(l => {
-            const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                  l.company.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesStatus = filterStatus === 'All' || l.status === filterStatus;
-            return matchesSearch && matchesStatus;
+        const safeLeads = Array.isArray(leads) ? leads : [];
+        return safeLeads.filter(l => {
+            if (!l) return false;
+            return (l.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                   (l.company || '').toLowerCase().includes(searchTerm.toLowerCase());
         });
-
-        return result.sort((a, b) => {
-            switch (sortOrder) {
-                case 'name-asc': return a.company.localeCompare(b.company);
-                case 'name-desc': return b.company.localeCompare(a.company);
-                case 'date-desc': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                case 'date-asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-                case 'value-desc': return b.value - a.value;
-                default: return 0;
-            }
-        });
-    }, [leads, searchTerm, filterStatus, sortOrder]);
+    }, [leads, searchTerm]);
 
     const columns = [
         { id: LeadStatus.NEW, label: 'Novo', color: 'border-blue-500' },
@@ -77,42 +44,12 @@ export const Commercial: React.FC = () => {
         { id: LeadStatus.CLOSED_WON, label: 'Ganho', color: 'border-green-500' }
     ];
 
-    const handleDragStart = (e: React.DragEvent, id: string) => {
-        setDraggedLeadId(id);
-        e.dataTransfer.setData('leadId', id);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-
-    const handleDrop = (e: React.DragEvent, status: LeadStatus) => {
-        const leadId = e.dataTransfer.getData('leadId');
-        if (leadId) {
-            updateLeadStatus(currentUser, leadId, status);
-        }
-        setDraggedLeadId(null);
-    };
-
-    const openWhatsApp = (lead: Lead) => {
-        setSelectedLead(lead);
-        setWhatsAppMessage('');
-        setShowWhatsAppModal(true);
-    };
-
     const handleSendWhatsApp = async () => {
         if (!selectedLead || !whatsAppMessage) return;
         setSendingWhatsApp(true);
         try {
-            if (useBridgeWhatsApp) {
-                await sendBridgeWhatsApp(selectedLead.phone || '', whatsAppMessage);
-                addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${selectedLead.name} via Bridge.`, 'success');
-            } else {
-                const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
-                window.open(url, '_blank');
-            }
-            
-            // REGISTRO NO INBOX
-            addInboxInteraction(selectedLead.company || selectedLead.name, 'WhatsApp', whatsAppMessage, selectedLead.phone);
-
+            const url = `https://wa.me/${(selectedLead.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
+            window.open(url, '_blank');
             setShowWhatsAppModal(false);
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
@@ -126,213 +63,78 @@ export const Commercial: React.FC = () => {
             });
         } catch (error) {
             console.error(error);
-            alert("Erro ao enviar WhatsApp.");
         } finally {
             setSendingWhatsApp(false);
         }
     };
 
-    const toggleBridgeWhatsApp = () => setUseBridgeWhatsApp(!useBridgeWhatsApp);
-
-    const openEmail = (lead: Lead) => {
-        setEmailLead(lead);
-        setIsEmailModalOpen(true);
-    };
-
-    const handleEmailSuccess = (msg: string) => {
-        addSystemNotification('Email Enviado', msg, 'success');
-        if (emailLead) {
-             addActivity(currentUser, {
-                id: `ACT-EMAIL-${Date.now()}`,
-                title: 'Email Enviado',
-                type: 'Email',
-                dueDate: new Date().toISOString(),
-                completed: true,
-                relatedTo: emailLead.name,
-                assignee: currentUser?.id || 'system',
-                description: msg
-            });
-        }
-    };
-
-    const openCancelModal = (lead: Lead) => {
-        setSelectedLead(lead);
-        setCancelReason('');
-        setIsCancelModalOpen(true);
-    };
-
-    const handleConfirmCancel = () => {
-        if (selectedLead && cancelReason) {
-            updateLead(currentUser, { 
-                ...selectedLead, 
-                status: LeadStatus.CLOSED_LOST, 
-                lostReason: cancelReason
-            });
-             addActivity(currentUser, {
-                id: `ACT-LOST-${Date.now()}`,
-                title: 'Lead Perdido/Cancelado',
-                type: 'Task',
-                dueDate: new Date().toISOString(),
-                completed: true,
-                relatedTo: selectedLead.name,
-                assignee: currentUser?.id || 'system',
-                description: `Motivo: ${cancelReason}`
-            });
-            setIsCancelModalOpen(false);
-            setSelectedLead(null);
-        }
-    };
-
-    const handleOpenCreate = () => {
-        setEditingLead(null);
-        setLeadForm({ status: LeadStatus.NEW, source: 'Manual', name: '', company: '', email: '', phone: '', value: 0 });
-        setIsNewLeadOpen(true);
-    };
-
-    const handleOpenEdit = (lead: Lead) => {
-        setEditingLead(lead);
-        setLeadForm({
-            name: lead.name,
-            company: lead.company,
-            email: lead.email,
-            phone: lead.phone,
-            value: lead.value,
-            status: lead.status,
-            source: lead.source
-        });
-        setIsNewLeadOpen(true);
-    };
-
     const handleSaveLead = () => {
-        if (!leadForm.name || !leadForm.company) {
-            alert("Nome e Empresa são obrigatórios.");
-            return;
-        }
+        if (!leadForm.name || !leadForm.company) return;
 
         if (editingLead) {
-            const updatedLead: Lead = {
-                ...editingLead,
-                name: leadForm.name!,
-                company: leadForm.company!,
-                email: leadForm.email || '',
-                phone: leadForm.phone || '',
-                value: leadForm.value || 0,
-            };
-            updateLead(currentUser, updatedLead);
-            addSystemNotification('Lead Atualizado', `Dados de ${updatedLead.name} foram salvos.`, 'success');
+            updateLead(currentUser, { ...editingLead, ...leadForm } as Lead);
         } else {
-            const lead: Lead = {
+            addLead(currentUser, {
                 id: `L-${Date.now()}`,
-                name: leadForm.name!,
-                company: leadForm.company!,
-                email: leadForm.email || '',
-                phone: leadForm.phone || '',
-                value: leadForm.value || 0,
+                ...leadForm,
                 status: LeadStatus.NEW,
-                source: leadForm.source || 'Manual',
-                probability: 10,
+                source: 'Manual',
                 createdAt: new Date().toISOString(),
-                lastContact: new Date().toISOString(),
-            } as Lead;
-            addLead(currentUser, lead);
-            addSystemNotification('Novo Lead', 'Lead criado com sucesso.', 'success');
+                lastContact: new Date().toISOString()
+            } as Lead);
         }
-        
         setIsNewLeadOpen(false);
-        setLeadForm({ status: LeadStatus.NEW, source: 'Manual' });
         setEditingLead(null);
+        setLeadForm({ name: '', company: '', email: '', phone: '', value: 0 });
     };
 
     return (
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
                         <Users className="text-blue-600"/> Gestão Comercial
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400">Pipeline de vendas e CRM.</p>
                 </div>
-                
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <ArrowUpDown size={14} className="text-slate-400" />
-                        <select 
-                            className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-transparent outline-none border-none cursor-pointer"
-                            value={sortOrder}
-                            onChange={(e) => setSortOrder(e.target.value as SortOption)}
-                        >
-                            <option value="date-desc">Mais Recentes</option>
-                            <option value="date-asc">Mais Antigos</option>
-                            <option value="name-asc">Nome (A-Z)</option>
-                            <option value="name-desc">Nome (Z-A)</option>
-                            <option value="value-desc">Maior Valor</option>
-                        </select>
-                    </div>
-
-                    <div className="relative flex-1 md:flex-none md:w-64">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
                         <input 
                             type="text" 
-                            placeholder="Buscar empresa ou contato..." 
-                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition"
+                            placeholder="Buscar..." 
+                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border rounded-lg text-sm"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-
-                    <button onClick={handleOpenCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-500/20 transition whitespace-nowrap">
-                        <Plus size={18}/> Novo Lead
+                    <button onClick={() => { setEditingLead(null); setLeadForm({name:'', company:'', email:'', phone:'', value:0}); setIsNewLeadOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">
+                        Novo Lead
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
+            <div className="flex-1 overflow-x-auto pb-4">
                 <div className="flex gap-4 h-full min-w-max">
                     {columns.map(col => (
-                        <div 
-                            key={col.id} 
-                            className={`w-80 flex flex-col bg-slate-100/50 dark:bg-slate-800/50 rounded-xl border-t-4 ${col.color} transition-colors`}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, col.id)}
-                        >
-                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-700 dark:text-white">
+                        <div key={col.id} className={`w-80 flex flex-col bg-slate-100/50 dark:bg-slate-800/50 rounded-xl border-t-4 ${col.color}`}>
+                            <div className="p-4 font-bold text-slate-700 dark:text-white flex justify-between items-center">
                                 {col.label}
-                                <span className="bg-white dark:bg-slate-700 px-2 py-0.5 rounded-full text-[10px] font-black border border-slate-100 dark:border-slate-600">{filteredLeads.filter(l => l.status === col.id).length}</span>
+                                <span className="bg-white dark:bg-slate-700 px-2 py-0.5 rounded-full text-xs">
+                                    {filteredLeads.filter(l => l.status === col.id).length}
+                                </span>
                             </div>
-                            <div className="p-3 flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                            <div className="p-3 flex-1 overflow-y-auto space-y-3">
                                 {filteredLeads.filter(l => l.status === col.id).map(lead => (
-                                    <div 
-                                        key={lead.id}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, lead.id)}
-                                        className="bg-white dark:bg-slate-700 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-500 cursor-grab active:cursor-grabbing group relative transition-all"
-                                    >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h4 className="font-bold text-slate-800 dark:text-white truncate pr-6 leading-tight">{lead.company}</h4>
-                                            
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition absolute top-2 right-2 bg-white dark:bg-slate-700 pl-2 rounded-bl-lg">
-                                                <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(lead); }} className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition" title="Editar Dados">
-                                                    <Edit2 size={14}/>
-                                                </button>
-                                                <button onClick={() => openWhatsApp(lead)} className="p-1.5 text-slate-400 hover:text-green-500 rounded-lg transition" title="WhatsApp"><MessageCircle size={14}/></button>
-                                                <button onClick={() => openEmail(lead)} className="p-1.5 text-slate-400 hover:text-blue-500 rounded-lg transition" title="Email"><Mail size={14}/></button>
-                                                <button onClick={() => openCancelModal(lead)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition" title="Arquivar/Cancelar"><Archive size={14}/></button>
+                                    <div key={lead.id} className="bg-white dark:bg-slate-700 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 hover:shadow-md transition-all">
+                                        <div className="flex justify-between items-start mb-1">
+                                            <h4 className="font-bold text-slate-800 dark:text-white truncate">{lead.company}</h4>
+                                            <div className="flex gap-1">
+                                                <button onClick={() => { setSelectedLead(lead); setEditingLead(lead); setLeadForm(lead); setIsNewLeadOpen(true); }} className="p-1 text-slate-400 hover:text-blue-500"><Edit2 size={14}/></button>
+                                                <button onClick={() => { setSelectedLead(lead); setWhatsAppMessage(''); setShowWhatsAppModal(true); }} className="p-1 text-slate-400 hover:text-green-500"><MessageCircle size={14}/></button>
+                                                <button onClick={() => { setEmailLead(lead); setIsEmailModalOpen(true); }} className="p-1 text-slate-400 hover:text-blue-500"><Mail size={14}/></button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5"><User size={12} className="text-slate-300"/> {lead.name}</p>
-                                        
-                                        <div className="flex justify-between items-end">
-                                            <div>
-                                                <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-0.5">Valor</p>
-                                                <p className="text-sm font-black text-slate-800 dark:text-slate-200">R$ {lead.value.toLocaleString()}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[9px] text-slate-400 uppercase font-bold flex items-center justify-end gap-1"><CalendarDays size={10}/> Entrada</p>
-                                                <p className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
-                                                    {new Date(lead.createdAt).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{lead.name}</p>
                                     </div>
                                 ))}
                             </div>
@@ -341,129 +143,49 @@ export const Commercial: React.FC = () => {
                 </div>
             </div>
 
+            {/* MODALS RENDERING DIRECTLY FOR REACT 18 STABILITY */}
             {isNewLeadOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                            <h3 className="font-bold text-xl text-slate-900 dark:text-white">{editingLead ? 'Editar Lead' : 'Novo Lead'}</h3>
-                            <button onClick={() => setIsNewLeadOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"><X size={20} className="text-slate-400"/></button>
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
+                        <div className="p-6 border-b flex justify-between items-center">
+                            <h3 className="font-bold text-xl">{editingLead ? 'Editar Lead' : 'Novo Lead'}</h3>
+                            <button onClick={() => setIsNewLeadOpen(false)}><X size={20}/></button>
                         </div>
-                        <div className="p-6 space-y-5">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Nome do Contato</label>
-                                <input type="text" placeholder="Nome Completo" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Empresa / Razão Social</label>
-                                <input type="text" placeholder="Nome da Empresa" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition" value={leadForm.company || ''} onChange={e => setLeadForm({...leadForm, company: e.target.value})} />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Email</label>
-                                    <input type="email" placeholder="email@empresa.com" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition text-sm" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Telefone</label>
-                                    <input type="text" placeholder="(00) 00000-0000" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition text-sm" value={leadForm.phone || ''} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 tracking-wider">Valor Estimado (R$)</label>
-                                <input type="number" placeholder="0.00" className="w-full border dark:border-slate-600 rounded-xl p-3 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition font-mono" value={leadForm.value || ''} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value)})} />
-                            </div>
-                            
-                            <button onClick={handleSaveLead} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 text-sm uppercase tracking-widest">
-                                {editingLead ? 'Salvar Alterações' : 'Criar Lead Agora'}
+                        <div className="p-6 space-y-4">
+                            <input type="text" placeholder="Nome" className="w-full border rounded-xl p-3 bg-slate-50 dark:bg-slate-700" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} />
+                            <input type="text" placeholder="Empresa" className="w-full border rounded-xl p-3 bg-slate-50 dark:bg-slate-700" value={leadForm.company || ''} onChange={e => setLeadForm({...leadForm, company: e.target.value})} />
+                            <input type="email" placeholder="Email" className="w-full border rounded-xl p-3 bg-slate-50 dark:bg-slate-700" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} />
+                            <input type="text" placeholder="Telefone" className="w-full border rounded-xl p-3 bg-slate-50 dark:bg-slate-700" value={leadForm.phone || ''} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} />
+                            <button onClick={handleSaveLead} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showWhatsAppModal && selectedLead && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <h2 className="text-lg font-bold flex items-center gap-2"><MessageCircle size={20} className="text-green-600"/> Enviar WhatsApp</h2>
+                            <button onClick={() => setShowWhatsAppModal(false)}><X size={20}/></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <textarea 
+                                className="w-full border rounded-xl p-3 h-32 resize-none outline-none text-sm bg-white dark:bg-slate-700" 
+                                value={whatsAppMessage} 
+                                onChange={(e) => setWhatsAppMessage(e.target.value)} 
+                                placeholder="Digite sua mensagem..."
+                            />
+                            <button onClick={handleSendWhatsApp} disabled={sendingWhatsApp} className="w-full bg-[#25D366] text-white font-black py-3 rounded-xl">
+                                {sendingWhatsApp ? 'Enviando...' : 'Enviar'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Cancel Modal */}
-            {isCancelModalOpen && selectedLead && createPortal(
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border-t-8 border-amber-500">
-                        <div className="p-6">
-                            <div className="flex items-start gap-4 mb-4">
-                                <div className="bg-amber-100 dark:bg-amber-900/50 p-3 rounded-full text-amber-600 dark:text-amber-400 shrink-0"><Archive size={28} /></div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Cancelar Lead</h2>
-                                    <p className="text-slate-600 dark:text-slate-300 mt-1 text-sm">O lead será arquivado para contato futuro.</p>
-                                </div>
-                            </div>
-                            
-                            <div className="mb-6">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Justificativa <span className="text-red-500">*</span></label>
-                                <textarea 
-                                    className="w-full border border-slate-300 dark:border-slate-600 rounded-xl p-3 text-sm h-24 resize-none outline-none focus:ring-2 focus:ring-amber-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                                    placeholder="Por que este lead está sendo cancelado agora? (ex: Sem budget no momento, projeto adiado)"
-                                    value={cancelReason}
-                                    onChange={(e) => setCancelReason(e.target.value)}
-                                />
-                            </div>
-
-                            <div className="flex gap-3 justify-end">
-                                <button onClick={() => setIsCancelModalOpen(false)} className="px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition">Cancelar</button>
-                                <button onClick={handleConfirmCancel} className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 transition shadow-md">Confirmar Cancelamento</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* WhatsApp Modal */}
-            {showWhatsAppModal && selectedLead && createPortal(
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2"><MessageCircle size={20} className="text-green-600 dark:text-green-400"/> Enviar WhatsApp</h2>
-                            <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"><X size={20}/></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600">
-                                <p className="text-xs text-slate-500 mb-1">Para:</p>
-                                <p className="text-sm font-bold text-slate-800 dark:text-white">{selectedLead.name} <span className="text-slate-400 font-normal ml-2">({selectedLead.phone})</span></p>
-                            </div>
-                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 cursor-pointer transition hover:bg-slate-100 dark:hover:bg-slate-600" onClick={toggleBridgeWhatsApp}>
-                                <div className="flex items-center gap-2"><Server size={16} className={useBridgeWhatsApp ? 'text-green-600' : 'text-slate-400'}/><span className="text-sm font-bold text-slate-700 dark:text-slate-300">Usar Nexus Bridge (Automático)</span></div>
-                                <div className={`w-10 h-5 rounded-full p-0.5 transition-colors ${useBridgeWhatsApp ? 'bg-green-500' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${useBridgeWhatsApp ? 'translate-x-5' : 'translate-x-0'}`}></div></div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 tracking-widest">Mensagem</label>
-                                <textarea className="w-full border dark:border-slate-600 rounded-xl p-3 h-32 resize-none focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition shadow-inner" value={whatsAppMessage} onChange={(e) => setWhatsAppMessage(e.target.value)}/>
-                            </div>
-                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                                {whatsappTemplates.map((tmpl, idx) => (
-                                    <button 
-                                        key={idx} 
-                                        onClick={() => { 
-                                            const text = tmpl.text.replace('[Nome]', selectedLead.name.split(' ')[0]).replace('[Empresa]', selectedLead.company); 
-                                            setWhatsAppMessage(text); 
-                                        }} 
-                                        className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 whitespace-nowrap border border-slate-200 dark:border-slate-600 transition"
-                                    >
-                                        {tmpl.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                            <button onClick={() => setShowWhatsAppModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition">Cancelar</button>
-                            <button onClick={handleSendWhatsApp} disabled={sendingWhatsApp} className="px-6 py-2.5 rounded-xl bg-[#25D366] text-white font-black hover:bg-[#128C7E] shadow-lg shadow-green-500/20 transition flex items-center gap-2 disabled:opacity-70">
-                                {sendingWhatsApp ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>}
-                                {sendingWhatsApp ? 'Enviando...' : 'Enviar Agora'}
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {isEmailModalOpen && emailLead && createPortal(
-                <SendEmailModal lead={emailLead} onClose={() => setIsEmailModalOpen(false)} onSuccess={handleEmailSuccess}/>,
-                document.body
+            {isEmailModalOpen && emailLead && (
+                <SendEmailModal lead={emailLead} onClose={() => setIsEmailModalOpen(false)} onSuccess={() => addSystemNotification('Sucesso', 'Email enviado', 'success')} />
             )}
         </div>
     );

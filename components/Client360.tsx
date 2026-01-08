@@ -24,17 +24,19 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
 
     // States
     const [waStatus, setWaStatus] = useState<'idle' | 'checking' | 'verified' | 'invalid' | 'error'>('idle');
-    const [portalEmail, setPortalEmail] = useState(client.email || '');
+    const [portalEmail, setPortalEmail] = useState(client.portalEmail || client.email || '');
     const [isProvisioning, setIsProvisioning] = useState(false);
-    const [provisionedData, setProvisionedData] = useState<{email: string, password?: string} | null>(null);
+    const [provisionedData, setProvisionedData] = useState<{email: string, password?: string} | null>(
+        client.portalPassword ? { email: client.portalEmail || '', password: client.portalPassword } : null
+    );
 
     useEffect(() => {
         if (client.phone) {
             handleCheckWhatsApp();
         }
-        setPortalEmail(client.email || '');
-        setProvisionedData(null);
-    }, [client.id, client.email]);
+        setPortalEmail(client.portalEmail || client.email || '');
+        setProvisionedData(client.portalPassword ? { email: client.portalEmail || '', password: client.portalPassword } : null);
+    }, [client.id, client.email, client.portalEmail, client.portalPassword]);
 
     const handleCheckWhatsApp = async () => {
         setWaStatus('checking');
@@ -55,18 +57,44 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
 
         setIsProvisioning(true);
         try {
+            // 1. Gera a senha via AuthContext
             const result = await createClientAccess(client, cleanEmail);
-            if (result.success) {
+            
+            if (result.success && result.password) {
+                // 2. Prepara objeto de atualização
+                const updatedClient: Client = {
+                    ...client,
+                    portalEmail: cleanEmail,
+                    portalPassword: result.password
+                };
+                
+                // 3. Aguarda persistência REAL no Supabase
+                await updateClient(currentUser, updatedClient);
+                
+                // 4. Atualiza UI local
                 setProvisionedData({ email: cleanEmail, password: result.password });
-                addSystemNotification("Portal Liberado", `Acesso criado com sucesso!`, "success");
+                addSystemNotification("Acesso Gerado e Salvo", `Credenciais registradas no banco de dados Cloud.`, "success");
             } else {
-                addSystemNotification("Falha no Provisionamento", result.error || "Erro desconhecido.", "alert");
+                addSystemNotification("Erro", result.error || "Falha ao gerar acesso.", "alert");
             }
         } catch (e: any) {
-            addSystemNotification("Erro Crítico", e.message || "Falha na comunicação.", "alert");
+            console.error("Erro no provisionamento:", e);
+            addSystemNotification("Erro de Persistência", "Verifique o SQL Patch em Configurações.", "alert");
         } finally {
             setIsProvisioning(false);
         }
+    };
+
+    const copyToClipboard = (text: string, label: string) => {
+        navigator.clipboard.writeText(text);
+        addSystemNotification("Copiado!", `${label} copiado para a área de transferência.`, "info");
+    };
+
+    const sendCredsViaWhatsApp = () => {
+        if (!provisionedData) return;
+        const msg = `Olá ${client.contactPerson},\n\nSeu acesso ao Portal SOFT-CRM foi liberado!\n\nLink: https://soft-crm.vercel.app\nLogin: ${provisionedData.email}\nSenha Provisória: ${provisionedData.password}\n\nPor segurança, altere sua senha no primeiro acesso.`;
+        const url = `https://wa.me/${client.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`;
+        window.open(url, '_blank');
     };
 
     const toggleProduct = (productName: string) => {
@@ -112,7 +140,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                                 {client.name.charAt(0)}
                             </div>
                             <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex wrap items-center gap-2">
                                     <h2 className="text-xl md:text-3xl font-black tracking-tighter uppercase truncate max-w-[200px] md:max-w-md">{client.name}</h2>
                                     {waStatus === 'verified' && <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[8px] font-black border border-emerald-500/30">WHATSAPP OK</div>}
                                 </div>
@@ -173,7 +201,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                         <div className="space-y-8 animate-fade-in max-w-3xl">
                             <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
                                 <h3 className="font-black text-slate-900 dark:text-white mb-8 flex items-center gap-3 uppercase tracking-tighter text-lg">
-                                    <History size={24} className="text-indigo-500"/> Jornada
+                                    <History size={24} className="text-indigo-50"/> Jornada
                                 </h3>
                                 <div className="space-y-8 ml-3 border-l-4 border-slate-100 dark:border-slate-800 pl-8">
                                     {timelineEvents.map((event, i) => (
@@ -186,6 +214,124 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'portal' && (
+                        <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
+                            <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center shadow-2xl">
+                                <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-[1.5rem] flex items-center justify-center text-indigo-600 mb-6 shadow-inner"><Key size={40}/></div>
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tighter">Central de Autoatendimento</h3>
+                                <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Provisione o acesso para que o cliente gerencie faturas e suporte.</p>
+                                
+                                <div className="w-full space-y-6">
+                                    {!provisionedData ? (
+                                        <>
+                                            <div className="text-left">
+                                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-2 tracking-widest">E-mail de Login (Corporativo)</label>
+                                                <input 
+                                                    className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-indigo-600 outline-none transition" 
+                                                    value={portalEmail}
+                                                    onChange={(e) => setPortalEmail(e.target.value)}
+                                                    placeholder="cliente@email.com"
+                                                />
+                                            </div>
+                                            <button 
+                                                onClick={handleProvisionAccess}
+                                                disabled={isProvisioning}
+                                                className="w-full bg-[#0f172a] dark:bg-white dark:text-[#0f172a] text-white font-black py-5 rounded-2xl hover:scale-[1.02] transition shadow-2xl uppercase tracking-widest text-xs flex items-center justify-center gap-3 disabled:opacity-50"
+                                            >
+                                                {isProvisioning ? <Loader2 className="animate-spin" size={18}/> : <Zap size={18}/>}
+                                                <span>Gerar Nova Senha e Ativar Portal</span>
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div className="bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 rounded-3xl p-8 animate-scale-in text-left">
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-3 text-emerald-700">
+                                                    <ShieldCheck size={24}/>
+                                                    <h4 className="font-black uppercase tracking-tighter">Acesso Ativado!</h4>
+                                                </div>
+                                                <Badge color="green">CLOUD OK</Badge>
+                                            </div>
+                                            
+                                            <div className="space-y-4">
+                                                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-emerald-200">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Login</p>
+                                                        <button onClick={() => copyToClipboard(provisionedData.email, "E-mail")} className="text-indigo-600 hover:text-indigo-800"><Copy size={14}/></button>
+                                                    </div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">{provisionedData.email}</p>
+                                                </div>
+
+                                                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-emerald-200">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Senha Gerada</p>
+                                                        <button onClick={() => copyToClipboard(provisionedData.password || '', "Senha")} className="text-indigo-600 hover:text-indigo-800"><Copy size={14}/></button>
+                                                    </div>
+                                                    <p className="font-mono font-black text-indigo-600 text-2xl tracking-[0.2em]">{provisionedData.password}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-8 grid grid-cols-1 gap-3">
+                                                <button 
+                                                    onClick={sendCredsViaWhatsApp}
+                                                    className="w-full bg-[#25D366] text-white font-black py-4 rounded-xl flex items-center justify-center gap-3 hover:bg-[#128C7E] transition shadow-lg uppercase text-[10px] tracking-widest"
+                                                >
+                                                    <MessageCircle size={18}/> Enviar por WhatsApp
+                                                </button>
+                                                <button 
+                                                    onClick={() => setProvisionedData(null)}
+                                                    className="w-full py-4 text-slate-400 hover:text-slate-600 font-black uppercase text-[10px] tracking-widest transition"
+                                                >
+                                                    Gerar Outro Acesso
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'financial' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                                <h3 className="font-black text-xl mb-6 flex items-center gap-3 text-emerald-600 uppercase tracking-tighter">Histórico Financeiro</h3>
+                                <div className="space-y-3">
+                                    {clientInvoices.length > 0 ? clientInvoices.map(inv => (
+                                        <div key={inv.id} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                                            <div>
+                                                <p className="font-bold text-sm">{inv.description}</p>
+                                                <p className="text-xs text-slate-400">Vencimento: {new Date(inv.dueDate).toLocaleDateString()}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-black">R$ {inv.amount.toLocaleString()}</p>
+                                                <Badge color={inv.status === 'Pago' ? 'green' : 'yellow'}>{inv.status.toUpperCase()}</Badge>
+                                            </div>
+                                        </div>
+                                    )) : <p className="text-center text-slate-400 py-10 italic">Nenhuma fatura localizada.</p>}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'support' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                                <h3 className="font-black text-xl mb-6 flex items-center gap-3 text-indigo-600 uppercase tracking-tighter">Chamados de Suporte</h3>
+                                <div className="space-y-3">
+                                    {clientTickets.length > 0 ? clientTickets.map(t => (
+                                        <div key={t.id} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                                            <div>
+                                                <p className="font-bold text-sm">{t.subject}</p>
+                                                <p className="text-xs text-slate-400">Aberto em: {new Date(t.created_at).toLocaleDateString()}</p>
+                                            </div>
+                                            <Badge color={t.status === 'Resolvido' ? 'green' : 'blue'}>{t.status.toUpperCase()}</Badge>
+                                        </div>
+                                    )) : <p className="text-center text-slate-400 py-10 italic">Nenhum chamado aberto.</p>}
                                 </div>
                             </div>
                         </div>
@@ -226,44 +372,11 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                         </div>
                     )}
 
-                    {activeTab === 'portal' && (
-                        <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
-                            <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center shadow-2xl">
-                                <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-[1.5rem] flex items-center justify-center text-indigo-600 mb-6 shadow-inner"><Key size={40}/></div>
-                                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tighter">Central de Autoatendimento</h3>
-                                <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Habilite o acesso para o cliente gerenciar faturas e suporte.</p>
-                                
-                                <div className="w-full space-y-6">
-                                    {!provisionedData ? (
-                                        <>
-                                            <div className="text-left">
-                                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-2 tracking-widest">E-mail de Login do Cliente</label>
-                                                <input 
-                                                    className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-indigo-600 outline-none transition" 
-                                                    value={portalEmail}
-                                                    onChange={(e) => setPortalEmail(e.target.value)}
-                                                    placeholder="cliente@email.com"
-                                                />
-                                            </div>
-                                            <button 
-                                                onClick={handleProvisionAccess}
-                                                disabled={isProvisioning}
-                                                className="w-full bg-[#0f172a] dark:bg-white dark:text-[#0f172a] text-white font-black py-5 rounded-2xl hover:scale-[1.02] transition shadow-2xl uppercase tracking-widest text-xs flex items-center justify-center gap-3 disabled:opacity-50"
-                                            >
-                                                {isProvisioning ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>}
-                                                <span>Liberar Acesso Agora</span>
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <div className="bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 rounded-3xl p-6 animate-scale-in">
-                                            <div className="space-y-4 text-left">
-                                                <div><p className="text-[10px] font-black uppercase text-slate-400">Login</p><p className="font-bold text-slate-800 dark:text-white">{provisionedData.email}</p></div>
-                                                <div><p className="text-[10px] font-black uppercase text-slate-400">Senha</p><p className="font-mono font-black text-indigo-600 text-lg">{provisionedData.password}</p></div>
-                                            </div>
-                                            <button onClick={() => setProvisionedData(null)} className="mt-4 text-slate-400 text-[10px] font-bold uppercase">Provisionar outro e-mail</button>
-                                        </div>
-                                    )}
-                                </div>
+                    {activeTab === 'documents' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm text-center">
+                                <FileText size={48} className="mx-auto text-slate-200 mb-4"/>
+                                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Módulo de Documentos Ativo</p>
                             </div>
                         </div>
                     )}

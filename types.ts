@@ -40,52 +40,11 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
-  plan: 'Trial' | 'Standard' | 'Enterprise';
-  licenseExpiresAt?: string;
-  subscription_status?: 'active' | 'blocked' | 'trial' | 'expired';
+  groupName?: string;
   status?: 'pending' | 'active' | 'suspended'; 
-  created_at?: string;
-}
-
-export interface ProposalItem {
-    id: string;
-    name: string;
-    quantity: number;
-    price: number;
-    discount?: number;
-    category: 'Service' | 'Product' | 'Subscription';
-}
-
-export interface Proposal {
-  id: string;
-  title: string;
-  leadId?: string;
-  clientId?: string;
-  clientEmail?: string; 
-  clientName: string;
-  companyName: string;
-  createdDate: string;
-  validUntil: string;
-  status: ProposalStatus;
-  introduction: string;
-  scope: string[];
-  items?: ProposalItem[]; 
-  customClause?: string;  
-  price: number; 
-  setupCost?: number; 
-  monthlyCost?: number; 
-  timeline: string;
-  terms: string;
-  organizationId?: string;
-  signature?: string;
-  signedAt?: string;
-  signedByIp?: string;
-  unit?: string;
-  includesDevelopment?: boolean;
-  
-  consultantName?: string;
-  consultantEmail?: string;
-  consultantPhone?: string;
+  plan: 'Trial' | 'Standard' | 'Enterprise';
+  subscription_status?: string;
+  licenseExpiresAt?: string;
 }
 
 export interface User {
@@ -94,64 +53,14 @@ export interface User {
   role: Role;
   avatar: string;
   email?: string;
-  cpf?: string;
-  phone?: string;
-  password?: string;
   organizationId?: string;
+  isGroupManager?: boolean;
+  managedGroupName?: string;
+  groupId?: string; 
+  active?: boolean;
   relatedClientId?: string;
   xp?: number;
   level?: number;
-  active?: boolean; 
-}
-
-export interface FinancialCategory {
-  id: string;
-  name: string;
-  code?: string;
-  type: 'Revenue' | 'Expense';
-  description?: string;
-  budget?: number;
-  organizationId?: string;
-}
-
-export interface Product {
-    id: string;
-    name: string;
-    description: string;
-    price: number;
-    sku: string;
-    category: 'Service' | 'Product' | 'Subscription';
-    active: boolean;
-    costCenterId?: string;
-    organizationId?: string;
-}
-
-export interface Lead {
-  id: string;
-  name: string;
-  company: string;
-  email: string;
-  value: number;
-  status: LeadStatus;
-  source: string;
-  probability: number;
-  createdAt: string;
-  lastContact: string;
-  organizationId?: string;
-  phone?: string;
-  cep?: string;
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-  website?: string;
-  parkingSpots?: number; 
-  productInterest?: string; 
-  techStack?: string[];
-  estimatedRevenue?: string;
-  competitors?: string[];
-  description?: string;
-  lostReason?: string;
-  metadata?: Record<string, any>;
 }
 
 export interface Client {
@@ -165,39 +74,104 @@ export interface Client {
   since: string;
   status: 'Active' | 'Churn Risk' | 'Inactive';
   ltv: number;
-  nps?: number;
   healthScore?: number;
-  onboardingStatus?: 'Pending' | 'In Progress' | 'Completed';
-  lastContact?: string;
   organizationId?: string;
+  groupName?: string;
+  groupId?: string; 
   contractedProducts?: string[];
   unit?: string;
+  lastContact?: string;
   address?: string;
   cep?: string;
-  contractId?: string;
-  contractStartDate?: string;
-  contractEndDate?: string;
-  parkingSpots?: number;
-  exemptSpots?: number;
-  vehicleCount?: number;
-  credentialCount?: number;
-  pricingTable?: string;
-  tablePrice?: number;
-  totalTablePrice?: number;
-  specialDay?: string;
-  specialPrice?: number;
-  totalSpecialPrice?: number;
   latitude?: number;
   longitude?: number;
-  metadata?: Record<string, any>;
+  contractEndDate?: string;
+  onboardingStatus?: string;
+  nps?: number;
+  totalSpecialPrice?: number;
+  portalEmail?: string;
+  portalPassword?: string;
+}
+
+export interface ProposalItem {
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    discount?: number;
+    category: 'Product' | 'Service' | 'Subscription';
+}
+
+export interface Proposal {
+  id: string;
+  title: string;
+  clientEmail?: string; 
+  clientName: string;
+  companyName: string;
+  createdDate: string;
+  validUntil: string;
+  status: ProposalStatus;
+  price: number; 
+  monthlyCost?: number; 
+  organizationId?: string;
+  unit?: string;
+  leadId?: string;
+  clientId?: string;
+  setupCost?: number;
+  includesDevelopment?: boolean;
+  introduction?: string;
+  scope?: string[];
+  timeline?: string;
+  terms?: string;
+  items?: ProposalItem[];
+  customClause?: string;
+  signature?: string;
+  signedAt?: string;
+  signedByIp?: string;
+  consultantName?: string;
+  consultantEmail?: string;
+  consultantPhone?: string;
+}
+
+export interface Product {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    category: 'Service' | 'Product' | 'Subscription';
+    active: boolean;
+    organizationId?: string;
+    sku?: string;
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  company: string;
+  email: string;
+  value: number;
+  status: LeadStatus;
+  createdAt: string;
+  organizationId?: string;
+  phone?: string;
+  source?: string;
+  probability?: number;
+  lastContact?: string;
+  lostReason?: string;
+  address?: string;
+  productInterest?: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  cep?: string;
 }
 
 export interface TicketResponse {
-  id: string;
-  text: string;
-  author: string;
-  role: 'agent' | 'client';
-  date: string;
+    id: string;
+    text: string;
+    author: string;
+    role: 'client' | 'agent';
+    date: string;
 }
 
 export interface Ticket {
@@ -207,61 +181,33 @@ export interface Ticket {
   priority: TicketPriority;
   status: TicketStatus;
   created_at: string;
-  resolvedAt?: string;
-  description: string;
-  channel: 'Email' | 'Chat' | 'Phone';
-  organizationId?: string;
+  description?: string;
   responses?: TicketResponse[];
-}
-
-export interface Issue {
-  id: string;
-  title: string;
-  type: 'Bug' | 'Feature' | 'Task';
-  status: 'Backlog' | 'To Do' | 'In Progress' | 'Review' | 'Done';
-  points: number;
-  assignee: string;
-  sprint: string;
-  project: string;
-  progress: number;
-  notes: any[];
   organizationId?: string;
-  proposalId?: string;
+  channel?: string;
+  resolvedAt?: string;
 }
 
 export interface Invoice {
   id: string;
-  type: 'Income' | 'Expense';
   customer: string;
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
   description: string;
   organizationId?: string;
-  metadata?: Record<string, any>;
-}
-
-export interface Activity {
-  id: string;
-  title: string;
-  type: 'Call' | 'Meeting' | 'Email' | 'Task';
-  dueDate: string;
-  completed: boolean;
-  relatedTo: string; 
-  assignee: string;
-  organizationId?: string;
-  description?: string;
   metadata?: any;
+  type?: 'Income' | 'Expense';
 }
 
 export interface AuditLog {
   id: string;
   timestamp: string;
-  userId: string;
   userName: string;
   action: string;
   details: string;
   module: string;
+  userId?: string;
   organizationId?: string;
 }
 
@@ -286,40 +232,35 @@ export interface ToastMessage {
 export interface Campaign {
     id: string;
     name: string;
-    status: 'Planned' | 'Active' | 'Completed' | 'Paused';
-    channel: 'LinkedIn' | 'Instagram' | 'Email' | 'Google Ads' | 'Meta Ads';
+    status: string;
+    channel: string;
     budget: number;
     spend: number;
-    leadsGenerated: number;
-    salesGenerated: number;
-    startDate: string;
-    endDate: string;
     organizationId?: string;
+    leadsGenerated?: number;
+    salesGenerated?: number;
+    startDate?: string;
+    endDate?: string;
 }
 
 export interface MarketingContent {
     id: string;
     title: string;
     content: string;
-    channel: 'LinkedIn' | 'Instagram' | 'Email' | 'Blog';
-    status: 'Draft' | 'Scheduled' | 'Published';
-    tone: string;
+    channel: string;
     createdAt: string;
+    tone: string;
+    status?: string;
     organizationId?: string;
 }
 
-export type TriggerType = 'lead_created' | 'deal_won' | 'deal_lost' | 'ticket_created' | 'client_churn_risk' | 'project_stagnated';
-export type ActionType = 'send_email' | 'create_task' | 'notify_slack' | 'update_field';
+export type TriggerType = 'lead_created' | 'lead_qualified' | 'deal_won' | 'deal_lost' | 'ticket_created' | 'client_churn_risk' | 'project_stagnated';
+export type ActionType = 'create_task' | 'send_email' | 'notify_slack' | 'update_field';
 
 export interface WorkflowAction {
     id: string;
     type: ActionType;
-    config: {
-        target?: string;
-        template?: string;
-        field?: string;
-        value?: string;
-    };
+    config: any;
 }
 
 export interface Workflow {
@@ -329,19 +270,18 @@ export interface Workflow {
     trigger: TriggerType;
     actions: WorkflowAction[];
     runs: number;
-    lastRun?: string;
     organizationId?: string;
+    lastRun?: string;
 }
 
 export interface WebhookConfig {
     id: string;
     name: string;
     url: string;
-    triggerEvent: TriggerType;
-    method: 'POST' | 'GET';
     active: boolean;
-    organizationId?: string;
-    headers?: Record<string, string>;
+    triggerEvent: string;
+    method: 'POST' | 'GET';
+    headers?: any;
 }
 
 export interface InboxMessage {
@@ -354,24 +294,19 @@ export interface InboxMessage {
 export interface InboxConversation {
     id: string;
     contactName: string;
-    contactIdentifier: string;
-    type: 'WhatsApp' | 'Email' | 'Ticket';
+    contactIdentifier?: string;
+    type: string;
     lastMessage: string;
     lastMessageAt: string;
     unreadCount: number;
-    status: 'Open' | 'Closed' | 'Archived';
-    messages: InboxMessage[]; 
+    messages: InboxMessage[];
+    status?: string;
 }
 
 export interface ProjectTask {
     id: string;
     title: string;
-    status: 'Pending' | 'In Progress' | 'Done';
-}
-
-export interface ProjectStageHistory {
-    stage: string;
-    durationDays?: number;
+    status: 'Pending' | 'Done';
 }
 
 export interface ProjectNote {
@@ -385,22 +320,38 @@ export interface Project {
     id: string;
     title: string;
     clientName: string;
-    status: 'Planning' | 'Kitting' | 'Assembly' | 'Execution' | 'Review' | 'Completed';
-    statusUpdatedAt?: string;
-    stageHistory?: ProjectStageHistory[];
+    status: string;
     progress: number;
     startDate: string;
     deadline: string;
-    manager: string;
+    archived?: boolean;
+    completedAt?: string;
+    products?: string[];
+    manager?: string;
+    description?: string;
     tasks: ProjectTask[];
     organizationId?: string;
-    description?: string;
     installAddress?: string;
-    archived?: boolean; 
-    completedAt?: string; 
-    products?: string[]; 
-    installationNotes?: string; 
-    proposalId?: string;
+    statusUpdatedAt?: string;
+}
+
+export interface IssueNote {
+    id: string;
+    text: string;
+    author: string;
+    created_at: string;
+}
+
+export interface Issue {
+    id: string;
+    title: string;
+    project: string;
+    type: 'Bug' | 'Feature' | 'Task';
+    status: 'Backlog' | 'To Do' | 'In Progress' | 'Review' | 'Done';
+    progress: number;
+    assignee: string;
+    points: number;
+    notes: IssueNote[];
 }
 
 export interface PortalSettings {
@@ -415,22 +366,10 @@ export interface CustomFieldDefinition {
     id: string;
     label: string;
     key: string;
-    type: 'text' | 'number' | 'date' | 'select' | 'boolean';
+    type: string;
     module: 'leads' | 'clients';
     options?: string[];
     required?: boolean;
-    organizationId?: string;
-}
-
-export interface ClientDocument {
-    id: string;
-    clientId: string;
-    title: string;
-    type: 'Contract' | 'Invoice' | 'Report' | 'Other';
-    url: string;
-    uploadedBy: string;
-    uploadDate: string;
-    size: string;
 }
 
 export interface Competitor {
@@ -438,28 +377,18 @@ export interface Competitor {
     name: string;
     website: string;
     sector: string;
-    organizationId?: string; // NOVO CAMPO
+    swot?: any;
+    battlecard?: any;
     lastAnalysis?: string;
-    swot?: {
-        strengths: string[];
-        weaknesses: string[];
-        opportunities: string[];
-        threats: string[];
-    };
-    battlecard?: {
-        pricing: string;
-        killPoints: string[];
-        defensePoints: string[];
-    };
+    organizationId?: string;
 }
 
 export interface MarketTrend {
     id: string;
     title: string;
     description: string;
-    sentiment: 'Positive' | 'Negative' | 'Neutral';
+    sentiment: string;
     impact: string;
-    organizationId?: string;
 }
 
 export interface PotentialLead {
@@ -479,9 +408,15 @@ export interface ProspectingHistoryItem {
     timestamp: string;
     industry: string;
     location: string;
-    keywords: string;
     results: PotentialLead[];
+    keywords?: string;
     organizationId?: string;
+}
+
+export interface FinancialCategory {
+    id: string;
+    name: string;
+    type: 'Revenue' | 'Expense';
 }
 
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';
@@ -495,4 +430,25 @@ export interface PermissionMatrix {
       delete: boolean;
     }
   }
+}
+
+export interface Activity {
+    id: string;
+    title: string;
+    type: string;
+    dueDate: string;
+    completed: boolean;
+    relatedTo: string;
+    assignee: string;
+    description?: string;
+    metadata?: any;
+}
+
+export interface ClientDocument {
+    id: string;
+    clientId: string;
+    title: string;
+    url: string;
+    type: string;
+    createdAt: string;
 }

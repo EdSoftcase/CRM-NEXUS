@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth, SUPER_ADMIN_EMAILS } from '../context/AuthContext';
 import { Eye, EyeOff, Lock, ArrowRight, ShieldCheck, Mail, Database, Loader2, Hash, AlertCircle, Terminal, Building2, User } from 'lucide-react';
-import { testSupabaseConnection, getSupabaseSchema } from '../services/supabaseClient';
+import { testSupabaseConnection, getSupabaseSchema, getSupabase } from '../services/supabaseClient';
 
 export const Login: React.FC = () => {
   const { login, signUp } = useAuth();
@@ -36,7 +35,7 @@ export const Login: React.FC = () => {
 
   const handleCopySQL = () => {
       navigator.clipboard.writeText(getSupabaseSchema());
-      alert("Script SQL v46.0 copiado! Execute no SQL Editor do Supabase para liberar o RLS das propostas.");
+      alert("Script SQL v58.0 copiado! Execute no SQL Editor do Supabase.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,11 +43,20 @@ export const Login: React.FC = () => {
       setError('');
       setIsSubmitLoading(true);
 
+      const sb = getSupabase();
+      
+      // Bypass Master: Se for o Edson, tenta logar mesmo que o sb esteja null inicialmente
+      if (!sb && !isMasterEmail) {
+          setError("Serviço indisponível. Verifique as chaves do Supabase.");
+          setIsSubmitLoading(false);
+          return;
+      }
+
       try {
           if (mode === 'login') {
             const finalSlug = isMasterEmail ? (orgSlug || 'softcase') : orgSlug;
             const result = await login(email, password, finalSlug);
-            if (result.error) {
+            if (result && result.error) {
                 setError(result.error);
                 setIsSubmitLoading(false);
             } else {
@@ -57,13 +65,13 @@ export const Login: React.FC = () => {
             }
           } else {
             const result = await signUp(email, password, fullName, companyName);
-            if (result.error) {
+            if (result && result.error) {
                 setError(result.error);
                 setIsSubmitLoading(false);
             }
           }
       } catch (err: any) {
-          setError("Erro crítico ao tentar processar requisição.");
+          setError("Erro na conexão: " + (err.message || "Tente novamente"));
           setIsSubmitLoading(false);
       }
   };
@@ -165,7 +173,7 @@ export const Login: React.FC = () => {
                           <div className="flex items-center gap-2"><AlertCircle size={16}/> {error}</div>
                           {isMasterEmail && (
                               <button type="button" onClick={handleCopySQL} className="bg-red-600 text-white py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-red-700">
-                                  <Terminal size={14}/> COPIAR SQL FIX v46.0
+                                  <Terminal size={14}/> COPIAR SQL FIX v58.0
                               </button>
                           )}
                       </div>

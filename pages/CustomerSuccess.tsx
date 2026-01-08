@@ -2,8 +2,8 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { Badge, KPICard, SectionTitle } from '../components/Widgets';
-import { HeartPulse, TrendingUp, AlertTriangle, CheckCircle, Clock, X, List, ArrowRight, Activity, Calendar, Zap, RefreshCw } from 'lucide-react';
-import { Client } from '../types';
+import { HeartPulse, TrendingUp, AlertTriangle, CheckCircle, Clock, X, List, ArrowRight, Activity, Calendar, Zap, RefreshCw, MessageSquare } from 'lucide-react';
+import { Client, TicketStatus } from '../types';
 import { Client360 } from '../components/Client360';
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, Cell, Legend } from 'recharts';
 
@@ -14,9 +14,33 @@ export const CustomerSuccess: React.FC = () => {
     // State for 360 Profile Modal
     const [selectedClientFor360, setSelectedClientFor360] = useState<Client | null>(null);
 
+    // --- HELPER FUNCTIONS ---
+    const getOpenTicketCount = (clientName: string) => {
+        return tickets.filter(t => t.customer === clientName && t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED).length;
+    };
+
+    const getDaysInactive = (lastDate?: string) => {
+        if (!lastDate) return 999; // Never accessed/contacted
+        const diff = new Date().getTime() - new Date(lastDate).getTime();
+        return Math.floor(diff / (1000 * 3600 * 24));
+    };
+
     // --- METRICS CALCULATION ---
+    
+    // Enhanced Risk Calculation
+    // Criteria: Manual Risk Status OR Low NPS OR High Ticket Volume (>2) OR High Inactivity (>45 days)
+    const churnRiskClients = useMemo(() => {
+        return clients.filter(c => {
+            const hasRiskStatus = c.status === 'Churn Risk';
+            const hasLowNPS = c.nps !== undefined && c.nps <= 6;
+            const openTickets = getOpenTicketCount(c.name);
+            const daysInactive = getDaysInactive(c.lastContact);
+            
+            return hasRiskStatus || hasLowNPS || openTickets > 2 || daysInactive > 45;
+        });
+    }, [clients, tickets]);
+
     const activeClients = clients.filter(c => c.status === 'Active');
-    const churnRiskClients = clients.filter(c => c.status === 'Churn Risk');
     
     const avgHealthScore = clients.length > 0 
         ? Math.round(clients.reduce((acc, curr) => acc + (curr.healthScore || 0), 0) / clients.length) 
@@ -28,14 +52,12 @@ export const CustomerSuccess: React.FC = () => {
 
     const onboardingClients = clients.filter(c => c.onboardingStatus === 'In Progress');
 
-    // LOGIC: Top 5 Lowest Health Score (Active or Risk clients only)
-    const lowestHealthClients = [...clients]
-        .filter(c => c.status === 'Active' || c.status === 'Churn Risk')
+    // LOGIC: Top 5 Highest Risk Clients (Sorted by Health Score ASC, then Risk Severity)
+    const lowestHealthClients = [...churnRiskClients]
         .sort((a, b) => (a.healthScore || 0) - (b.healthScore || 0))
-        .slice(0, 5);
+        .slice(0, 10); // Show top 10 risky clients
 
     // LOGIC: Renewals Radar (Clients with contract ending in 60 days)
-    // If contractEndDate is missing, assume 1 year from 'since'
     const renewalRadarClients = useMemo(() => {
         const today = new Date();
         const sixtyDaysFromNow = new Date();
@@ -52,7 +74,6 @@ export const CustomerSuccess: React.FC = () => {
     }, [clients]);
 
     // LOGIC: Engagement Matrix Data
-    // X: Tenure (Months), Y: Health Score, Z: LTV (Size)
     const scatterData = useMemo(() => {
         return clients.map(c => {
             const tenureMonths = Math.floor((new Date().getTime() - new Date(c.since).getTime()) / (1000 * 60 * 60 * 24 * 30));
@@ -73,12 +94,16 @@ export const CustomerSuccess: React.FC = () => {
         return 'text-red-600 bg-red-50 border-red-100';
     };
 
-    const getTouchpointStatus = (lastContactDate?: string) => {
-        if (!lastContactDate) return 'red';
-        const diffDays = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 3600 * 24));
-        if (diffDays <= 30) return 'green';
-        if (diffDays <= 60) return 'yellow';
-        return 'red';
+    // Determine primary risk factor for display
+    const getRiskReason = (client: Client) => {
+        const openTickets = getOpenTicketCount(client.name);
+        const daysInactive = getDaysInactive(client.lastContact);
+
+        if (client.status === 'Churn Risk') return { label: 'Manual', color: 'red' };
+        if (openTickets > 2) return { label: 'Suporte Crítico', color: 'orange' };
+        if (client.nps !== undefined && client.nps <= 6) return { label: 'NPS Baixo', color: 'yellow' };
+        if (daysInactive > 45) return { label: 'Inativo', color: 'gray' };
+        return { label: 'Alerta', color: 'blue' };
     };
 
     // Helper to get data for modal based on selection
@@ -100,7 +125,7 @@ export const CustomerSuccess: React.FC = () => {
                 return {
                     title: 'Clientes em Risco (Churn)',
                     data: churnRiskClients,
-                    description: 'Clientes marcados com risco de cancelamento ou saúde crítica.'
+                    description: 'Clientes com risco identificado por NPS, Tickets, Inatividade ou Manual.'
                 };
             case 'ONBOARDING':
                 return {
@@ -181,7 +206,7 @@ export const CustomerSuccess: React.FC = () => {
                         color="bg-red-500"
                         trend={`R$ ${churnRiskClients.reduce((acc, c) => acc + (c.ltv || 0), 0).toLocaleString()}`}
                         trendUp={false}
-                        tooltip="Clientes com saúde crítica ou marcados manualmente."
+                        tooltip="Clientes com: Status Manual, NPS Baixo, Muitos Tickets ou Inatividade."
                     />
                 </div>
                 <div onClick={() => setSelectedMetric('ONBOARDING')} className="cursor-pointer hover:scale-[1.02] transition-transform duration-200">
@@ -271,8 +296,7 @@ export const CustomerSuccess: React.FC = () => {
                             </div>
                         ) : (
                             onboardingClients.map(client => {
-                                // Simulating progress based on random for demo, or real data if available
-                                const progress = 60; // Mock fixed progress for visual
+                                const progress = 60; // Mock fixed progress
                                 return (
                                     <div key={client.id} className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition" onClick={() => setSelectedClientFor360(client)}>
                                         <div className="flex justify-between items-center mb-2">
@@ -294,10 +318,10 @@ export const CustomerSuccess: React.FC = () => {
                      </div>
                 </div>
 
-                {/* 4. Health Alerts & Touchpoints */}
+                {/* 4. Health Alerts & Touchpoints - REDESIGNED */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 lg:col-span-2 min-h-[300px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
-                        <SectionTitle title="Alerta de Saúde & Contato" subtitle="Prioridade de ação baseada em risco" />
+                        <SectionTitle title="Alerta de Saúde & Contato" subtitle="Prioridade de ação baseada em Risco e Inatividade" />
                     </div>
                     
                     <div className="flex-1 overflow-x-auto">
@@ -305,28 +329,25 @@ export const CustomerSuccess: React.FC = () => {
                             <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 uppercase text-xs font-bold">
                                 <tr>
                                     <th className="p-3">Cliente</th>
-                                    <th className="p-3 text-center">Touchpoint</th>
-                                    <th className="p-3 text-center">Health Score</th>
+                                    <th className="p-3 text-center">Saúde</th>
                                     <th className="p-3 text-center">NPS</th>
+                                    <th className="p-3 text-center">Motivo Risco</th>
+                                    <th className="p-3 text-center">Tickets</th>
+                                    <th className="p-3 text-center">Inativo (dias)</th>
                                     <th className="p-3 text-right">Ação</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                 {lowestHealthClients.map(client => {
-                                    const touchStatus = getTouchpointStatus(client.lastContact);
-                                    const touchColor = touchStatus === 'green' ? 'bg-green-500' : touchStatus === 'yellow' ? 'bg-yellow-500' : 'bg-red-500';
+                                    const openTickets = getOpenTicketCount(client.name);
+                                    const daysInactive = getDaysInactive(client.lastContact);
+                                    const risk = getRiskReason(client);
                                     
                                     return (
                                         <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer" onClick={() => setSelectedClientFor360(client)}>
                                             <td className="p-3 font-medium text-slate-800 dark:text-white">
                                                 {client.name}
                                                 <p className="text-[10px] text-slate-400 font-normal">{client.segment}</p>
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                <div className="flex items-center justify-center gap-2" title={`Último contato: ${client.lastContact ? new Date(client.lastContact).toLocaleDateString() : 'Nunca'}`}>
-                                                    <span className={`w-3 h-3 rounded-full ${touchColor} shadow-sm`}></span>
-                                                    <span className="text-xs text-slate-500 dark:text-slate-400">{client.lastContact ? new Date(client.lastContact).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '-'}</span>
-                                                </div>
                                             </td>
                                             <td className="p-3 text-center">
                                                 <span className={`text-xs font-bold px-2 py-1 rounded ${getHealthColor(client.healthScore || 0)}`}>
@@ -336,6 +357,21 @@ export const CustomerSuccess: React.FC = () => {
                                             <td className="p-3 text-center">
                                                 <span className={`font-bold ${!client.nps ? 'text-slate-400' : client.nps > 8 ? 'text-green-500' : client.nps > 6 ? 'text-yellow-500' : 'text-red-500'}`}>
                                                     {client.nps || '-'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <Badge color={risk.color as any}>{risk.label.toUpperCase()}</Badge>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                {openTickets > 0 ? (
+                                                    <span className={`flex items-center justify-center gap-1 font-bold ${openTickets > 2 ? 'text-red-600' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                        <MessageSquare size={12}/> {openTickets}
+                                                    </span>
+                                                ) : <span className="text-slate-300">-</span>}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <span className={`text-xs font-mono font-bold ${daysInactive > 45 ? 'text-red-500' : daysInactive > 30 ? 'text-yellow-500' : 'text-green-500'}`}>
+                                                    {daysInactive === 999 ? '∞' : daysInactive}d
                                                 </span>
                                             </td>
                                             <td className="p-3 text-right">
@@ -352,7 +388,7 @@ export const CustomerSuccess: React.FC = () => {
                 </div>
             </div>
 
-            {/* Metric Modal (Kept for compatibility with KPI Cards) */}
+            {/* Metric Modal */}
             {selectedMetric && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
@@ -363,7 +399,7 @@ export const CustomerSuccess: React.FC = () => {
                             </div>
                             <button onClick={() => setSelectedMetric(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400"><X size={20}/></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-0">
+                        <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
                             <table className="w-full text-left text-sm">
                                 <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-medium sticky top-0">
                                     <tr>

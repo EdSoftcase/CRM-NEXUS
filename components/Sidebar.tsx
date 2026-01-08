@@ -24,7 +24,7 @@ interface NavGroup {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule, onNavigate }) => {
   const { currentUser, logout } = useAuth();
-  const { isSyncing, theme, toggleTheme, tickets, leads, invoices } = useData();
+  const { isSyncing, theme, toggleTheme, tickets = [], leads = [], invoices = [] } = useData();
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
@@ -39,10 +39,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       label: 'Gestão Comercial',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'contact-center', label: 'Central de Contatos', icon: Phone },
         { id: 'inbox', label: 'Inbox', icon: MessageSquare },
         { id: 'prospecting', label: 'Prospecção', icon: Target },
-        { id: 'commercial', label: 'CRM / Leads', icon: Users, badge: leads.filter(l => l.status === 'Novo').length },
-        { id: 'clients', label: 'Clientes', icon: Briefcase }, // Alterado de Carteira para Clientes
+        { id: 'commercial', label: 'CRM / Leads', icon: Users, badge: (leads || []).filter(l => l && l.status === 'Novo').length },
+        { id: 'clients', label: 'Clientes', icon: Briefcase }, 
         { id: 'proposals', label: 'Propostas', icon: FileText },
       ]
     },
@@ -60,14 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       items: [
         { id: 'customer-success', label: 'Sucesso', icon: HeartPulse },
         { id: 'retention', label: 'Retenção', icon: ShieldAlert },
-        { id: 'contact-center', label: 'Central', icon: Phone },
       ]
     },
     {
       label: 'Backoffice & IA',
       items: [
-        { id: 'finance', label: 'Financeiro', icon: DollarSign, badge: invoices.filter(i => i.status === 'Atrasado').length },
-        { id: 'support', label: 'Suporte', icon: LifeBuoy, badge: tickets.filter(t => t.status === 'Aberto').length },
+        { id: 'finance', label: 'Financeiro', icon: DollarSign, badge: (invoices || []).filter(i => i && i.status === 'Atrasado').length },
+        { id: 'support', label: 'Suporte', icon: LifeBuoy, badge: (tickets || []).filter(t => t && t.status === 'Aberto').length },
         { id: 'automation', label: 'Soft Flow', icon: Workflow },
         { id: 'marketing', label: 'Marketing', icon: Megaphone },
         { id: 'competitive-intelligence', label: 'Nexus Spy', icon: Sword },
@@ -97,7 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
           ${isCollapsed ? 'w-20' : 'w-72'}
         `}
       >
-        {/* Header com Logo */}
         <div className="h-16 px-4 flex items-center justify-between shrink-0 border-b border-slate-800/40 bg-slate-950/20 backdrop-blur-md">
           <div className={`flex items-center gap-3 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 md:hidden' : 'opacity-100'}`}>
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20 text-white shrink-0">
@@ -118,7 +117,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
           </button>
         </div>
 
-        {/* Listagem de Itens */}
         <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto custom-scrollbar overflow-x-hidden">
           {navGroups.map((group, gIdx) => (
             <div key={gIdx} className="space-y-1">
@@ -148,7 +146,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
                         {!isCollapsed && <span className="text-sm font-bold whitespace-nowrap">{item.label}</span>}
                     </div>
                     
-                    {/* Badge / Indicator */}
                     {isActive && !isCollapsed && <Zap size={12} fill="currentColor" className="text-indigo-200 animate-pulse" />}
                     
                     {item.badge && item.badge > 0 && !isActive && (
@@ -166,7 +163,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
           ))}
         </nav>
 
-        {/* Rodapé da Sidebar */}
         <div className="px-3 py-4 bg-slate-950/40 border-t border-slate-800/50 shrink-0">
            {!isCollapsed && <GamificationWidget />}
            
@@ -196,7 +192,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
                 </button>
            </div>
 
-           {/* User Mini Profile */}
            {!isCollapsed && currentUser && (
              <div className="mt-4 p-3 bg-slate-800/30 rounded-2xl border border-slate-700/30 flex items-center gap-3 animate-fade-in">
                 <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-white shadow-lg border border-indigo-400/30 shrink-0">
@@ -210,7 +205,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
            )}
         </div>
 
-        {/* Status Line */}
         <div className="h-10 bg-black/40 border-t border-white/5 flex items-center justify-between px-4 text-[9px] text-slate-600 select-none shrink-0">
             <div className="flex items-center gap-2">
                 {isSyncing ? (
@@ -220,12 +214,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
                 )}
                 {!isCollapsed && <span>{isSyncing ? 'SYNC' : 'CLOUD'}</span>}
             </div>
-            {!isCollapsed && <span>V46.5</span>}
+            {!isCollapsed && <span>V46.6</span>}
         </div>
       </div>
 
       {isLogoutModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-[1000] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 bg-black/70 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-800">
                 <div className="p-8 text-center">
                     <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-3xl flex items-center justify-center mx-auto mb-6">

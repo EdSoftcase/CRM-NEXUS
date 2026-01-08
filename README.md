@@ -1,20 +1,74 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# SOFT-CRM Enterprise
 
-# Run and deploy your AI Studio app
+Sistema integrado de gestão corporativa (CRM/ERP) com Inteligência Artificial Generativa.
 
-This contains everything you need to run your app locally.
+## Pré-requisitos
 
-View your app in AI Studio: https://ai.studio/apps/drive/15epEcdUE2TQfdbeVLHUU7AH2rxnAl0mS
+*   Node.js v18+
+*   Chave de API do Google Gemini (GEMINI_API_KEY)
+*   Projeto Supabase configurado (URL e Anon Key)
 
-## Run Locally
+## Instalação e Execução
 
-**Prerequisites:**  Node.js
+### 1. Configuração do Ambiente
 
+Crie um arquivo `.env` na raiz do projeto:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```env
+API_KEY=sua_chave_gemini_aqui
+VITE_SUPABASE_URL=sua_url_supabase
+VITE_SUPABASE_KEY=sua_anon_key_supabase
+```
+
+### 2. Frontend (Aplicação Principal)
+
+Instale as dependências e inicie o servidor de desenvolvimento:
+
+```bash
+npm install
+npm run dev
+```
+
+Acesse: `http://localhost:3000`
+
+### 3. Nexus Bridge (Servidor de Integração Local)
+
+Para funcionalidades avançadas (Envio de E-mail SMTP, Automação WhatsApp), inicie o servidor Bridge:
+
+1.  Navegue para a pasta do servidor:
+    ```bash
+    cd server
+    ```
+2.  Instale as dependências do servidor:
+    ```bash
+    npm install
+    ```
+3.  Configure o SMTP (opcional) em `server/smtp-config.json`:
+    ```json
+    {
+      "host": "smtp.seuprovedor.com",
+      "port": 587,
+      "user": "seu@email.com",
+      "pass": "sua_senha"
+    }
+    ```
+4.  Inicie o servidor:
+    ```bash
+    npm start
+    ```
+
+O Bridge rodará em `http://localhost:3001`.
+
+## Funcionalidades de IA
+
+O sistema utiliza a Google Gemini API para:
+*   **Soft Prospect:** Prospecção de leads via inteligência de mercado.
+*   **Nexus Voice:** Análise de sentimento e transcrição de chamadas simuladas.
+*   **Marketing Hub:** Geração de copy para campanhas.
+*   **Suporte Inteligente:** Análise e sugestão de respostas para tickets.
+
+## Estrutura do Projeto
+
+*   `/src`: Código fonte React/TypeScript.
+*   `/server`: Servidor Node.js (Nexus Bridge).
+*   `/supabase`: Functions e definições de banco de dados.

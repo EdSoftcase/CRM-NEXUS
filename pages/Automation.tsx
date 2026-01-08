@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Workflow, TriggerType, ActionType, WorkflowAction } from '../types';
-import { Workflow as WorkflowIcon, Plus, Play, Pause, Trash2, Edit2, Zap, ArrowDown, Mail, Bell, CheckSquare, Settings, X, Save, Box, Activity, ChevronRight, AlertCircle, Timer, Loader2 } from 'lucide-react';
+import { Workflow as WorkflowIcon, Plus, Play, Pause, Trash2, Edit2, Zap, ArrowDown, Mail, Bell, CheckSquare, Settings, X, Save, Box, Activity, ChevronRight, AlertCircle, Timer, Loader2, Star } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 
 export const Automation: React.FC = () => {
@@ -21,6 +21,7 @@ export const Automation: React.FC = () => {
 
     const triggerOptions: { value: TriggerType; label: string; icon: any }[] = [
         { value: 'lead_created', label: 'Novo Lead Criado', icon: Zap },
+        { value: 'lead_qualified', label: 'Lead Qualificado', icon: Star },
         { value: 'deal_won', label: 'Negócio Ganho', icon: Zap },
         { value: 'deal_lost', label: 'Negócio Perdido', icon: Zap },
         { value: 'ticket_created', label: 'Ticket Aberto', icon: Zap },
@@ -112,7 +113,7 @@ export const Automation: React.FC = () => {
         setIsTesting(true);
         addSystemNotification('Simulação', 'Disparando fluxo de teste...', 'info');
         await new Promise(r => setTimeout(r, 1500));
-        triggerAutomation(wfTrigger, { name: 'Teste RPA', email: 'test@robot.com', company: 'Nexus Inc' });
+        triggerAutomation(wfTrigger, { name: 'Teste RPA', email: 'test@robot.com', company: 'Nexus Inc', value: 10000 });
         setIsTesting(false);
     };
 

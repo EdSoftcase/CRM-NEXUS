@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { Package, Sparkles, Send, CheckCircle, Info, Zap, ArrowRight, Loader2 } from 'lucide-react';
 import { Lead, LeadStatus } from '../../types';
-// Fix: Added missing import for Badge component
 import { Badge } from '../../components/Widgets';
 
 export const ClientSolutions: React.FC = () => {
@@ -12,75 +11,93 @@ export const ClientSolutions: React.FC = () => {
     const { products, clients, addLead, addSystemNotification } = useData();
     const [sendingId, setSendingId] = useState<string | null>(null);
 
-    const currentClient = useMemo(() => {
-        if (!currentUser) return null;
-        return clients.find(c => c.id === currentUser.relatedClientId) || 
-               clients.find(c => c.email?.toLowerCase().trim() === currentUser.email?.toLowerCase().trim());
-    }, [clients, currentUser]);
+    // Identificação direta baseada no carregamento do DataContext
+    const myPortfolio = useMemo(() => {
+        if (!clients || clients.length === 0) return { name: "Cliente", products: [] as string[] };
+        
+        // Unifica todos os produtos de todas as unidades para recomendação consolidada
+        const allOwned = new Set<string>();
+        clients.forEach(c => {
+            (c.contractedProducts || []).forEach(p => {
+                if (p) allOwned.add(p.toUpperCase().trim());
+            });
+        });
 
-    // Filtrar apenas produtos que o cliente ainda NÃO possui
+        return {
+            name: clients[0].groupName || clients[0].name,
+            products: Array.from(allOwned)
+        };
+    }, [clients]);
+
     const recommendations = useMemo(() => {
-        if (!currentClient) return [];
-        const owned = currentClient.contractedProducts || [];
-        return products.filter(p => !owned.includes(p.name) && p.active);
-    }, [products, currentClient]);
+        if (!products) return [];
+        // Filtra produtos que NÃO estão no portfólio (comparação case-insensitive)
+        return products.filter(p => 
+            p.active && 
+            !myPortfolio.products.includes(p.name.toUpperCase().trim())
+        );
+    }, [products, myPortfolio]);
 
     const handleInterest = async (productName: string) => {
-        if (!currentClient || !currentUser) return;
+        if (!currentUser || clients.length === 0) return;
         
         setSendingId(productName);
         
-        // Simular criação de lead de Upsell
         const upsellLead: Lead = {
             id: `L-UP-${Date.now()}`,
-            name: currentUser.name || 'Contato do Portal',
-            company: currentClient.name,
+            name: currentUser.name || 'Gestor do Portal',
+            company: myPortfolio.name,
             email: currentUser.email || '',
-            phone: currentClient.phone || '',
+            phone: clients[0].phone || '',
             value: 0,
             status: LeadStatus.NEW,
             source: 'Portal do Cliente (Upsell)',
             probability: 40,
             createdAt: new Date().toISOString(),
             lastContact: new Date().toISOString(),
-            description: `Interesse demonstrado via portal no produto: ${productName}. Cliente já possui: ${(currentClient.contractedProducts || []).join(', ')}`
+            description: `Interesse em: ${productName}. Grupo: ${currentUser.managedGroupName || 'N/A'}`
         };
 
         try {
             await addLead(currentUser, upsellLead);
-            addSystemNotification("Solicitação Enviada", `Recebemos seu interesse em ${productName}. Um consultor entrará em contato em breve.`, "success");
-            alert("Solicitação registrada! Nosso time comercial entrará em contato.");
+            addSystemNotification("Interesse Registrado", `Recebemos sua solicitação sobre ${productName}.`, "success");
         } catch (e) {
-            alert("Erro ao processar solicitação.");
+            console.error(e);
         } finally {
             setSendingId(null);
         }
     };
 
-    if (!currentClient) return null;
+    if (clients.length === 0) {
+        return (
+            <div className="h-[50vh] flex flex-col items-center justify-center p-10 text-center">
+                <Info size={48} className="text-slate-300 mb-4" />
+                <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">Aguardando dados da carteira...</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-10 animate-fade-in">
+        <div className="space-y-10 animate-fade-in font-sans">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Catálogo de Soluções</h1>
-                    <p className="text-slate-500 font-medium">Expanda sua operação com o que há de mais moderno em automação.</p>
+                    <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Soluções e Upgrade</h1>
+                    <p className="text-slate-500 font-medium">Expanda a tecnologia de automação em suas unidades.</p>
                 </div>
-                <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 flex items-center gap-3">
-                    <Sparkles className="text-indigo-600" size={24}/>
-                    <p className="text-xs font-bold text-indigo-900 max-w-[200px]">Sugestões baseadas no seu perfil de uso atual.</p>
+                <div className="bg-indigo-600 text-white px-6 py-3 rounded-2xl flex items-center gap-3 shadow-xl shadow-indigo-600/20">
+                    <Sparkles size={20}/>
+                    <p className="text-[10px] font-black uppercase tracking-widest">Nexus Intelligence</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Meus Produtos Atuais */}
                 <div className="lg:col-span-1 space-y-6">
                     <h3 className="font-black text-xl uppercase tracking-tighter flex items-center gap-2">
-                        <Package size={24} className="text-slate-400"/> Sua Solução Atual
+                        <Package size={24} className="text-slate-400"/> Portfólio Ativo
                     </h3>
                     <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8 space-y-4">
-                        {(currentClient.contractedProducts || []).length > 0 ? (
-                            (currentClient.contractedProducts || []).map((p, i) => (
+                        {myPortfolio.products.length > 0 ? (
+                            myPortfolio.products.map((p, i) => (
                                 <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center shadow-md">
                                         <CheckCircle size={16}/>
@@ -89,25 +106,21 @@ export const ClientSolutions: React.FC = () => {
                                 </div>
                             ))
                         ) : (
-                            <p className="text-slate-400 italic text-sm">Nenhum produto registrado no inventário.</p>
+                            <p className="text-slate-400 italic text-sm text-center py-4">Nenhum produto listado no inventário principal.</p>
                         )}
-                        <div className="pt-6 border-t mt-6">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Precisa de manutenção?</p>
-                            <button className="text-indigo-600 font-bold text-sm hover:underline flex items-center gap-2">Falar com Suporte Técnico <ArrowRight size={14}/></button>
-                        </div>
                     </div>
                 </div>
 
-                {/* Recomendações (Upsell) */}
                 <div className="lg:col-span-2 space-y-6">
                     <h3 className="font-black text-xl uppercase tracking-tighter flex items-center gap-2">
-                        <Zap size={24} className="text-amber-500"/> Recomendado para você
+                        <Zap size={24} className="text-amber-500"/> Sugestões Softpark
                     </h3>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {recommendations.length === 0 ? (
-                            <div className="col-span-2 bg-slate-50 rounded-3xl p-10 text-center border border-dashed border-slate-200">
-                                <p className="text-slate-500 font-bold uppercase text-xs">Sua unidade já está com o portfólio completo!</p>
+                            <div className="col-span-2 bg-white rounded-[3rem] p-16 text-center border border-slate-200">
+                                <CheckCircle size={48} className="text-emerald-500 mx-auto mb-4 opacity-50" />
+                                <p className="text-slate-500 font-black uppercase text-xs tracking-widest">Sua operação já utiliza todas as nossas soluções ativas!</p>
                             </div>
                         ) : (
                             recommendations.map(prod => (
@@ -116,18 +129,18 @@ export const ClientSolutions: React.FC = () => {
                                         <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                                             <Package size={24}/>
                                         </div>
-                                        <Badge color="blue">NOVO</Badge>
+                                        <Badge color="blue">LANÇAMENTO</Badge>
                                     </div>
                                     <h4 className="font-black text-xl text-slate-900 uppercase tracking-tighter mb-2">{prod.name}</h4>
-                                    <p className="text-slate-500 text-sm leading-relaxed flex-1">{prod.description || 'Tecnologia de ponta para otimizar sua gestão de pátio e aumentar a segurança.'}</p>
+                                    <p className="text-slate-500 text-sm leading-relaxed flex-1">{prod.description || 'Otimize sua gestão de pátio com inteligência artificial e controle de fluxo em tempo real.'}</p>
                                     
                                     <button 
                                         onClick={() => handleInterest(prod.name)}
                                         disabled={sendingId === prod.name}
-                                        className="mt-8 w-full py-4 bg-slate-900 text-white font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-indigo-600 transition flex items-center justify-center gap-2"
+                                        className="mt-8 w-full py-4 bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-indigo-600 transition flex items-center justify-center gap-3 disabled:opacity-70"
                                     >
                                         {sendingId === prod.name ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}
-                                        {sendingId === prod.name ? 'PROCESSANDO...' : 'Tenho Interesse'}
+                                        {sendingId === prod.name ? 'SOLICITANDO...' : 'SOLICITAR DEMONSTRAÇÃO'}
                                     </button>
                                 </div>
                             ))

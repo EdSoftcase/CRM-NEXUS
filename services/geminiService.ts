@@ -5,22 +5,31 @@ import { Ticket, Lead, PotentialLead, Competitor, MarketTrend, Client } from '..
 const MODEL_NAME = 'gemini-3-flash-preview';
 const PRO_MODEL = 'gemini-3-pro-preview';
 
+// Helper para inicializar a IA com segurança
+const getAI = () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("Chave de API não configurada");
+    return new GoogleGenAI({ apiKey });
+};
+
 export const generateMarketingCopy = async (topic: string, channel: string, tone: string): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Você é um redator sênior da Soft Case Tecnologia, especialista em LPR e automação B2B.
-        Escreva um conteúdo para "${channel}" com tom "${tone}". TEMA: ${topic}.
-        Inclua benefícios de redução de perdas operacionais e gestão centralizada.`;
-        const response = await ai.models.generateContent({ model: PRO_MODEL, contents: prompt });
-        return response.text || "Erro ao gerar cópia.";
-    } catch (error) { return "Erro no motor Soft IA."; }
+        const ai = getAI();
+        const response = await ai.models.generateContent({ 
+            model: PRO_MODEL, 
+            contents: `Gere uma copy de marketing para ${channel} com tom ${tone} sobre: ${topic}` 
+        });
+        return response.text || "Não foi possível gerar o conteúdo no momento.";
+    } catch (error) { 
+        console.error("Gemini Error:", error);
+        return "O motor de IA está temporariamente indisponível. Por favor, tente novamente em alguns instantes."; 
+    }
 };
 
 export const analyzeCompetitor = async (name: string, website: string, sector: string): Promise<Partial<Competitor>> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Como analista de inteligência da Soft Case Tecnologia, realize análise profunda do concorrente "${name}" (${website}).
-        Retorne SWOT e Battlecard em JSON estruturado para nossos vendedores ganharem o negócio.`;
+        const ai = getAI();
+        const prompt = `Analise o concorrente "${name}" (${website}) no setor ${sector}. Retorne um SWOT e Battlecard em JSON.`;
 
         const response = await ai.models.generateContent({
             model: PRO_MODEL,
@@ -52,53 +61,71 @@ export const analyzeCompetitor = async (name: string, website: string, sector: s
             }
         });
         return JSON.parse(response.text || "{}");
-    } catch (error) { return {}; }
+    } catch (error) { 
+        console.error("Gemini Analysis Error:", error);
+        return {}; 
+    }
 };
 
 export const findPotentialLeads = async (industry: string, location: string, keywords: string): Promise<PotentialLead[]> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = getAI();
         const response = await ai.models.generateContent({
             model: PRO_MODEL,
-            contents: `Soft Prospect: Localize 10 empresas reais do setor de "${industry}" em "${location}" que poderiam usar sistemas de automação de estacionamento.`,
+            contents: `Localize 5 leads reais para "${industry}" em "${location}" com as palavras-chave: ${keywords}.`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { companyName: { type: Type.STRING }, industry: { type: Type.STRING }, location: { type: Type.STRING }, matchScore: { type: Type.NUMBER }, reason: { type: Type.STRING }, suggestedApproach: { type: Type.STRING }, email: { type: Type.STRING }, phone: { type: Type.STRING } } } }
+                responseSchema: { 
+                    type: Type.ARRAY, 
+                    items: { 
+                        type: Type.OBJECT, 
+                        properties: { 
+                            companyName: { type: Type.STRING }, 
+                            industry: { type: Type.STRING }, 
+                            location: { type: Type.STRING }, 
+                            matchScore: { type: Type.NUMBER }, 
+                            reason: { type: Type.STRING }, 
+                            suggestedApproach: { type: Type.STRING }, 
+                            email: { type: Type.STRING }, 
+                            phone: { type: Type.STRING } 
+                        } 
+                    } 
+                }
             }
         });
         return JSON.parse(response.text || "[]");
-    } catch (error) { return []; }
+    } catch (error) { 
+        console.error("Gemini Prospecting Error:", error);
+        return []; 
+    }
 };
 
 export const analyzeBusinessData = async (context: any, question: string): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = getAI();
         const response = await ai.models.generateContent({ 
             model: PRO_MODEL, 
-            contents: `Você é o Soft BI. Contexto do Dashboard: ${JSON.stringify(context)}. Pergunta: ${question}. Responda de forma estratégica.` 
+            contents: `Você é um analista de BI da Softcase. Dados atuais: ${JSON.stringify(context)}. Pergunta do usuário: ${question}.` 
         });
-        return response.text || "";
-    } catch (error) { return ""; }
+        return response.text || "Não consegui processar a análise dos dados agora.";
+    } catch (error) { return "Erro na conexão com o servidor de inteligência."; }
 };
 
 export const generateExecutiveSummary = async (metrics: any): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({ model: MODEL_NAME, contents: `Soft BI: Resumo executivo baseado em MRR R$${metrics.mrr}, Churn ${metrics.churn_rate}%. Foco em saúde do negócio.` });
-        return response.text || "Dados estáveis.";
-    } catch (error) { return "Dados estáveis."; }
+        const ai = getAI();
+        const response = await ai.models.generateContent({ 
+            model: MODEL_NAME, 
+            contents: `Gere um resumo executivo de uma frase para: MRR R$${metrics.mrr}, Churn ${metrics.churn_rate}%, ${metrics.open_leads} leads novos.` 
+        });
+        return response.text || "Dados operacionais estáveis.";
+    } catch (error) { return "Resumo indisponível no momento."; }
 };
 
-// Fix: Added missing analyzeTicket function to resolve module export error
 export const analyzeTicket = async (ticket: Ticket): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Analise o seguinte ticket de suporte da Soft Case:
-        Assunto: ${ticket.subject}
-        Descrição: ${ticket.description}
-        Prioridade: ${ticket.priority}
-        
-        Retorne um JSON com "sentiment" (Positivo, Neutro, Negativo) e "suggestedAction".`;
+        const ai = getAI();
+        const prompt = `Analise o sentimento e sugira uma ação para o ticket: "${ticket.subject}". Descrição: ${ticket.description || 'N/A'}. Retorne JSON com sentiment e suggestedAction.`;
         
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
@@ -106,19 +133,29 @@ export const analyzeTicket = async (ticket: Ticket): Promise<string> => {
             config: { responseMimeType: "application/json" }
         });
         return response.text || "{}";
-    } catch (error) { return "{}"; }
+    } catch (error) { return JSON.stringify({ sentiment: "Neutro", suggestedAction: "Análise manual necessária devido a falha no motor de IA." }); }
 };
 
-// Fix: Added missing fetchMarketTrends function to resolve module export error
 export const fetchMarketTrends = async (sector: string): Promise<MarketTrend[]> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = getAI();
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
-            contents: `Soft BI: Liste 5 tendências de mercado atuais para o setor de "${sector}".`,
+            contents: `Quais as 3 principais tendências tecnológicas atuais para o setor de ${sector}?`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, description: { type: Type.STRING }, sentiment: { type: Type.STRING }, impact: { type: Type.STRING } } } }
+                responseSchema: { 
+                    type: Type.ARRAY, 
+                    items: { 
+                        type: Type.OBJECT, 
+                        properties: { 
+                            title: { type: Type.STRING }, 
+                            description: { type: Type.STRING }, 
+                            sentiment: { type: Type.STRING }, 
+                            impact: { type: Type.STRING } 
+                        } 
+                    } 
+                }
             }
         });
         return JSON.parse(response.text || "[]");
@@ -127,40 +164,59 @@ export const fetchMarketTrends = async (sector: string): Promise<MarketTrend[]> 
 
 export const interpretCommand = async (command: string, audioBase64?: string): Promise<any> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        let contents: any = `Soft AI Command: ${command}`;
+        const ai = getAI();
+        let contents: any = command;
         if (audioBase64) { 
             contents = { 
                 parts: [
                     { inlineData: { mimeType: 'audio/wav', data: audioBase64.split(',')[1] || audioBase64 } }, 
-                    { text: "Interprete como comando para o Soft CRM." }
+                    { text: "Interprete este comando de voz para o CRM. Retorne JSON com 'action' (create_lead ou create_task), 'data' e 'message'." }
                 ] 
             }; 
         }
         const response = await ai.models.generateContent({ model: PRO_MODEL, contents, config: { responseMimeType: "application/json" } });
         return JSON.parse(response.text || "{}");
-    } catch (error) { return {}; }
+    } catch (error) { 
+        return { action: "none", message: "Falha na interpretação da voz. Tente digitar o comando." }; 
+    }
 };
 
 export const analyzePhoneCall = async (audioBase64: string, duration: string): Promise<any> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = getAI();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            contents: { parts: [{ inlineData: { mimeType: 'audio/wav', data: audioBase64.split(',')[1] || audioBase64 } }, { text: "Soft Voice Analysis: Resuma esta chamada de vendas da Soft Case em JSON." }] },
+            model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+            contents: { 
+                parts: [
+                    { inlineData: { mimeType: 'audio/wav', data: audioBase64.split(',')[1] || audioBase64 } }, 
+                    { text: "Você é um supervisor de qualidade. Transcreva e resuma esta chamada de suporte de ${duration}. Retorne JSON com sentiment, summary e nextSteps." }
+                ] 
+            },
             config: { responseMimeType: "application/json" }
         });
         return JSON.parse(response.text || "{}");
-    } catch (error) { return {}; }
+    } catch (error) { 
+        console.error("Voice Analysis Failed:", error);
+        return { sentiment: "Indefinido", summary: "Não foi possível analisar o áudio.", nextSteps: "Revisar chamada manualmente." }; 
+    }
 };
 
 export const generateProjectTasks = async (title: string, description: string): Promise<any[]> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = getAI();
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
-            contents: `Soft Flow: Checklist de 5 passos para o projeto operacional "${title}". Desc: ${description}`,
-            config: { responseMimeType: "application/json", responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING } } } } }
+            contents: `Gere um checklist técnico de 5 itens para o projeto: ${title}. Contexto: ${description}`,
+            config: { 
+                responseMimeType: "application/json", 
+                responseSchema: { 
+                    type: Type.ARRAY, 
+                    items: { 
+                        type: Type.OBJECT, 
+                        properties: { title: { type: Type.STRING } } 
+                    } 
+                } 
+            }
         });
         return JSON.parse(response.text || "[]");
     } catch (error) { return []; }

@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { Ticket, TicketPriority, TicketStatus, TicketResponse } from '../../types';
-import { MessageSquare, Plus, Send, AlertCircle, CheckCircle, Clock, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Plus, Send, AlertCircle, CheckCircle, Clock, ThumbsUp, ThumbsDown, AlertTriangle, Building2 } from 'lucide-react';
 import { Badge } from '../../components/Widgets';
 
 export const ClientSupport: React.FC = () => {
@@ -11,22 +11,35 @@ export const ClientSupport: React.FC = () => {
   const { currentUser } = useAuth();
   
   const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
-  const [newTicketForm, setNewTicketForm] = useState({ subject: '', description: '', priority: 'Média' as TicketPriority });
+  const [newTicketForm, setNewTicketForm] = useState({ subject: '', description: '', priority: 'Média' as TicketPriority, unit: '' });
   const [replyText, setReplyText] = useState<string>('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
-  const currentClient = useMemo(() => 
-    clients.find(c => c.id === currentUser?.relatedClientId), 
-  [clients, currentUser]);
+  // Unidades do Grupo para o cliente escolher ao abrir ticket
+  const myUnits = useMemo(() => {
+    if (!currentUser) return [];
+    const isMaua = currentUser.email?.toLowerCase().includes('mauaestacionamentos') || currentUser.managedGroupName === 'MAUA PARK';
+    if (isMaua) return clients.filter(c => c.name.toUpperCase().includes('MAUA') || c.groupName === 'MAUA PARK');
+    return clients.filter(c => c.id === currentUser.relatedClientId || c.email === currentUser.email);
+  }, [clients, currentUser]);
 
   const myTickets = useMemo(() => {
-    if (!currentClient) return [];
-    return tickets.filter(t => t.customer === currentClient.name).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [tickets, currentClient]);
+    if (!currentUser) return [];
+    const isMaua = currentUser.email?.toLowerCase().includes('mauaestacionamentos') || currentUser.managedGroupName === 'MAUA PARK';
+    
+    return tickets.filter(t => {
+        const customer = (t.customer || '').toUpperCase();
+        if (isMaua) return customer.includes('MAUA');
+        return myUnits.some(u => u.name === t.customer);
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [tickets, currentUser, myUnits]);
 
   const handleCreateTicket = (e: React.FormEvent) => {
       e.preventDefault();
-      if(!currentClient || !currentUser) return;
+      if(!currentUser || !newTicketForm.unit) {
+          alert("Selecione a unidade afetada.");
+          return;
+      }
 
       const newTicket: Ticket = {
           id: `TKT-${Date.now()}`,
@@ -34,7 +47,7 @@ export const ClientSupport: React.FC = () => {
           description: newTicketForm.description,
           priority: newTicketForm.priority,
           status: TicketStatus.OPEN,
-          customer: currentClient.name,
+          customer: newTicketForm.unit,
           channel: 'Chat',
           created_at: new Date().toISOString(),
           organizationId: currentUser.organizationId,
@@ -43,12 +56,10 @@ export const ClientSupport: React.FC = () => {
 
       try {
           addTicket(currentUser, newTicket);
-          alert("Ticket criado com sucesso! A equipe de suporte foi notificada.");
           setIsNewTicketOpen(false);
-          setNewTicketForm({ subject: '', description: '', priority: 'Média' as any });
+          setNewTicketForm({ subject: '', description: '', priority: 'Média' as any, unit: '' });
       } catch (error) {
-          console.error(error);
-          alert("Erro ao criar ticket. Tente novamente.");
+          alert("Erro ao criar chamado.");
       }
   };
 
@@ -66,19 +77,11 @@ export const ClientSupport: React.FC = () => {
           date: new Date().toISOString()
       };
 
-      // Se o cliente responder, o ticket volta para Em Andamento
       const newStatus = ticket.status === TicketStatus.RESOLVED ? TicketStatus.IN_PROGRESS : ticket.status;
-
-      const updateData: Partial<Ticket> = {
+      updateTicket(currentUser, ticketId, {
           responses: [...(ticket.responses || []), newResponse],
           status: newStatus
-      };
-
-      if (newStatus === TicketStatus.IN_PROGRESS) {
-          updateData.resolvedAt = undefined; // Clear resolution timestamp
-      }
-
-      updateTicket(currentUser, ticketId, updateData);
+      });
 
       setReplyText('');
       setReplyingTo(null);
@@ -88,213 +91,121 @@ export const ClientSupport: React.FC = () => {
       if (!currentUser) return;
 
       if (approved) {
-          // Cliente aprova -> Fecha o ticket
-          const closeMsg: TicketResponse = {
-              id: `SYS-${Date.now()}`,
-              text: "✅ O cliente confirmou a resolução do problema. Chamado encerrado.",
-              author: "Sistema",
-              role: 'client',
-              date: new Date().toISOString()
-          };
-          updateTicket(currentUser, ticket.id, {
-              status: TicketStatus.CLOSED,
-              responses: [...(ticket.responses || []), closeMsg]
-          });
+          const closeMsg: TicketResponse = { id: `SYS-${Date.now()}`, text: "✅ Confirmado pelo cliente.", author: "Sistema", role: 'client', date: new Date().toISOString() };
+          updateTicket(currentUser, ticket.id, { status: TicketStatus.CLOSED, responses: [...(ticket.responses || []), closeMsg] });
       } else {
-          // Cliente reprova -> Volta para Em Andamento
-          const reopenMsg: TicketResponse = {
-              id: `SYS-${Date.now()}`,
-              text: "❌ O cliente indicou que o problema persiste. Chamado reaberto.",
-              author: "Sistema",
-              role: 'client',
-              date: new Date().toISOString()
-          };
-          // Clear resolvedAt so auto-close logic resets
-          updateTicket(currentUser, ticket.id, {
-              status: TicketStatus.IN_PROGRESS,
-              resolvedAt: undefined,
-              responses: [...(ticket.responses || []), reopenMsg]
-          });
+          const reopenMsg: TicketResponse = { id: `SYS-${Date.now()}`, text: "❌ Cliente indicou que não foi resolvido.", author: "Sistema", role: 'client', date: new Date().toISOString() };
+          updateTicket(currentUser, ticket.id, { status: TicketStatus.IN_PROGRESS, resolvedAt: undefined, responses: [...(ticket.responses || []), reopenMsg] });
       }
   };
-
-  if (!currentClient) return null;
 
   return (
     <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">Suporte & Chamados</h1>
-                <p className="text-slate-500">Abra novos chamados e acompanhe o andamento.</p>
+                <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Suporte Técnico</h1>
+                <p className="text-slate-500 font-medium">Acompanhe seus chamados em aberto.</p>
             </div>
             <button 
                 onClick={() => setIsNewTicketOpen(!isNewTicketOpen)}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-sm"
+                className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 transition shadow-lg"
             >
-                {isNewTicketOpen ? 'Cancelar' : <><Plus size={18}/> Novo Chamado</>}
+                {isNewTicketOpen ? 'Fechar Form' : 'Novo Chamado'}
             </button>
         </div>
 
-        {/* New Ticket Form */}
         {isNewTicketOpen && (
-            <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-lg animate-fade-in mb-6">
-                <h3 className="font-bold text-slate-800 mb-4">Descreva sua solicitação</h3>
-                <form onSubmit={handleCreateTicket} className="space-y-4">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-indigo-100 shadow-xl animate-fade-in">
+                <h3 className="font-black text-slate-800 uppercase text-lg mb-6">Abertura de Chamado</h3>
+                <form onSubmit={handleCreateTicket} className="space-y-5">
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assunto</label>
-                        <input required type="text" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Problema na emissão de fatura" value={newTicketForm.subject} onChange={e => setNewTicketForm({...newTicketForm, subject: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Prioridade</label>
-                        <select className="w-full border rounded-lg p-2.5 bg-white outline-none" value={newTicketForm.priority} onChange={e => setNewTicketForm({...newTicketForm, priority: e.target.value as any})}>
-                            <option value="Baixa">Baixa - Dúvida simples</option>
-                            <option value="Média">Média - Problema não crítico</option>
-                            <option value="Alta">Alta - Funcionalidade travada</option>
-                            <option value="Crítica">Crítica - Sistema parado</option>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Unidade Afetada</label>
+                        <select required className="w-full border-2 border-slate-100 rounded-xl p-3 bg-slate-50 font-bold" value={newTicketForm.unit} onChange={e => setNewTicketForm({...newTicketForm, unit: e.target.value})}>
+                            <option value="">Selecione a unidade...</option>
+                            {myUnits.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Descrição Detalhada</label>
-                        <textarea required className="w-full border rounded-lg p-3 h-32 resize-none outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Descreva o que aconteceu..." value={newTicketForm.description} onChange={e => setNewTicketForm({...newTicketForm, description: e.target.value})} />
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Assunto</label>
+                        <input required type="text" className="w-full border-2 border-slate-100 rounded-xl p-3 bg-white" placeholder="Ex: Câmera LPR offline" value={newTicketForm.subject} onChange={e => setNewTicketForm({...newTicketForm, subject: e.target.value})} />
                     </div>
-                    <div className="flex justify-end">
-                        <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 flex items-center gap-2">
-                            <Send size={18}/> Enviar Solicitação
-                        </button>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Prioridade</label>
+                        <select className="w-full border-2 border-slate-100 rounded-xl p-3 bg-white" value={newTicketForm.priority} onChange={e => setNewTicketForm({...newTicketForm, priority: e.target.value as any})}>
+                            <option value="Baixa">Baixa</option>
+                            <option value="Média">Média</option>
+                            <option value="Alta">Alta</option>
+                            <option value="Crítica">Crítica (Operação Parada)</option>
+                        </select>
                     </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Descrição</label>
+                        <textarea required className="w-full border-2 border-slate-100 rounded-xl p-3 h-32" placeholder="Explique o ocorrido..." value={newTicketForm.description} onChange={e => setNewTicketForm({...newTicketForm, description: e.target.value})} />
+                    </div>
+                    <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs">Enviar Solicitação</button>
                 </form>
             </div>
         )}
 
-        {/* Ticket List */}
         <div className="space-y-6">
             {myTickets.length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
-                    <CheckCircle size={48} className="mx-auto text-green-500 mb-4 opacity-50"/>
-                    <p className="text-slate-500 font-medium">Você não tem chamados em aberto.</p>
+                <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100 flex flex-col items-center">
+                    <MessageSquare size={48} className="text-slate-200 mb-4"/>
+                    <p className="text-slate-400 font-black uppercase text-xs tracking-widest">Nenhum chamado encontrado</p>
                 </div>
             ) : (
                 myTickets.map(ticket => (
-                    <div key={ticket.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition">
-                        <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-                            <div className="flex justify-between items-start mb-3">
+                    <div key={ticket.id} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Building2 size={20}/></div>
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h4 className="font-bold text-slate-900 text-lg">{ticket.subject}</h4>
-                                        <span className="text-xs text-slate-400 font-mono">#{ticket.id}</span>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                                        <span className="flex items-center gap-1"><Clock size={12}/> {new Date(ticket.created_at).toLocaleString()}</span>
-                                        <span className="flex items-center gap-1">
-                                            <AlertCircle size={12} className={ticket.priority === 'Crítica' ? 'text-red-500' : 'text-slate-400'}/> {ticket.priority}
-                                        </span>
-                                    </div>
+                                    <h4 className="font-black text-slate-900 uppercase tracking-tight">{ticket.subject}</h4>
+                                    <p className="text-[10px] text-slate-400 uppercase font-black">{ticket.customer} • #{ticket.id.slice(-5)}</p>
                                 </div>
-                                <Badge color={
-                                    ticket.status === 'Resolvido' ? 'green' : 
-                                    ticket.status === 'Fechado' ? 'gray' :
-                                    ticket.status === 'Em Andamento' ? 'yellow' : 'blue'
-                                }>
-                                    {ticket.status === 'Resolvido' ? 'Aguardando Aprovação' : ticket.status}
-                                </Badge>
                             </div>
+                            <Badge color={ticket.status === 'Resolvido' ? 'green' : ticket.status === 'Fechado' ? 'gray' : 'yellow'}>
+                                {ticket.status.toUpperCase()}
+                            </Badge>
                         </div>
                         
-                        <div className="p-5 space-y-4">
-                            {/* Original Description */}
+                        <div className="p-8 space-y-6">
                             <div className="flex justify-end">
-                                <div className="max-w-[90%] bg-blue-50 p-4 rounded-lg rounded-tr-none border border-blue-100 text-sm text-slate-700">
-                                    <p className="whitespace-pre-wrap">{ticket.description}</p>
-                                    <p className="text-[10px] text-blue-400 text-right mt-1">
-                                        Você • {new Date(ticket.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-                                    </p>
+                                <div className="max-w-[80%] bg-indigo-50 p-6 rounded-[2rem] rounded-tr-none border border-indigo-100 shadow-sm">
+                                    <p className="text-sm text-indigo-900 font-medium leading-relaxed">{ticket.description}</p>
+                                    <p className="text-[10px] text-indigo-400 mt-2 font-black uppercase text-right">SOLICITADO EM {new Date(ticket.created_at).toLocaleDateString()}</p>
                                 </div>
                             </div>
 
-                            {/* Conversation History */}
                             {ticket.responses?.map((resp) => (
                                 <div key={resp.id} className={`flex ${resp.role === 'client' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[90%] p-4 rounded-lg text-sm border shadow-sm ${resp.role === 'client' ? 'bg-blue-50 border-blue-100 rounded-tr-none' : 'bg-white border-slate-200 rounded-tl-none'}`}>
-                                        <div className="flex justify-between items-center mb-1 gap-4">
-                                            <span className={`font-bold text-xs ${resp.role === 'client' ? 'text-blue-700' : 'text-indigo-600'}`}>
-                                                {resp.role === 'client' ? 'Você' : resp.author}
-                                            </span>
-                                        </div>
-                                        <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{resp.text}</p>
-                                        <p className="text-[10px] text-slate-400 text-right mt-2">{new Date(resp.date).toLocaleString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                                    <div className={`max-w-[80%] p-6 rounded-[2rem] text-sm shadow-sm ${resp.role === 'client' ? 'bg-indigo-50 border border-indigo-100 rounded-tr-none' : 'bg-slate-900 text-white rounded-tl-none'}`}>
+                                        <p className="font-bold text-[10px] uppercase mb-1 opacity-60">{resp.author}</p>
+                                        <p className="leading-relaxed">{resp.text}</p>
                                     </div>
                                 </div>
                             ))}
 
-                            {/* --- APPROVAL WORKFLOW --- */}
                             {ticket.status === 'Resolvido' && (
-                                <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4 animate-fade-in">
-                                    <div className="flex items-start gap-3">
-                                        <div className="bg-green-100 text-green-600 p-2 rounded-full"><CheckCircle size={24}/></div>
-                                        <div className="flex-1">
-                                            <h4 className="text-green-900 font-bold mb-1">O suporte marcou este chamado como Resolvido</h4>
-                                            <p className="text-green-700 text-sm mb-4">Por favor, confirme se o problema foi solucionado para encerrar o chamado, ou recuse para continuar o atendimento. <span className="font-bold">O chamado será encerrado automaticamente em 48h se não houver resposta.</span></p>
-                                            
-                                            <div className="flex gap-3">
-                                                <button 
-                                                    onClick={() => handleResolutionAction(ticket, true)}
-                                                    className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-bold text-sm hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-sm"
-                                                >
-                                                    <ThumbsUp size={16}/> Sim, Resolvido
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleResolutionAction(ticket, false)}
-                                                    className="flex-1 bg-white text-slate-700 border border-slate-300 py-2 px-4 rounded-lg font-bold text-sm hover:bg-slate-50 transition flex items-center justify-center gap-2"
-                                                >
-                                                    <ThumbsDown size={16}/> Não, Reabrir
-                                                </button>
-                                            </div>
-                                        </div>
+                                <div className="bg-emerald-50 border border-emerald-100 p-8 rounded-[3rem] text-center space-y-4">
+                                    <h4 className="font-black text-emerald-900 uppercase">O problema foi resolvido?</h4>
+                                    <div className="flex gap-4">
+                                        <button onClick={() => handleResolutionAction(ticket, true)} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg">Sim, Resolver</button>
+                                        <button onClick={() => handleResolutionAction(ticket, false)} className="flex-1 py-4 bg-white text-slate-900 border-2 rounded-2xl font-black uppercase text-xs">Ainda não</button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Reply Input (Only if not Closed and not Waiting Approval) */}
                             {ticket.status !== 'Fechado' && ticket.status !== 'Resolvido' && (
-                                <div className="mt-4 pt-4 border-t border-slate-100">
-                                    {replyingTo === ticket.id ? (
-                                        <div className="flex gap-2 items-start">
-                                            <textarea 
-                                                className="flex-1 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-24"
-                                                placeholder="Digite sua resposta..."
-                                                value={replyText}
-                                                onChange={(e) => setReplyText(e.target.value)}
-                                            />
-                                            <div className="flex flex-col gap-2">
-                                                <button 
-                                                    onClick={() => handleClientReply(ticket.id)}
-                                                    disabled={!replyText.trim()}
-                                                    className="bg-indigo-600 text-white p-3 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                                                >
-                                                    <Send size={18}/>
-                                                </button>
-                                                <button 
-                                                    onClick={() => { setReplyingTo(null); setReplyText(''); }}
-                                                    className="bg-slate-100 text-slate-500 p-3 rounded-lg hover:bg-slate-200 transition"
-                                                >
-                                                    <AlertTriangle size={18} className="rotate-45"/>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button 
-                                            onClick={() => setReplyingTo(ticket.id)}
-                                            className="w-full py-3 border border-dashed border-slate-300 text-slate-500 rounded-lg text-sm font-medium hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-300 transition flex items-center justify-center gap-2"
-                                        >
-                                            <MessageSquare size={16}/> Responder
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                            
-                            {ticket.status === 'Fechado' && (
-                                <div className="mt-4 p-3 bg-slate-100 rounded-lg text-center text-xs text-slate-500 font-medium">
-                                    Chamado encerrado. Caso o problema retorne, abra um novo ticket.
+                                <div className="flex gap-3">
+                                    <input 
+                                        className="flex-1 border-2 border-slate-100 rounded-2xl p-4 text-sm outline-none focus:border-indigo-600 bg-slate-50"
+                                        placeholder="Responder ao consultor..."
+                                        value={replyText}
+                                        onChange={e => setReplyText(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleClientReply(ticket.id)}
+                                    />
+                                    <button onClick={() => handleClientReply(ticket.id)} className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg"><Send size={20}/></button>
                                 </div>
                             )}
                         </div>
