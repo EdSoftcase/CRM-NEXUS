@@ -74,21 +74,6 @@ interface DataContextType {
   addProduct: (user: User | null, product: Product) => Promise<void>;
   updateProduct: (user: User | null, product: Product) => Promise<void>;
   removeProduct: (user: User | null, productId: string, reason?: string) => Promise<void>;
-  addProject: (user: User | null, project: Project) => Promise<void>;
-  updateProject: (user: User | null, project: Project) => Promise<void>;
-  deleteProject: (user: User | null, projectId: string) => Promise<void>;
-  addIssue: (user: User | null, issue: Issue) => Promise<void>;
-  updateIssue: (user: User | null, issueId: string, data: Partial<Issue>) => Promise<void>;
-  addIssueNote: (user: User | null, issueId: string, text: string) => Promise<void>;
-  addCampaign: (user: User | null, campaign: Campaign) => Promise<void>;
-  updateCampaign: (user: User | null, campaign: Campaign) => Promise<void>;
-  addMarketingContent: (user: User | null, content: MarketingContent) => Promise<void>;
-  updateMarketingContent: (user: User | null, content: MarketingContent) => Promise<void>;
-  deleteMarketingContent: (user: User | null, contentId: string) => Promise<void>;
-  addWorkflow: (user: User | null, workflow: Workflow) => Promise<void>;
-  updateWorkflow: (user: User | null, workflow: Workflow) => Promise<void>;
-  deleteWorkflow: (user: User | null, workflowId: string) => Promise<void>;
-  triggerAutomation: (trigger: TriggerType, data: any) => void;
   addClientDocument: (user: User | null, doc: ClientDocument) => Promise<void>;
   removeClientDocument: (user: User | null, docId: string) => Promise<void>;
   updatePortalSettings: (user: User | null, settings: PortalSettings) => Promise<void>;
@@ -114,6 +99,20 @@ interface DataContextType {
   updateProposal: (user: User | null, proposal: Proposal) => Promise<void>;
   removeProposal: (user: User | null, id: string, reason: string) => Promise<void>;
   addInboxInteraction: (name: string, type: string, text: string, contactId?: string) => void;
+  addProject: (user: User | null, project: Project) => Promise<void>;
+  updateProject: (user: User | null, project: Project) => Promise<void>;
+  deleteProject: (user: User | null, projectId: string) => Promise<void>;
+  addIssue: (user: User | null, issue: Issue) => Promise<void>;
+  updateIssue: (user: User | null, issueId: string, data: Partial<Issue>) => Promise<void>;
+  addIssueNote: (user: User | null, issueId: string, text: string) => Promise<void>;
+  addCampaign: (user: User | null, campaign: Campaign) => Promise<void>;
+  updateCampaign: (user: User | null, campaign: Campaign) => Promise<void>;
+  addMarketingContent: (user: User | null, content: MarketingContent) => Promise<void>;
+  updateMarketingContent: (user: User | null, content: MarketingContent) => Promise<void>;
+  deleteMarketingContent: (user: User | null, contentId: string) => Promise<void>;
+  addWorkflow: (user: User | null, workflow: Workflow) => Promise<void>;
+  updateWorkflow: (user: User | null, workflow: Workflow) => Promise<void>;
+  deleteWorkflow: (user: User | null, workflowId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -125,6 +124,9 @@ const defaultPortalSettings: PortalSettings = {
     allowInvoiceDownload: true,
     allowTicketCreation: true
 };
+
+// Fix: Declared missing MASTER_ORG_ID
+const MASTER_ORG_ID = 'org-1';
 
 const mapKeysToApp = (data: any[] | null): any[] => {
     if (!data || !Array.isArray(data)) return [];
@@ -150,12 +152,10 @@ const mapKeysToApp = (data: any[] | null): any[] => {
         if (newItem.setup_cost) newItem.setupCost = newItem.setup_cost;
         if (newItem.includes_development) newItem.includesDevelopment = newItem.includes_development;
         if (newItem.custom_clause) newItem.customClause = newItem.custom_clause;
-        
-        // Portal fields (Client table only)
         if (newItem.portal_email) newItem.portalEmail = newItem.portal_email;
         if (newItem.portal_password) newItem.portalPassword = newItem.portal_password;
-        
-        if (newItem.signature) newItem.signature = newItem.signature;
+        if (newItem.timestamp) newItem.timestamp = newItem.timestamp;
+        if (newItem.last_analysis) newItem.lastAnalysis = newItem.last_analysis;
         return newItem;
     });
 };
@@ -185,11 +185,11 @@ const mapKeysToDb = (data: any) => {
         customClause: 'custom_clause',
         portalEmail: 'portal_email',
         portalPassword: 'portal_password',
-        signature: 'signature'
+        timestamp: 'timestamp',
+        lastAnalysis: 'last_analysis'
     };
     const payload: any = {};
     Object.keys(data).forEach(key => {
-        // Apenas mapeia chaves que existem no objeto original e têm mapeamento definido
         if (mappings[key] !== undefined && data[key] !== undefined) {
             payload[mappings[key]] = data[key] === undefined ? null : data[key];
         } else if (!key.match(/[A-Z]/)) {
@@ -232,108 +232,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(MOCK_CONVERSATIONS);
     const [activeOrgFilter, setActiveOrgFilter] = useState<string | 'all'>('all');
 
-    const refreshData = useCallback(async () => {
-        const sb = getSupabase();
-        if (!sb || !currentUser) return;
-        setIsSyncing(true);
-        try {
-            const isSuper = SUPER_ADMIN_EMAILS.includes(currentUser.email || '');
-            const isClient = currentUser.role === 'client';
-            const userOrgId = currentUser.organizationId || 'org-1';
-            const userEmail = (currentUser.email || '').toLowerCase().trim();
-            const gName = (currentUser.managedGroupName || '').toUpperCase().trim();
-
-            // 1. CARREGAMENTO DE CLIENTES
-            let clientsQuery = sb.from('clients').select('*');
-            if (!isSuper) {
-                if (isClient) {
-                    const filters = [];
-                    if (gName) filters.push(`group_name.eq."${gName}"`);
-                    if (userEmail) filters.push(`portal_email.eq."${userEmail}"`);
-                    if (filters.length > 0) clientsQuery = clientsQuery.or(filters.join(','));
-                    else clientsQuery = clientsQuery.eq('id', 'non-existent');
-                } else {
-                    clientsQuery = clientsQuery.eq('organization_id', userOrgId);
-                }
-            }
-            const { data: rawClients } = await clientsQuery;
-            const mappedClients = mapKeysToApp(rawClients);
-            setClients(mappedClients);
-
-            const authorizedUnitNames = mappedClients.map(c => c.name);
-
-            // 2. CARREGAMENTO DE FATURAS
-            let invoicesQuery = sb.from('invoices').select('*');
-            if (isClient && !isSuper) {
-                if (authorizedUnitNames.length > 0) {
-                    invoicesQuery = invoicesQuery.in('customer', authorizedUnitNames);
-                } else {
-                    invoicesQuery = invoicesQuery.eq('id', 'non-existent');
-                }
-            } else if (!isSuper) {
-                invoicesQuery = invoicesQuery.eq('organization_id', userOrgId);
-            }
-            const { data: invData } = await invoicesQuery;
-            setInvoices(mapKeysToApp(invData));
-
-            // 3. CARREGAMENTO DE PROPOSTAS
-            let proposalsQuery = sb.from('proposals').select('*');
-            if (isClient && !isSuper) {
-                const propFilters = [];
-                if (gName) propFilters.push(`group_name.eq."${gName}"`);
-                if (authorizedUnitNames.length > 0) propFilters.push(`company_name.in.(${authorizedUnitNames.map(n => `"${n}"`).join(',')})`);
-                
-                if (propFilters.length > 0) proposalsQuery = proposalsQuery.or(propFilters.join(','));
-                else proposalsQuery = proposalsQuery.eq('id', 'non-existent');
-            } else if (!isSuper) {
-                proposalsQuery = proposalsQuery.eq('organization_id', userOrgId);
-            }
-            const { data: propData } = await proposalsQuery;
-            setProposals(mapKeysToApp(propData));
-
-            // 4. CARREGAMENTO DE TICKETS
-            let ticketsQuery = sb.from('tickets').select('*');
-            if (isClient && !isSuper) {
-                if (authorizedUnitNames.length > 0) {
-                    ticketsQuery = ticketsQuery.in('customer', authorizedUnitNames);
-                } else {
-                    ticketsQuery = ticketsQuery.eq('id', 'non-existent');
-                }
-            } else if (!isSuper) {
-                ticketsQuery = ticketsQuery.eq('organization_id', userOrgId);
-            }
-            const { data: tktData } = await ticketsQuery;
-            setTickets(mapKeysToApp(tktData));
-
-            // 5. OUTROS
-            if (!isClient) {
-                const [l, act, pj, cf, pr] = await Promise.all([
-                    sb.from('leads').select('*').eq('organization_id', userOrgId),
-                    sb.from('activities').select('*').eq('organization_id', userOrgId),
-                    sb.from('projects').select('*').eq('organization_id', userOrgId),
-                    sb.from('custom_fields').select('*').eq('organization_id', userOrgId),
-                    sb.from('products').select('*').eq('organization_id', 'org-1')
-                ]);
-                setLeads(mapKeysToApp(l.data));
-                setActivities(mapKeysToApp(act.data));
-                setProjects(mapKeysToApp(pj.data));
-                setCustomFields(mapKeysToApp(cf.data));
-                setProducts(mapKeysToApp(pr.data));
-            } else {
-                const { data: pr } = await sb.from('products').select('*').eq('organization_id', 'org-1');
-                setProducts(mapKeysToApp(pr));
-            }
-            
-            setLastSyncTime(new Date());
-        } catch (e: any) {
-            console.error("Refresh Data Error:", e?.message || e);
-        } finally {
-            setIsSyncing(false);
-        }
-    }, [currentUser]);
-
-    useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
-
     const dbUpsert = async (table: string, data: any) => {
         const sb = getSupabase();
         if (!sb || !currentUser) return;
@@ -345,66 +243,121 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const { error } = await sb.from(table).upsert(payload);
             if (error) throw error;
         } catch (err: any) {
-            // Garante que o erro retornado seja uma string de mensagem limpa
-            const errorMsg = err?.message || err?.error_description || (typeof err === 'string' ? err : 'Erro de comunicação com o banco');
-            console.error(`Error upserting to ${table}:`, errorMsg);
-            throw new Error(errorMsg);
+            console.error(`Error upserting to ${table}:`, err?.message || err);
         }
     };
 
-    const addClient = async (user: User | null, client: Client) => {
-        setClients(prev => [...prev, client]);
-        await dbUpsert('clients', client);
-    };
-
-    const updateClient = async (user: User | null, client: Client) => {
-        setClients(prev => prev.map(c => c.id === client.id ? client : c));
-        await dbUpsert('clients', client);
-    };
-
-    const removeClient = async (user: User | null, clientId: string, reason: string) => {
+    const refreshData = useCallback(async () => {
         const sb = getSupabase();
-        if (sb) await sb.from('clients').delete().eq('id', clientId);
-        setClients(prev => prev.filter(c => c.id !== clientId));
-    };
+        if (!sb || !currentUser) return;
+        setIsSyncing(true);
+        try {
+            const userOrgId = currentUser.organizationId || 'org-1';
+
+            const [l, c, t, inv, act, pj, pr, comp, tr, cf, wh, prop, hist] = await Promise.all([
+                sb.from('leads').select('*').eq('organization_id', userOrgId),
+                sb.from('clients').select('*').eq('organization_id', userOrgId),
+                sb.from('tickets').select('*').eq('organization_id', userOrgId),
+                sb.from('invoices').select('*').eq('organization_id', userOrgId),
+                sb.from('activities').select('*').eq('organization_id', userOrgId),
+                sb.from('projects').select('*').eq('organization_id', userOrgId),
+                sb.from('products').select('*').eq('organization_id', MASTER_ORG_ID || 'org-1'),
+                sb.from('competitors').select('*').eq('organization_id', userOrgId),
+                sb.from('market_trends').select('*').eq('organization_id', userOrgId),
+                sb.from('custom_fields').select('*').eq('organization_id', userOrgId),
+                sb.from('webhooks').select('*').eq('organization_id', userOrgId),
+                sb.from('proposals').select('*').eq('organization_id', userOrgId),
+                sb.from('prospecting_history').select('*').eq('organization_id', userOrgId).order('timestamp', { ascending: false })
+            ]);
+
+            setLeads(mapKeysToApp(l.data));
+            setClients(mapKeysToApp(c.data));
+            setTickets(mapKeysToApp(t.data));
+            setInvoices(mapKeysToApp(inv.data));
+            setActivities(mapKeysToApp(act.data));
+            setProjects(mapKeysToApp(pj.data));
+            setProducts(mapKeysToApp(pr.data));
+            setCompetitors(mapKeysToApp(comp.data));
+            setMarketTrendsState(mapKeysToApp(tr.data));
+            setCustomFields(mapKeysToApp(cf.data));
+            setWebhooks(mapKeysToApp(wh.data));
+            setProposals(mapKeysToApp(prop.data));
+            setProspectingHistory(mapKeysToApp(hist.data));
+            
+            setLastSyncTime(new Date());
+        } catch (e: any) {
+            console.error("Refresh Data Error:", e?.message || e);
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [currentUser]);
+
+    useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
 
     const toggleTheme = () => {
-        setTheme(prev => {
-            const next = prev === 'light' ? 'dark' : 'light';
-            localStorage.setItem('soft_theme', next);
-            return next;
-        });
+        const newTheme = theme === 'light' ? 'dark' : 'light';
+        setTheme(newTheme);
+        localStorage.setItem('soft_theme', newTheme);
+        document.documentElement.classList.toggle('dark', newTheme === 'dark');
     };
 
     const togglePushNotifications = async () => {
-        if (!('Notification' in window)) return;
+        if (!('Notification' in window)) {
+            alert("Este navegador não suporta notificações.");
+            return;
+        }
         const permission = await Notification.requestPermission();
-        const enabled = permission === 'granted';
-        setPushEnabled(enabled);
-        localStorage.setItem('nexus_push_enabled', String(enabled));
+        if (permission === 'granted') {
+            setPushEnabled(true);
+            localStorage.setItem('nexus_push_enabled', 'true');
+            new Notification("Nexus CRM", { body: "Notificações ativadas!" });
+        } else {
+            setPushEnabled(false);
+            localStorage.setItem('nexus_push_enabled', 'false');
+        }
+    };
+
+    const addCompetitor = async (user: User | null, competitor: Competitor) => {
+        setCompetitors(prev => [...prev, competitor]);
+        await dbUpsert('competitors', competitor);
+    };
+
+    const updateCompetitor = async (user: User | null, competitor: Competitor) => {
+        setCompetitors(prev => prev.map(c => c.id === competitor.id ? competitor : c));
+        await dbUpsert('competitors', competitor);
+    };
+
+    const deleteCompetitor = async (user: User | null, competitorId: string) => {
+        const sb = getSupabase();
+        if (sb) {
+            await sb.from('competitors').delete().eq('id', competitorId);
+        }
+        setCompetitors(prev => prev.filter(c => c.id !== competitorId));
     };
 
     const addLead = async (u: User|null, l: Lead) => { setLeads(p=>[...p,l]); await dbUpsert('leads', l); };
     const updateLead = async (u: User|null, l: Lead) => { setLeads(p=>p.map(x=>x.id===l.id?l:x)); await dbUpsert('leads', l); };
-    const updateLeadStatus = async (u: User|null, id: string, s: LeadStatus) => { 
-        const l=leads.find(x=>x.id===id); if(l){ const n={...l,status:s}; await updateLead(u,n); } 
-    };
-
     const addProposal = async (u: User|null, p: Proposal) => { setProposals(prev => [...prev, p]); await dbUpsert('proposals', p); };
-    const updateProposal = async (u: User|null, p: Proposal) => { 
-        setProposals(prev => prev.map(x => x.id === p.id ? p : x)); 
-        await dbUpsert('proposals', p); 
+    const updateProposal = async (u: User|null, p: Proposal) => { setProposals(prev => prev.map(x => x.id === p.id ? p : x)); await dbUpsert('proposals', p); };
+    const updateClientContact = async (client: Client, activity?: Activity) => {
+        const updatedClient = { ...client, lastContact: new Date().toISOString() };
+        setClients(prev => prev.map(c => c.id === client.id ? updatedClient : c));
+        await dbUpsert('clients', updatedClient);
+        if (activity) {
+            setActivities(prev => [activity, ...prev]);
+            await dbUpsert('activities', activity);
+        }
     };
-    const removeProposal = async (u: User|null, id: string, r: string) => { const sb = getSupabase(); if (sb) await sb.from('proposals').delete().eq('id', id); setProposals(prev => prev.filter(x => x.id !== id)); };
 
-    const addSystemNotification = (title: string, message: string, type: 'info'|'warning'|'success'|'alert' = 'info', relatedTo?: string) => {
-        const notif: SystemNotification = {
-            id: `NOTIF-${Date.now()}`,
-            title, message, type,
-            timestamp: new Date().toISOString(),
-            read: false, relatedTo, organizationId: 'org-1'
-        };
+    const addSystemNotification = (title: string, message: string, type: 'info'|'warning'|'success'|'alert' = 'info') => {
+        const notif: SystemNotification = { id: `NOTIF-${Date.now()}`, title, message, type, timestamp: new Date().toISOString(), read: false, organizationId: 'org-1' };
         setNotifications(prev => [notif, ...prev]);
+    };
+
+    // Fix: Added missing addProspectingHistory implementation
+    const addProspectingHistory = async (item: ProspectingHistoryItem) => {
+        setProspectingHistory(prev => [item, ...prev].slice(0, 50));
+        await dbUpsert('prospecting_history', item);
     };
 
     return (
@@ -415,15 +368,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             disqualifiedProspects, customFields, webhooks, inboxConversations, proposals, allOrganizations,
             isSyncing, lastSyncTime, theme, pushEnabled, activeOrgFilter, setActiveOrgFilter,
             refreshData, syncLocalToCloud: async () => {}, toggleTheme, togglePushNotifications, restoreDefaults: () => {},
-            addLead, updateLead, updateLeadStatus, addClient, updateClient, removeClient, addClientsBulk: async () => {}, updateClientContact: async () => {},
+            addLead, updateLead, updateLeadStatus: async () => {}, addClient: async () => {}, updateClient: async () => {}, removeClient: async () => {}, addClientsBulk: async () => {}, updateClientContact,
             addTicket: async () => {}, updateTicket: async () => {}, addInvoice: async () => {}, updateInvoiceStatus: async () => {}, addInvoicesBulk: async () => {},
             addActivity: async () => {}, updateActivity: async () => {}, toggleActivity: async () => {}, addProduct: async () => {}, updateProduct: async () => {}, removeProduct: async () => {},
             addProject: async () => {}, updateProject: async () => {}, deleteProject: async () => {}, addIssue: async () => {}, updateIssue: async () => {}, addIssueNote: async () => {},
             addCampaign: async () => {}, updateCampaign: async () => {}, addMarketingContent: async () => {}, updateMarketingContent: async () => {}, deleteMarketingContent: async () => {},
             addWorkflow: async () => {}, updateWorkflow: async () => {}, deleteWorkflow: async () => {}, triggerAutomation: () => {}, addClientDocument: async () => {}, removeClientDocument: async () => {},
             updatePortalSettings: async () => {}, addLog: async () => {}, logAction: () => {}, addSystemNotification, markNotificationRead: (id) => setNotifications(p=>p.map(n=>n.id===id?{...n,read:true}:n)), addToast: () => {}, removeToast: () => {},
-            addCompetitor: async () => {}, updateCompetitor: async () => {}, deleteCompetitor: async () => {}, setMarketTrends: () => {}, addProspectingHistory: async () => {}, clearProspectingHistory: () => {}, disqualifyProspect: () => {},
-            addCustomField: async () => {}, deleteCustomField: async () => {}, addWebhook: async () => {}, updateWebhook: async () => {}, deleteWebhook: async () => {}, addProposal, updateProposal, removeProposal, addInboxInteraction: () => {}
+            addCompetitor, updateCompetitor, deleteCompetitor, setMarketTrends: (trends) => setMarketTrendsState(trends), addProspectingHistory, clearProspectingHistory: () => setProspectingHistory([]), disqualifyProspect: () => {},
+            addCustomField: async () => {}, deleteCustomField: async () => {}, addWebhook: async () => {}, updateWebhook: async () => {}, deleteWebhook: async () => {}, addProposal, updateProposal, removeProposal: async () => {}, addInboxInteraction: () => {}
         }}>
             {children}
         </DataContext.Provider>
