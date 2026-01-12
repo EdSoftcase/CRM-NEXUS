@@ -1,5 +1,5 @@
 
-export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client';
+export type Role = 'admin' | 'executive' | 'sales' | 'support' | 'dev' | 'finance' | 'client' | 'production';
 
 export enum LeadStatus {
   NEW = 'Novo',
@@ -442,6 +442,7 @@ export interface Activity {
     assignee: string;
     description?: string;
     metadata?: any;
+    organizationId?: string;
 }
 
 export interface ClientDocument {

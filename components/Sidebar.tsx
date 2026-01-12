@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, LifeBuoy, Code, DollarSign, PieChart, Settings, 
   LogOut, Briefcase, X, HeartPulse, FileText, ShieldAlert, Calendar as CalendarIcon, 
   Megaphone, Workflow, Map, Trello, Moon, Sun, Target, Sword, Wrench, 
-  MessageSquare, Phone, ChevronLeft, ChevronRight, Sparkles, Zap, RefreshCw
+  MessageSquare, Phone, ChevronLeft, ChevronRight, Zap, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -23,7 +23,7 @@ interface NavGroup {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule, onNavigate }) => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, hasPermission } = useAuth();
   const { isSyncing, theme, toggleTheme, tickets = [], leads = [], invoices = [] } = useData();
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -34,53 +34,62 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
     localStorage.setItem('sidebar_collapsed', String(newState));
   };
 
-  const navGroups: NavGroup[] = useMemo(() => [
-    {
-      label: 'Gestão Comercial',
-      items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'contact-center', label: 'Central de Contatos', icon: Phone },
-        { id: 'inbox', label: 'Inbox', icon: MessageSquare },
-        { id: 'prospecting', label: 'Prospecção', icon: Target },
-        { id: 'commercial', label: 'CRM / Leads', icon: Users, badge: (leads || []).filter(l => l && l.status === 'Novo').length },
-        { id: 'clients', label: 'Clientes', icon: Briefcase }, 
-        { id: 'proposals', label: 'Propostas', icon: FileText },
-      ]
-    },
-    {
-      label: 'Operações & Entrega',
-      items: [
-        { id: 'operations', label: 'Produção', icon: Wrench },
-        { id: 'projects', label: 'Projetos', icon: Trello },
-        { id: 'calendar', label: 'Agenda', icon: CalendarIcon },
-        { id: 'geo-intelligence', label: 'Mapa', icon: Map },
-      ]
-    },
-    {
-      label: 'Relacionamento (CS)',
-      items: [
-        { id: 'customer-success', label: 'Sucesso', icon: HeartPulse },
-        { id: 'retention', label: 'Retenção', icon: ShieldAlert },
-      ]
-    },
-    {
-      label: 'Backoffice & IA',
-      items: [
-        { id: 'finance', label: 'Financeiro', icon: DollarSign, badge: (invoices || []).filter(i => i && i.status === 'Atrasado').length },
-        { id: 'support', label: 'Suporte', icon: LifeBuoy, badge: (tickets || []).filter(t => t && t.status === 'Aberto').length },
-        { id: 'automation', label: 'Soft Flow', icon: Workflow },
-        { id: 'marketing', label: 'Marketing', icon: Megaphone },
-        { id: 'competitive-intelligence', label: 'Nexus Spy', icon: Sword },
-      ]
-    },
-    {
-      label: 'Inteligência',
-      items: [
-        { id: 'reports', label: 'Relatórios', icon: PieChart },
-        { id: 'dev', label: 'Desenvolvimento', icon: Code },
-      ]
-    }
-  ], [leads, invoices, tickets]);
+  const navGroups: NavGroup[] = useMemo(() => {
+    const groups = [
+      {
+        label: 'Gestão Comercial',
+        items: [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'contact-center', label: 'Central de Contatos', icon: Phone },
+          { id: 'inbox', label: 'Inbox', icon: MessageSquare },
+          { id: 'prospecting', label: 'Prospecção', icon: Target },
+          { id: 'commercial', label: 'CRM / Leads', icon: Users, badge: (leads || []).filter(l => l && l.status === 'Novo').length },
+          { id: 'clients', label: 'Clientes', icon: Briefcase }, 
+          { id: 'proposals', label: 'Propostas', icon: FileText },
+        ]
+      },
+      {
+        label: 'Operações & Entrega',
+        items: [
+          { id: 'operations', label: 'Produção', icon: Wrench },
+          { id: 'projects', label: 'Projetos', icon: Trello },
+          { id: 'calendar', label: 'Agenda', icon: CalendarIcon },
+          { id: 'geo-intelligence', label: 'Mapa', icon: Map },
+        ]
+      },
+      {
+        label: 'Relacionamento (CS)',
+        items: [
+          { id: 'customer-success', label: 'Sucesso', icon: HeartPulse },
+          { id: 'retention', label: 'Retenção', icon: ShieldAlert },
+        ]
+      },
+      {
+        label: 'Backoffice & IA',
+        items: [
+          { id: 'finance', label: 'Financeiro', icon: DollarSign, badge: (invoices || []).filter(i => i && i.status === 'Atrasado').length },
+          { id: 'support', label: 'Suporte', icon: LifeBuoy, badge: (tickets || []).filter(t => t && t.status === 'Aberto').length },
+          { id: 'automation', label: 'Soft Flow', icon: Workflow },
+          { id: 'marketing', label: 'Marketing', icon: Megaphone },
+          { id: 'competitive-intelligence', label: 'Nexus Spy', icon: Sword },
+        ]
+      },
+      {
+        label: 'Inteligência',
+        items: [
+          { id: 'reports', label: 'Relatórios', icon: PieChart },
+          { id: 'dev', label: 'Desenvolvimento', icon: Code },
+        ]
+      }
+    ];
+
+    // Filtragem baseada em hasPermission
+    return groups.map(group => ({
+        ...group,
+        items: group.items.filter(item => hasPermission(item.id, 'view'))
+    })).filter(group => group.items.length > 0);
+
+  }, [leads, invoices, tickets, hasPermission]);
 
   return (
     <>
@@ -91,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       <div 
         className={`
           fixed inset-y-0 left-0 z-50 bg-slate-900 text-slate-300 flex flex-col h-[100dvh] 
-          shadow-2xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] border-r border-slate-800/50
+          shadow-2xl transition-all duration-300 border-r border-slate-800/50
           md:relative md:translate-x-0
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
           ${isCollapsed ? 'w-20' : 'w-72'}

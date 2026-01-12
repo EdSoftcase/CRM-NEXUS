@@ -55,31 +55,42 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => `
--- FIX SCHEMA v71.0 (RESTAURAÇÃO DE BASE)
+-- FIX SCHEMA v72.0 (RESTAURAÇÃO SOFT SPY)
 
--- 1. Garante colunas base
-ALTER TABLE IF EXISTS clients ADD COLUMN IF NOT EXISTS portal_email TEXT;
-ALTER TABLE IF EXISTS clients ADD COLUMN IF NOT EXISTS portal_password TEXT;
-ALTER TABLE IF EXISTS clients ADD COLUMN IF NOT EXISTS organization_id TEXT;
+-- 1. Garante tabela de concorrentes
+CREATE TABLE IF NOT EXISTS competitors (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    website TEXT,
+    sector TEXT,
+    swot JSONB DEFAULT '{}'::jsonb,
+    battlecard JSONB DEFAULT '{}'::jsonb,
+    last_analysis TIMESTAMPTZ,
+    organization_id TEXT NOT NULL DEFAULT 'org-1'
+);
 
--- 2. AUTO-RECUPERAÇÃO: Atribui registros sem organização para a org principal
--- Isso faz com que clientes que "sumiram" voltem a aparecer no dashboard.
-UPDATE clients SET organization_id = 'org-1' WHERE organization_id IS NULL OR organization_id = '';
+-- 2. Garante tabela de tendências de mercado
+CREATE TABLE IF NOT EXISTS market_trends (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    description TEXT,
+    sentiment TEXT,
+    impact TEXT,
+    organization_id TEXT DEFAULT 'org-1'
+);
 
--- 3. Reset de RLS para Permissão Total a usuários Autenticados
--- Nota: Em produção enterprise, usaríamos filtros por org_id, 
--- mas para restaurar sua base agora, vamos liberar para seu usuário.
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+-- 3. Reset de RLS para Competitors
+ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Full access to auth users on competitors" ON competitors;
+CREATE POLICY "Full access to auth users on competitors" ON competitors 
+FOR ALL USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow authenticated select" ON clients;
-DROP POLICY IF EXISTS "Allow authenticated insert" ON clients;
-DROP POLICY IF EXISTS "Allow authenticated update" ON clients;
-DROP POLICY IF EXISTS "Allow auth update portal info" ON clients;
+-- 4. Reset de RLS para Market Trends
+ALTER TABLE market_trends ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Full access to auth users on market_trends" ON market_trends;
+CREATE POLICY "Full access to auth users on market_trends" ON market_trends 
+FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "Full access to auth users" ON clients 
-FOR ALL USING (auth.role() = 'authenticated') 
-WITH CHECK (auth.role() = 'authenticated');
-
--- 4. Recarrega Cache da API
+-- 5. Recarrega Cache da API
 NOTIFY pgrst, 'reload schema';
 `;

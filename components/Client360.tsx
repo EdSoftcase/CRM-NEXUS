@@ -15,12 +15,13 @@ interface Client360Props {
     onClose: () => void;
 }
 
-export const Client360: React.FC<Client360Props> = ({ client: propClient, leads, tickets, invoices, onClose }) => {
-    const { clients, updateClient, clientDocuments, addClientDocument, removeClientDocument, activities, logs, addActivity, products, addLog, addSystemNotification } = useData();
+export const Client360: React.FC<Client360Props> = ({ client: propClient, leads: propLeads, tickets: propTickets, invoices: propInvoices, onClose }) => {
+    const { clients, updateClient, activities, logs, products, addSystemNotification } = useData();
     const { currentUser, createClientAccess } = useAuth();
     const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'support' | 'documents' | 'portal' | 'products'>('overview');
     
-    const client = clients.find(c => c.id === propClient.id) || propClient;
+    // Garantir que temos o cliente mais atualizado do contexto
+    const client = useMemo(() => clients.find(c => c.id === propClient.id) || propClient, [clients, propClient]);
 
     // States
     const [waStatus, setWaStatus] = useState<'idle' | 'checking' | 'verified' | 'invalid' | 'error'>('idle');
@@ -36,7 +37,7 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
         }
         setPortalEmail(client.portalEmail || client.email || '');
         setProvisionedData(client.portalPassword ? { email: client.portalEmail || '', password: client.portalPassword } : null);
-    }, [client.id, client.email, client.portalEmail, client.portalPassword]);
+    }, [client.id]);
 
     const handleCheckWhatsApp = async () => {
         setWaStatus('checking');
@@ -57,48 +58,28 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
 
         setIsProvisioning(true);
         try {
-            // 1. Gera a senha via AuthContext
             const result = await createClientAccess(client, cleanEmail);
-            
             if (result.success && result.password) {
-                // 2. Prepara objeto de atualização
                 const updatedClient: Client = {
                     ...client,
                     portalEmail: cleanEmail,
                     portalPassword: result.password
                 };
-                
-                // 3. Aguarda persistência REAL no Supabase
                 await updateClient(currentUser, updatedClient);
-                
-                // 4. Atualiza UI local
                 setProvisionedData({ email: cleanEmail, password: result.password });
-                addSystemNotification("Acesso Gerado e Salvo", `Credenciais registradas no banco de dados Cloud.`, "success");
+                addSystemNotification("Acesso Gerado", `Credenciais registradas.`, "success");
             } else {
                 addSystemNotification("Erro", result.error || "Falha ao gerar acesso.", "alert");
             }
         } catch (e: any) {
-            console.error("Erro no provisionamento:", e);
-            addSystemNotification("Erro de Persistência", "Verifique o SQL Patch em Configurações.", "alert");
+            addSystemNotification("Erro", "Falha no provisionamento.", "alert");
         } finally {
             setIsProvisioning(false);
         }
     };
 
-    const copyToClipboard = (text: string, label: string) => {
-        navigator.clipboard.writeText(text);
-        addSystemNotification("Copiado!", `${label} copiado para a área de transferência.`, "info");
-    };
-
-    const sendCredsViaWhatsApp = () => {
-        if (!provisionedData) return;
-        const msg = `Olá ${client.contactPerson},\n\nSeu acesso ao Portal SOFT-CRM foi liberado!\n\nLink: https://soft-crm.vercel.app\nLogin: ${provisionedData.email}\nSenha Provisória: ${provisionedData.password}\n\nPor segurança, altere sua senha no primeiro acesso.`;
-        const url = `https://wa.me/${client.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`;
-        window.open(url, '_blank');
-    };
-
     const toggleProduct = (productName: string) => {
-        const currentProducts = client.contractedProducts || [];
+        const currentProducts = Array.isArray(client.contractedProducts) ? client.contractedProducts : [];
         let newProducts;
         if (currentProducts.includes(productName)) {
             newProducts = currentProducts.filter(p => p !== productName);
@@ -106,21 +87,23 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
             newProducts = [...currentProducts, productName];
         }
         updateClient(currentUser, { ...client, contractedProducts: newProducts });
-        addSystemNotification("Portfólio Atualizado", `Item ${productName} atualizado para ${client.name}`, "info");
+        addSystemNotification("Inventário Atualizado", `${productName} alterado.`, "info");
     };
 
-    // Tabs Data Filtering
-    const clientTickets = tickets.filter(t => t.customer === client.name);
-    const clientInvoices = invoices.filter(i => i.customer === client.name);
-    const clientDocs = clientDocuments.filter(d => d.clientId === client.id);
-    const contractedProducts = client.contractedProducts || [];
+    // Safely filter data
+    const clientTickets = useMemo(() => (propTickets || []).filter(t => t.customer === client.name), [propTickets, client.name]);
+    const clientInvoices = useMemo(() => (propInvoices || []).filter(i => i.customer === client.name), [propInvoices, client.name]);
+    const contractedProducts = useMemo(() => Array.isArray(client.contractedProducts) ? client.contractedProducts : [], [client.contractedProducts]);
 
     const timelineEvents = useMemo(() => {
+        const safeActivities = Array.isArray(activities) ? activities : [];
+        const safeLogs = Array.isArray(logs) ? logs : [];
+
         return [
-            ...activities.filter(a => a.relatedTo === client.name).map(a => ({
+            ...safeActivities.filter(a => a.relatedTo === client.name).map(a => ({
                 id: a.id, date: a.dueDate, title: a.title, type: 'Activity', desc: a.description || a.type
             })),
-            ...logs.filter(l => l.details.includes(client.name)).map(l => ({
+            ...safeLogs.filter(l => l.details && l.details.includes(client.name)).map(l => ({
                 id: l.id, date: l.timestamp, title: l.action, type: 'Log', desc: l.details
             }))
         ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -155,19 +138,19 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
-                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
                             <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mb-1">Health Score</p>
                             <p className="font-black text-lg md:text-xl">{client.healthScore || 0}/100</p>
                         </div>
-                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
                             <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mb-1">LTV Atual</p>
-                            <p className="font-black text-lg md:text-xl text-emerald-400">R$ {client.ltv.toLocaleString()}</p>
+                            <p className="font-black text-lg md:text-xl text-emerald-400">R$ {client.ltv?.toLocaleString() || '0'}</p>
                         </div>
-                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                            <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mb-1">Status Base</p>
-                            <Badge color={client.status === 'Active' ? 'green' : 'red'}>{client.status.toUpperCase()}</Badge>
+                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
+                            <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mb-1">Status</p>
+                            <Badge color={client.status === 'Active' ? 'green' : 'red'}>{client.status?.toUpperCase()}</Badge>
                         </div>
-                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
                             <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mb-1">NPS</p>
                             <p className="font-black text-lg md:text-xl">{client.nps || '--'}</p>
                         </div>
@@ -181,7 +164,6 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                         { id: 'financial', label: 'Contas', icon: DollarSign },
                         { id: 'support', label: 'Suporte', icon: LifeBuoy },
                         { id: 'products', label: 'Inventário', icon: Package },
-                        { id: 'documents', label: 'Arquivos', icon: FileText },
                         { id: 'portal', label: 'Acesso', icon: Key },
                     ].map((tab) => (
                          <button 
@@ -194,190 +176,128 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, leads,
                     ))}
                 </div>
 
-                {/* Tab Content */}
                 <div className="flex-1 overflow-y-auto p-4 md:p-10 bg-slate-50 dark:bg-slate-950 custom-scrollbar pb-24">
-                    
                     {activeTab === 'overview' && (
                         <div className="space-y-8 animate-fade-in max-w-3xl">
                             <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
                                 <h3 className="font-black text-slate-900 dark:text-white mb-8 flex items-center gap-3 uppercase tracking-tighter text-lg">
-                                    <History size={24} className="text-indigo-50"/> Jornada
+                                    <History size={24} className="text-indigo-600"/> Timeline de Atividades
                                 </h3>
-                                <div className="space-y-8 ml-3 border-l-4 border-slate-100 dark:border-slate-800 pl-8">
-                                    {timelineEvents.map((event, i) => (
-                                        <div key={i} className="relative">
-                                            <div className={`absolute -left-[42px] w-6 h-6 rounded-xl border-4 border-white dark:border-slate-900 shadow-sm ${event.type === 'Log' ? 'bg-slate-400' : 'bg-indigo-600'}`}></div>
-                                            <div>
-                                                <p className="text-[10px] text-slate-400 font-black uppercase">{new Date(event.date).toLocaleString('pt-BR')}</p>
-                                                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{event.title}</h4>
-                                                <p className="text-xs text-slate-500 mt-1 italic">"{event.desc}"</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'portal' && (
-                        <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
-                            <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center shadow-2xl">
-                                <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-[1.5rem] flex items-center justify-center text-indigo-600 mb-6 shadow-inner"><Key size={40}/></div>
-                                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tighter">Central de Autoatendimento</h3>
-                                <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Provisione o acesso para que o cliente gerencie faturas e suporte.</p>
-                                
-                                <div className="w-full space-y-6">
-                                    {!provisionedData ? (
-                                        <>
-                                            <div className="text-left">
-                                                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-2 tracking-widest">E-mail de Login (Corporativo)</label>
-                                                <input 
-                                                    className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-indigo-600 outline-none transition" 
-                                                    value={portalEmail}
-                                                    onChange={(e) => setPortalEmail(e.target.value)}
-                                                    placeholder="cliente@email.com"
-                                                />
-                                            </div>
-                                            <button 
-                                                onClick={handleProvisionAccess}
-                                                disabled={isProvisioning}
-                                                className="w-full bg-[#0f172a] dark:bg-white dark:text-[#0f172a] text-white font-black py-5 rounded-2xl hover:scale-[1.02] transition shadow-2xl uppercase tracking-widest text-xs flex items-center justify-center gap-3 disabled:opacity-50"
-                                            >
-                                                {isProvisioning ? <Loader2 className="animate-spin" size={18}/> : <Zap size={18}/>}
-                                                <span>Gerar Nova Senha e Ativar Portal</span>
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <div className="bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 rounded-3xl p-8 animate-scale-in text-left">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <div className="flex items-center gap-3 text-emerald-700">
-                                                    <ShieldCheck size={24}/>
-                                                    <h4 className="font-black uppercase tracking-tighter">Acesso Ativado!</h4>
-                                                </div>
-                                                <Badge color="green">CLOUD OK</Badge>
-                                            </div>
-                                            
-                                            <div className="space-y-4">
-                                                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-emerald-200">
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Login</p>
-                                                        <button onClick={() => copyToClipboard(provisionedData.email, "E-mail")} className="text-indigo-600 hover:text-indigo-800"><Copy size={14}/></button>
-                                                    </div>
-                                                    <p className="font-bold text-slate-800 dark:text-white">{provisionedData.email}</p>
-                                                </div>
-
-                                                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-emerald-200">
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Senha Gerada</p>
-                                                        <button onClick={() => copyToClipboard(provisionedData.password || '', "Senha")} className="text-indigo-600 hover:text-indigo-800"><Copy size={14}/></button>
-                                                    </div>
-                                                    <p className="font-mono font-black text-indigo-600 text-2xl tracking-[0.2em]">{provisionedData.password}</p>
+                                {timelineEvents.length === 0 ? (
+                                    <p className="text-slate-400 text-center py-10 italic">Nenhum evento registrado.</p>
+                                ) : (
+                                    <div className="space-y-8 ml-3 border-l-4 border-slate-100 dark:border-slate-800 pl-8">
+                                        {timelineEvents.map((event, i) => (
+                                            <div key={i} className="relative">
+                                                <div className={`absolute -left-[42px] w-6 h-6 rounded-xl border-4 border-white dark:border-slate-900 shadow-sm ${event.type === 'Log' ? 'bg-slate-400' : 'bg-indigo-600'}`}></div>
+                                                <div>
+                                                    <p className="text-[10px] text-slate-400 font-black uppercase">{new Date(event.date).toLocaleString('pt-BR')}</p>
+                                                    <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{event.title}</h4>
+                                                    <p className="text-xs text-slate-500 mt-1 italic">"{event.desc}"</p>
                                                 </div>
                                             </div>
-
-                                            <div className="mt-8 grid grid-cols-1 gap-3">
-                                                <button 
-                                                    onClick={sendCredsViaWhatsApp}
-                                                    className="w-full bg-[#25D366] text-white font-black py-4 rounded-xl flex items-center justify-center gap-3 hover:bg-[#128C7E] transition shadow-lg uppercase text-[10px] tracking-widest"
-                                                >
-                                                    <MessageCircle size={18}/> Enviar por WhatsApp
-                                                </button>
-                                                <button 
-                                                    onClick={() => setProvisionedData(null)}
-                                                    className="w-full py-4 text-slate-400 hover:text-slate-600 font-black uppercase text-[10px] tracking-widest transition"
-                                                >
-                                                    Gerar Outro Acesso
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'financial' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-                                <h3 className="font-black text-xl mb-6 flex items-center gap-3 text-emerald-600 uppercase tracking-tighter">Histórico Financeiro</h3>
-                                <div className="space-y-3">
-                                    {clientInvoices.length > 0 ? clientInvoices.map(inv => (
-                                        <div key={inv.id} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                                            <div>
-                                                <p className="font-bold text-sm">{inv.description}</p>
-                                                <p className="text-xs text-slate-400">Vencimento: {new Date(inv.dueDate).toLocaleDateString()}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-black">R$ {inv.amount.toLocaleString()}</p>
-                                                <Badge color={inv.status === 'Pago' ? 'green' : 'yellow'}>{inv.status.toUpperCase()}</Badge>
-                                            </div>
-                                        </div>
-                                    )) : <p className="text-center text-slate-400 py-10 italic">Nenhuma fatura localizada.</p>}
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-black text-xl flex items-center gap-3 text-emerald-600 uppercase tracking-tighter">Financeiro</h3>
+                            {clientInvoices.length > 0 ? clientInvoices.map(inv => (
+                                <div key={inv.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border flex items-center justify-between hover:shadow-md transition">
+                                    <div>
+                                        <p className="font-bold text-sm">{inv.description}</p>
+                                        <p className="text-xs text-slate-400">Vencimento: {new Date(inv.dueDate).toLocaleDateString()}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-black">R$ {inv.amount.toLocaleString()}</p>
+                                        <Badge color={inv.status === 'Pago' ? 'green' : 'yellow'}>{inv.status.toUpperCase()}</Badge>
+                                    </div>
                                 </div>
-                            </div>
+                            )) : <p className="text-center text-slate-400 py-10 italic">Nenhuma fatura localizada.</p>}
                         </div>
                     )}
 
                     {activeTab === 'support' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-                                <h3 className="font-black text-xl mb-6 flex items-center gap-3 text-indigo-600 uppercase tracking-tighter">Chamados de Suporte</h3>
-                                <div className="space-y-3">
-                                    {clientTickets.length > 0 ? clientTickets.map(t => (
-                                        <div key={t.id} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                                            <div>
-                                                <p className="font-bold text-sm">{t.subject}</p>
-                                                <p className="text-xs text-slate-400">Aberto em: {new Date(t.created_at).toLocaleDateString()}</p>
-                                            </div>
-                                            <Badge color={t.status === 'Resolvido' ? 'green' : 'blue'}>{t.status.toUpperCase()}</Badge>
-                                        </div>
-                                    )) : <p className="text-center text-slate-400 py-10 italic">Nenhum chamado aberto.</p>}
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-black text-xl flex items-center gap-3 text-indigo-600 uppercase tracking-tighter">Suporte</h3>
+                            {clientTickets.length > 0 ? clientTickets.map(t => (
+                                <div key={t.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border flex items-center justify-between">
+                                    <div>
+                                        <p className="font-bold text-sm">{t.subject}</p>
+                                        <p className="text-xs text-slate-400">#{t.id.slice(-5)} • {new Date(t.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                    <Badge color={t.status === 'Resolvido' ? 'green' : 'blue'}>{t.status.toUpperCase()}</Badge>
                                 </div>
-                            </div>
+                            )) : <p className="text-center text-slate-400 py-10 italic">Nenhum chamado aberto.</p>}
                         </div>
                     )}
 
                     {activeTab === 'products' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-                                <h3 className="font-black text-xl mb-2 flex items-center gap-3 text-indigo-600 uppercase tracking-tighter">Inventário da Unidade</h3>
-                                <p className="text-slate-500 text-sm mb-8 font-medium">Selecione os produtos que o cliente já possui instalados nesta unidade.</p>
-                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {products.map((prod) => {
-                                        const isOwned = contractedProducts.includes(prod.name);
-                                        return (
-                                            <div 
-                                                key={prod.id} 
-                                                onClick={() => toggleProduct(prod.name)}
-                                                className={`flex items-center justify-between p-5 rounded-[1.5rem] border-2 cursor-pointer transition-all ${isOwned ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 opacity-60 hover:opacity-100'}`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOwned ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
-                                                        <Package size={20}/>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-black text-xs text-slate-900 dark:text-slate-100 uppercase tracking-tight">{prod.name}</p>
-                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">{prod.category === 'Product' ? 'Hardware' : 'Serviço'}</p>
-                                                    </div>
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-black text-xl flex items-center gap-3 text-indigo-600 uppercase tracking-tighter">Inventário</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {products.map((prod) => {
+                                    const isOwned = contractedProducts.includes(prod.name);
+                                    return (
+                                        <div 
+                                            key={prod.id} 
+                                            onClick={() => toggleProduct(prod.name)}
+                                            className={`flex items-center justify-between p-5 rounded-[1.5rem] border-2 cursor-pointer transition-all ${isOwned ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 opacity-60 hover:opacity-100'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOwned ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
+                                                    <Package size={20}/>
                                                 </div>
-                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isOwned ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'}`}>
-                                                    {isOwned && <CheckCircle size={14} className="text-white"/>}
+                                                <div>
+                                                    <p className="font-black text-xs text-slate-900 dark:text-slate-100 uppercase tracking-tight">{prod.name}</p>
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">{prod.category}</p>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                            {isOwned && <CheckCircle size={18} className="text-indigo-600"/>}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
-                    {activeTab === 'documents' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm text-center">
-                                <FileText size={48} className="mx-auto text-slate-200 mb-4"/>
-                                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Módulo de Documentos Ativo</p>
-                            </div>
+                    {activeTab === 'portal' && (
+                        <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border text-center flex flex-col items-center">
+                            <Key size={48} className="text-indigo-600 mb-4"/>
+                            <h3 className="text-xl font-black uppercase">Portal do Cliente</h3>
+                            <p className="text-slate-500 text-sm mb-8">Provisione o acesso externo desta unidade.</p>
+                            
+                            {!provisionedData ? (
+                                <div className="w-full max-w-sm space-y-4">
+                                    <input 
+                                        className="w-full border-2 rounded-2xl p-4 font-bold text-sm bg-slate-50 dark:bg-slate-800 outline-none focus:border-indigo-600 transition" 
+                                        value={portalEmail}
+                                        onChange={(e) => setPortalEmail(e.target.value)}
+                                        placeholder="Email do Gestor"
+                                    />
+                                    <button 
+                                        onClick={handleProvisionAccess}
+                                        disabled={isProvisioning}
+                                        className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-black py-4 rounded-2xl hover:scale-[1.02] transition shadow-xl uppercase tracking-widest text-xs flex items-center justify-center gap-3 disabled:opacity-50"
+                                    >
+                                        {isProvisioning ? <Loader2 className="animate-spin" size={18}/> : <Zap size={18}/>}
+                                        Ativar Portal
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="bg-emerald-50 dark:bg-emerald-950 p-6 rounded-3xl border border-emerald-200 text-left w-full max-w-sm">
+                                    <p className="text-[10px] font-black uppercase text-emerald-600 mb-4">Acesso Liberado</p>
+                                    <p className="text-xs font-bold text-slate-400 uppercase">Login</p>
+                                    <p className="font-bold text-slate-800 dark:text-white mb-4">{provisionedData.email}</p>
+                                    <p className="text-xs font-bold text-slate-400 uppercase">Senha Temporária</p>
+                                    <p className="font-mono font-black text-indigo-600 text-xl tracking-widest">{provisionedData.password}</p>
+                                    <button onClick={() => setProvisionedData(null)} className="mt-6 text-[10px] font-black text-slate-400 uppercase hover:text-slate-600">Resetar Acesso</button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

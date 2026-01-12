@@ -7,7 +7,7 @@ import { Workflow as WorkflowIcon, Plus, Play, Pause, Trash2, Edit2, Zap, ArrowD
 import { Badge } from '../components/Widgets';
 
 export const Automation: React.FC = () => {
-    const { workflows, addWorkflow, updateWorkflow, deleteWorkflow, triggerAutomation, addSystemNotification, logAction } = useData();
+    const { workflows = [], addWorkflow, updateWorkflow, deleteWorkflow, addSystemNotification } = useData();
     const { currentUser } = useAuth();
     
     const [isBuilderOpen, setIsBuilderOpen] = useState(false);
@@ -41,7 +41,7 @@ export const Automation: React.FC = () => {
             setEditingWorkflow(workflow);
             setWfName(workflow.name);
             setWfTrigger(workflow.trigger);
-            setWfActions(workflow.actions);
+            setWfActions(Array.isArray(workflow.actions) ? workflow.actions : []);
         } else {
             setEditingWorkflow(null);
             setWfName('');
@@ -51,19 +51,13 @@ export const Automation: React.FC = () => {
         setIsBuilderOpen(true);
     };
 
-    const handleAddAction = (index?: number) => {
+    const handleAddAction = () => {
         const newAction: WorkflowAction = {
             id: `act-${Date.now()}`,
             type: 'create_task', 
             config: { template: '', target: '' }
         };
-        if (index !== undefined) {
-            const newActions = [...wfActions];
-            newActions.splice(index + 1, 0, newAction);
-            setWfActions(newActions);
-        } else {
-            setWfActions([...wfActions, newAction]);
-        }
+        setWfActions([...wfActions, newAction]);
     };
 
     const handleUpdateAction = (id: string, field: string, value: any) => {
@@ -92,7 +86,7 @@ export const Automation: React.FC = () => {
             active: true,
             trigger: wfTrigger,
             actions: wfActions,
-            runs: editingWorkflow ? editingWorkflow.runs : 0,
+            runs: editingWorkflow ? (editingWorkflow.runs || 0) : 0,
             organizationId: currentUser.organizationId
         };
         
@@ -100,7 +94,7 @@ export const Automation: React.FC = () => {
             if (editingWorkflow) await updateWorkflow(currentUser, workflowData);
             else await addWorkflow(currentUser, workflowData);
             
-            addSystemNotification('Sucesso', 'Configuração do robô salva no cloud.', 'success');
+            addSystemNotification('Sucesso', 'Robô Nexus Flow salvo.', 'success');
             setIsBuilderOpen(false);
         } catch (e) {
             addSystemNotification('Erro', 'Falha ao sincronizar robô.', 'alert');
@@ -109,20 +103,12 @@ export const Automation: React.FC = () => {
         }
     };
 
-    const handleTestRun = async () => {
-        setIsTesting(true);
-        addSystemNotification('Simulação', 'Disparando fluxo de teste...', 'info');
-        await new Promise(r => setTimeout(r, 1500));
-        triggerAutomation(wfTrigger, { name: 'Teste RPA', email: 'test@robot.com', company: 'Nexus Inc', value: 10000 });
-        setIsTesting(false);
-    };
-
     return (
         <div className="p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors font-sans">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4 shrink-0">
                 <div>
-                    <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter uppercase leading-none">Soft Flow (RPA)</h1>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">Motor de automação de processos baseado em eventos.</p>
+                    <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter uppercase leading-none">Nexus Flow (RPA)</h1>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">Motor de automação inteligente baseado em eventos do CRM.</p>
                 </div>
                 <button 
                     onClick={() => handleOpenBuilder()}
@@ -133,7 +119,7 @@ export const Automation: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {workflows.map(wf => (
+                {Array.isArray(workflows) && workflows.length > 0 ? workflows.map(wf => (
                     <div key={wf.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] border p-8 shadow-sm group hover:border-indigo-600 transition-all relative overflow-hidden">
                         <div className={`absolute top-0 left-0 h-2 w-full ${wf.active ? 'bg-indigo-600' : 'bg-slate-200'}`}></div>
                         <div className="flex justify-between items-start mb-6">
@@ -144,43 +130,39 @@ export const Automation: React.FC = () => {
                         </div>
                         <h3 className="font-black text-xl text-slate-900 dark:text-white uppercase tracking-tighter mb-2 truncate">{wf.name}</h3>
                         <div className="flex items-center gap-2 mb-6">
-                            <Badge color="purple">{wf.trigger.toUpperCase()}</Badge>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">{wf.actions.length} Passos</span>
+                            <Badge color="purple">{wf.trigger?.toUpperCase() || 'EVENTO'}</Badge>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">{(wf.actions || []).length} Passos</span>
                         </div>
                         <div className="flex justify-between items-center pt-6 border-t border-slate-50 dark:border-slate-700">
                             <div className="flex flex-col">
                                 <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Execuções</p>
-                                <p className="font-bold text-slate-800 dark:text-white">{wf.runs}</p>
+                                <p className="font-bold text-slate-800 dark:text-white">{wf.runs || 0}</p>
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={() => handleOpenBuilder(wf)} className="p-3 text-slate-400 hover:text-indigo-600 transition"><Edit2 size={18}/></button>
-                                <button onClick={() => deleteWorkflow(currentUser, wf.id)} className="p-3 text-slate-400 hover:text-red-500 transition"><Trash2 size={18}/></button>
+                                <button onClick={() => deleteWorkflow(currentUser, wf.id)} className="p-3 text-slate-300 hover:text-red-500 transition"><Trash2 size={18}/></button>
                             </div>
                         </div>
                     </div>
-                ))}
-                {workflows.length === 0 && (
-                    <div className="col-span-3 py-24 text-center border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[3rem]">
-                        <WorkflowIcon size={64} className="mx-auto text-slate-200 mb-6"/>
-                        <p className="text-slate-400 font-black uppercase tracking-widest">Nenhum robô configurado</p>
+                )) : (
+                    <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                        <WorkflowIcon size={64} className="mx-auto text-slate-200 mb-6 opacity-20"/>
+                        <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Crie seu primeiro robô de automação</p>
                     </div>
                 )}
             </div>
 
             {isBuilderOpen && (
-                <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex flex-col animate-fade-in">
+                <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[1000] flex flex-col animate-fade-in">
                     <div className="p-6 bg-white dark:bg-slate-900 border-b flex justify-between items-center border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-4">
-                            <button onClick={() => setIsBuilderOpen(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><X size={24}/></button>
-                            <input className="text-2xl font-black uppercase tracking-tighter outline-none bg-transparent border-b-2 border-transparent focus:border-indigo-600" placeholder="Nome do Robô" value={wfName} onChange={e => setWfName(e.target.value)} />
+                            <button onClick={() => setIsBuilderOpen(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"><X size={24}/></button>
+                            <input className="text-2xl font-black uppercase tracking-tighter outline-none bg-transparent border-b-2 border-transparent focus:border-indigo-600 text-slate-900 dark:text-white" placeholder="NOME DO ROBÔ" value={wfName} onChange={e => setWfName(e.target.value.toUpperCase())} />
                         </div>
                         <div className="flex gap-3">
-                            <button onClick={handleTestRun} className="px-8 py-3 bg-slate-100 dark:bg-slate-800 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2">
-                                {isTesting ? <Loader2 size={16} className="animate-spin"/> : <Activity size={16}/>} Simular Robô
-                            </button>
                             <button onClick={handleSaveWorkflow} disabled={isSaving} className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/30 flex items-center gap-2 disabled:opacity-50">
                                 {isSaving ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>}
-                                {isSaving ? 'Salvando...' : 'Salvar Nexus Flow'}
+                                {isSaving ? 'SALVANDO...' : 'SALVAR NEXUS FLOW'}
                             </button>
                         </div>
                     </div>
@@ -190,7 +172,7 @@ export const Automation: React.FC = () => {
                             <div className="w-80 bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-2xl relative">
                                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg">Gatilho (Início)</div>
                                 <label className="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Quando isso acontecer:</label>
-                                <select className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 font-bold bg-slate-50 dark:bg-slate-900" value={wfTrigger} onChange={e => setWfTrigger(e.target.value as any)}>
+                                <select className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 font-bold bg-slate-50 dark:bg-slate-900 text-sm outline-none focus:border-indigo-500" value={wfTrigger} onChange={e => setWfTrigger(e.target.value as any)}>
                                     {triggerOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                 </select>
                             </div>
@@ -203,21 +185,22 @@ export const Automation: React.FC = () => {
                                         <div className="flex items-center gap-4 mb-6">
                                             <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center text-indigo-600"><CheckSquare size={24}/></div>
                                             <div className="flex-1">
-                                                <p className="text-[10px] font-black uppercase text-slate-400">Ação {index + 1}</p>
+                                                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Ação {index + 1}</p>
                                                 <select className="w-full font-black text-slate-900 dark:text-white uppercase tracking-tighter bg-transparent outline-none cursor-pointer" value={action.type} onChange={e => handleUpdateAction(action.id, 'type', e.target.value)}>
                                                     {actionOptions.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                                                 </select>
                                             </div>
                                         </div>
                                         <div className="space-y-4">
-                                            <input className="w-full border-2 border-slate-50 dark:border-slate-700 rounded-xl p-3 text-sm font-medium bg-slate-50 dark:bg-slate-900 outline-none focus:border-indigo-600" placeholder="Configuração da tarefa / Mensagem..." value={action.config.template || ''} onChange={e => handleUpdateAction(action.id, 'template', e.target.value)} />
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Configuração da Ação</p>
+                                            <input className="w-full border-2 border-slate-50 dark:border-slate-700 rounded-xl p-3 text-xs font-bold bg-slate-50 dark:bg-slate-900 outline-none focus:border-indigo-600" placeholder="Título da tarefa / Mensagem..." value={action.config?.template || ''} onChange={e => handleUpdateAction(action.id, 'template', e.target.value)} />
                                         </div>
                                     </div>
                                 </React.Fragment>
                             ))}
 
                             <div className="h-12 w-0.5 bg-indigo-200 dark:bg-indigo-900/50"></div>
-                            <button onClick={() => handleAddAction()} className="flex items-center gap-2 px-10 py-4 border-4 border-dashed border-indigo-100 dark:border-indigo-900/50 rounded-[2rem] text-indigo-300 font-black uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-500 transition shadow-inner">
+                            <button onClick={handleAddAction} className="flex items-center gap-2 px-10 py-4 border-4 border-dashed border-indigo-100 dark:border-indigo-900/30 rounded-[2rem] text-indigo-300 font-black uppercase text-[10px] tracking-widest hover:border-indigo-500 hover:text-indigo-500 transition shadow-inner bg-white/5">
                                 <Plus size={20}/> Adicionar Próximo Passo
                             </button>
                         </div>

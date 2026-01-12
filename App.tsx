@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth, SUPER_ADMIN_EMAILS } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext'; 
@@ -9,7 +10,7 @@ import { OnboardingTour } from './components/OnboardingTour';
 import { AIAssistant } from './components/AIAssistant';
 import { NexusVoice } from './components/NexusVoice';
 import { ToastContainer } from './components/Toast'; 
-import { ShieldAlert, Menu, ChevronDown, Building2, User as UserIcon } from 'lucide-react';
+import { ShieldAlert, Menu, ChevronDown, Building2, User as UserIcon, Lock } from 'lucide-react';
 
 // Pages
 import { Dashboard } from './pages/Dashboard';
@@ -91,7 +92,7 @@ const AppContent: React.FC = () => {
 const AppLayout: React.FC<{ 
     activeModule: string, onNavigate: (m: string) => void, isSidebarOpen: boolean, setIsSidebarOpen: (b: boolean) => void 
 }> = ({ activeModule, onNavigate, isSidebarOpen, setIsSidebarOpen }) => {
-    const { currentUser, currentOrganization } = useAuth();
+    const { currentUser, currentOrganization, hasPermission } = useAuth();
     const { theme } = useData(); 
     const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
@@ -106,6 +107,56 @@ const AppLayout: React.FC<{
           </PortalLayout>
         );
     }
+
+    // TRAVA DE SEGURANÇA: Verifica se o usuário tem permissão para o módulo ativo
+    // O Dashboard agora é livre, a restrição de dados acontece dentro do componente
+    const isDashboard = activeModule === 'dashboard';
+    const hasAccess = isDashboard || hasPermission(activeModule, 'view');
+
+    const renderContent = () => {
+        if (!hasAccess) {
+            return (
+                <div className="h-full flex flex-col items-center justify-center p-12 text-center animate-fade-in">
+                    <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mb-6 text-red-500">
+                        <Lock size={40}/>
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-2">Acesso Restrito</h2>
+                    <p className="text-slate-500 dark:text-slate-400 max-w-sm font-medium">Seu cargo ({currentUser?.role}) não possui autorização para acessar este módulo. Entre em contato com o administrador.</p>
+                    <button 
+                        onClick={() => onNavigate('dashboard')}
+                        className="mt-8 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 uppercase text-xs tracking-widest"
+                    >
+                        Voltar ao Dashboard
+                    </button>
+                </div>
+            );
+        }
+
+        switch (activeModule) {
+            case 'dashboard': return <Dashboard onNavigate={onNavigate} />;
+            case 'contact-center': return <Dashboard onNavigate={onNavigate} viewMode="contact-center" />;
+            case 'commercial': return <Commercial />;
+            case 'inbox': return <Inbox />;
+            case 'prospecting': return <Prospecting />;
+            case 'competitive-intelligence': return <CompetitiveIntelligence />;
+            case 'marketing': return <Marketing />;
+            case 'clients': return <Clients />;
+            case 'finance': return <Finance />;
+            case 'support': return <Support />;
+            case 'dev': return <Development />;
+            case 'reports': return <Reports />;
+            case 'settings': return <Settings />;
+            case 'customer-success': return <CustomerSuccess />;
+            case 'proposals': return <Proposals />;
+            case 'retention': return <Retention />;
+            case 'calendar': return <Calendar />;
+            case 'automation': return <Automation />;
+            case 'geo-intelligence': return <GeoIntelligence />;
+            case 'projects': return <Projects />;
+            case 'operations': return <Operations />;
+            default: return <Dashboard onNavigate={onNavigate} />;
+        }
+    };
 
     return (
       <div className={`flex h-[100dvh] font-sans overflow-hidden relative z-0 text-slate-900 dark:text-slate-100 ${theme === 'dark' ? 'dark bg-slate-950' : 'bg-slate-50'}`}>
@@ -152,27 +203,7 @@ const AppLayout: React.FC<{
           </header>
 
           <div className="flex-1 overflow-y-auto w-full pb-24 md:pb-0 scroll-smooth custom-scrollbar">
-              {activeModule === 'dashboard' && <Dashboard onNavigate={onNavigate} />}
-              {activeModule === 'contact-center' && <Dashboard onNavigate={onNavigate} viewMode="contact-center" />} 
-              {activeModule === 'commercial' && <Commercial />}
-              {activeModule === 'inbox' && <Inbox />} 
-              {activeModule === 'prospecting' && <Prospecting />} 
-              {activeModule === 'competitive-intelligence' && <CompetitiveIntelligence />} 
-              {activeModule === 'marketing' && <Marketing />}
-              {activeModule === 'clients' && <Clients />}
-              {activeModule === 'finance' && <Finance />}
-              {activeModule === 'support' && <Support />}
-              {activeModule === 'dev' && <Development />}
-              {activeModule === 'reports' && <Reports />}
-              {activeModule === 'settings' && <Settings />}
-              {activeModule === 'customer-success' && <CustomerSuccess />}
-              {activeModule === 'proposals' && <Proposals />}
-              {activeModule === 'retention' && <Retention />}
-              {activeModule === 'calendar' && <Calendar />}
-              {activeModule === 'automation' && <Automation />}
-              {activeModule === 'geo-intelligence' && <GeoIntelligence />}
-              {activeModule === 'projects' && <Projects />}
-              {activeModule === 'operations' && <Operations />}
+              {renderContent()}
           </div>
         </main>
       </div>

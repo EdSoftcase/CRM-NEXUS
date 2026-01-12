@@ -6,7 +6,7 @@ import { Proposal, Lead, Client, ProposalItem, Product } from '../types';
 import { 
     Plus, Search, FileText, Edit2, Trash2, X, Save, 
     ArrowLeft, Send, Eye, Loader2, EyeOff, CheckCircle, 
-    ChevronRight, Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, ListChecks
+    ChevronRight, Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, ListChecks, AlertTriangle
 } from 'lucide-react';
 import { ProposalDocument } from '../components/ProposalDocument';
 import { SectionTitle, Badge } from '../components/Widgets';
@@ -55,7 +55,7 @@ export const Proposals: React.FC = () => {
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
     const getItemSubtotal = (item: ProposalItem) => {
-        const base = item.price * item.quantity;
+        const base = (item.price || 0) * (item.quantity || 1);
         const disc = item.discount || 0;
         return base * (1 - disc / 100);
     };
@@ -110,14 +110,23 @@ export const Proposals: React.FC = () => {
     };
 
     const handleSave = async (shouldSend: boolean = false) => {
-        if (!formData.companyName || !formData.title) {
-            alert("Título e Empresa são obrigatórios.");
+        // VALIDAÇÃO REFORÇADA
+        if (!formData.title.trim()) {
+            addSystemNotification("Campo Obrigatório", "Por favor, defina um título para a proposta.", "warning");
             return;
         }
+        if (!formData.companyName.trim()) {
+            addSystemNotification("Alvo não selecionado", "Você precisa vincular a proposta a um Lead ou Unidade.", "warning");
+            return;
+        }
+        if (formData.items.length === 0) {
+            addSystemNotification("Proposta sem itens", "Adicione ao menos um Equipamento ou Serviço ao orçamento.", "warning");
+            return;
+        }
+
         setIsSaving(true);
         
         let finalGroupName = formData.groupName;
-        // Tenta buscar o groupName do objeto cliente se não estiver preenchido no form
         if (!finalGroupName) {
             const matchedClient = clients.find(c => c.name.trim().toUpperCase() === formData.companyName.trim().toUpperCase());
             if (matchedClient) finalGroupName = (matchedClient.groupName || '').toUpperCase();
@@ -159,9 +168,8 @@ export const Proposals: React.FC = () => {
             setView('list');
             setEditingId(null);
         } catch (e: any) { 
-            console.error("Erro detalhado ao salvar proposta:", e);
-            // Agora o 'e.message' não será mais [object Object] devido à correção no DataContext
-            addSystemNotification("Falha Crítica", e.message || "Verifique se a tabela de propostas existe no seu Supabase.", "alert");
+            console.error("Erro ao salvar proposta:", e);
+            addSystemNotification("Falha", e.message || "Erro de sincronização.", "alert");
         } finally { 
             setIsSaving(false); 
         }
@@ -392,6 +400,12 @@ export const Proposals: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
+                                {formData.items.length === 0 && (
+                                    <div className="p-6 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col items-center gap-2">
+                                        <AlertTriangle size={24} className="text-amber-500 opacity-50"/>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center leading-tight">Você deve adicionar itens para<br/>poder salvar o orçamento.</p>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

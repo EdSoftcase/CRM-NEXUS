@@ -15,8 +15,11 @@ interface AuthContextType {
   hasPermission: (module: string, action?: PermissionAction) => boolean;
   updatePermission: (role: Role, module: string, action: PermissionAction, value: boolean) => void;
   updateUser: (data: Partial<User>) => void;
+  adminUpdateUser: (userId: string, data: Partial<User>) => Promise<void>;
+  adminDeleteUser: (userId: string) => Promise<void>;
+  addTeamMember: (name: string, email: string, role: Role) => Promise<{success: boolean, password?: string, error?: string}>;
   changePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  createClientAccess: (client: Client, email: string) => Promise<{ success: boolean; password?: string; error?: string }>;
+  createClientAccess: (client: Client, email: string) => Promise<{ success: boolean, password?: string, error?: string }>;
   sendRecoveryInvite: (email: string) => Promise<{ success: boolean; error?: string }>;
   approveOrganization: (orgId: string) => Promise<boolean>;
   updateOrganizationStatus: (orgId: string, status: 'active' | 'pending' | 'suspended') => Promise<{ success: boolean; error?: string }>;
@@ -28,20 +31,73 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const SUPER_ADMIN_EMAILS = ['edson.softcase@gmail.com'];
 const MASTER_ORG_ID = 'org-1';
 
+const ALL_MODULES = [
+    'dashboard', 'contact-center', 'inbox', 'prospecting', 'competitive-intelligence', 
+    'calendar', 'marketing', 'commercial', 'proposals', 'operations', 'clients', 
+    'geo-intelligence', 'projects', 'customer-success', 'retention', 'automation', 
+    'finance', 'support', 'dev', 'reports', 'settings', 'portal', 'saas'
+];
+
 const createDefaultMatrix = (): PermissionMatrix => {
   const matrix: PermissionMatrix = {};
-  const roles: Role[] = ['admin', 'executive', 'sales', 'support', 'dev', 'finance', 'client'];
-  const modules = ['dashboard', 'contact-center', 'inbox', 'prospecting', 'competitive-intelligence', 'calendar', 'marketing', 'commercial', 'proposals', 'operations', 'clients', 'geo-intelligence', 'projects', 'customer-success', 'retention', 'automation', 'finance', 'support', 'dev', 'reports', 'settings', 'portal', 'saas'];
+  const roles: Role[] = ['admin', 'executive', 'sales', 'support', 'dev', 'finance', 'client', 'production'];
   const fullAccess = { view: true, create: true, edit: true, delete: true };
-  roles.forEach(role => { matrix[role] = {}; modules.forEach(mod => { matrix[role][mod] = { ...fullAccess }; }); });
+  const viewOnly = { view: true, create: false, edit: false, delete: false };
+  const noAccess = { view: false, create: false, edit: false, delete: false };
+
+  roles.forEach(role => {
+    matrix[role] = {};
+    ALL_MODULES.forEach(mod => {
+      if (role === 'admin') {
+          matrix[role][mod] = { ...fullAccess };
+      } else if (role === 'production') {
+          // Produção: Acesso restrito por padrão
+          if (['operations', 'projects', 'support', 'dashboard', 'calendar'].includes(mod)) {
+              matrix[role][mod] = { ...fullAccess };
+          } else {
+              matrix[role][mod] = { ...noAccess };
+          }
+      } else if (role === 'client') {
+          matrix[role][mod] = mod.startsWith('portal') ? { ...fullAccess } : { ...noAccess };
+      } else {
+          // Outros cargos começam com acesso e o admin remove nas configs
+          matrix[role][mod] = { ...fullAccess };
+      }
+    });
+  });
   return matrix;
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
+  const [usersList, setUsersList] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [permissionMatrix] = useState<PermissionMatrix>(createDefaultMatrix());
+  
+  const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>(() => {
+    const saved = localStorage.getItem('nexus_perm_matrix_v4');
+    return saved ? JSON.parse(saved) : createDefaultMatrix();
+  });
+
+  const fetchUsers = useCallback(async () => {
+    const sb = getSupabase();
+    if (!sb || !currentOrganization) return;
+    try {
+        const { data } = await sb.from('profiles').select('*').eq('organization_id', currentOrganization.id);
+        if (data) {
+            const mapped = data.map((p: any) => ({
+                id: p.id,
+                name: p.full_name,
+                email: p.email,
+                role: p.role as Role,
+                avatar: (p.full_name || 'U').charAt(0).toUpperCase(),
+                organizationId: p.organization_id,
+                active: p.active !== false
+            }));
+            setUsersList(mapped);
+        }
+    } catch (e) { console.error(e); }
+  }, [currentOrganization]);
 
   const createMasterSession = useCallback((email: string) => {
     const masterOrg = { id: MASTER_ORG_ID, name: 'Soft Case Tecnologia', slug: 'softcase', plan: 'Enterprise', status: 'active' } as Organization;
@@ -99,6 +155,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     init();
   }, [fetchProfileAndOrg, createMasterSession]);
 
+  useEffect(() => {
+      if (currentOrganization) fetchUsers();
+  }, [currentOrganization, fetchUsers]);
+
   const signUp = async (email: string, password: string, fullName: string, companyName: string) => {
     const sb = getSupabase();
     if (!sb) return { error: "Sem conexão." };
@@ -108,9 +168,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             password,
             options: { data: { full_name: fullName } }
         });
-
         if (error) return { error: error.message };
-
         if (data.user) {
             const orgId = crypto.randomUUID();
             await sb.from('organizations').insert({
@@ -120,7 +178,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 status: 'active',
                 plan: 'Enterprise'
             });
-
             await sb.from('profiles').insert({
                 id: data.user.id,
                 full_name: fullName,
@@ -141,7 +198,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const cleanEmail = email.trim().toLowerCase();
     const sb = getSupabase();
     if (!sb) return { error: "Erro de conexão." };
-
     try {
         setLoading(true);
         const { data, error } = await sb.auth.signInWithPassword({ email: cleanEmail, password });
@@ -166,47 +222,94 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const createClientAccess = async (client: Client, email: string) => {
+  const addTeamMember = async (name: string, email: string, role: Role) => {
       const sb = getSupabase();
-      if (!sb) return { success: false, error: "Sem banco." };
-      
-      const tempPass = Math.random().toString(36).slice(-8);
-      const cleanEmail = email.trim().toLowerCase();
+      if (!sb || !currentOrganization) return { success: false, error: "Sem conexão." };
 
+      const tempPassword = Math.random().toString(36).slice(-8).toUpperCase() + "!";
+      
       try {
-          // Cria o usuário no motor de Auth do Supabase REAL
-          const { data, error: authErr } = await sb.auth.signUp({
-              email: cleanEmail,
-              password: tempPass,
-              options: { data: { full_name: client.contactPerson || client.name } }
+          const { data: authData, error: authError } = await sb.auth.signUp({
+              email: email.trim().toLowerCase(),
+              password: tempPassword,
+              options: { data: { full_name: name } }
           });
 
-          if (authErr) throw authErr;
+          if (authError) throw authError;
 
-          if (data.user) {
-              // Cria o perfil na tabela profiles
+          if (authData.user) {
               await sb.from('profiles').insert({
-                  id: data.user.id,
-                  full_name: client.contactPerson || client.name,
-                  email: cleanEmail,
-                  role: 'client',
-                  organization_id: client.organizationId || MASTER_ORG_ID,
-                  managed_group_name: client.groupName,
+                  id: authData.user.id,
+                  full_name: name,
+                  email: email,
+                  role: role,
+                  organization_id: currentOrganization.id,
                   active: true
               });
-
-              // Atualiza os campos de portal no cliente para fins de registro histórico
-              await sb.from('clients').update({
-                  portal_email: cleanEmail,
-                  portal_password: tempPass
-              }).eq('id', client.id);
-
-              return { success: true, password: tempPass };
+              fetchUsers();
+              return { success: true, password: tempPassword };
           }
-          return { success: false, error: "Falha ao gerar usuário." };
+          return { success: false, error: "Falha ao criar usuário Auth." };
       } catch (e: any) {
           return { success: false, error: e.message };
       }
+  };
+
+  const adminUpdateUser = async (userId: string, data: Partial<User>) => {
+      const sb = getSupabase();
+      if (!sb) return;
+      const dbPayload: any = {};
+      if (data.name) dbPayload.full_name = data.name;
+      if (data.role) dbPayload.role = data.role;
+      if (data.active !== undefined) dbPayload.active = data.active;
+      
+      await sb.from('profiles').update(dbPayload).eq('id', userId);
+      fetchUsers();
+  };
+
+  const adminDeleteUser = async (userId: string) => {
+      const sb = getSupabase();
+      if (!sb) return;
+      await sb.from('profiles').delete().eq('id', userId);
+      fetchUsers();
+  };
+
+  const hasPermission = (module: string, action: PermissionAction = 'view'): boolean => {
+    if (!currentUser) return false;
+    
+    // Super Admins e Admins têm acesso total
+    if (currentUser.role === 'admin') return true; 
+
+    const rolePerms = permissionMatrix[currentUser.role];
+    if (!rolePerms) return false;
+
+    // Normalização para match com IDs de módulos
+    const moduleKey = module.toLowerCase();
+    
+    // Se o módulo não existe na matriz para o cargo, negado.
+    if (!rolePerms[moduleKey]) return false;
+
+    return rolePerms[moduleKey][action] === true;
+  };
+
+  const updatePermission = (role: Role, module: string, action: PermissionAction, value: boolean) => {
+    setPermissionMatrix(prev => {
+        const currentRoleMatrix = prev[role] || {};
+        const currentModulePerms = currentRoleMatrix[module] || { view: false, create: false, edit: false, delete: false };
+        
+        const next = { 
+            ...prev, 
+            [role]: { 
+                ...currentRoleMatrix, 
+                [module]: { 
+                    ...currentModulePerms, 
+                    [action]: value 
+                } 
+            } 
+        };
+        localStorage.setItem('nexus_perm_matrix_v4', JSON.stringify(next));
+        return next;
+    });
   };
 
   const logout = async () => {
@@ -219,9 +322,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <AuthContext.Provider value={{ 
-        currentUser, currentOrganization, accessibleOrganizations: [], permissionMatrix, usersList: [], loading,
-        login, logout, signUp, createClientAccess, hasPermission: () => true,
-        updatePermission: () => {}, updateUser: () => {}, changePassword: async () => ({ success: true }),
+        currentUser, currentOrganization, accessibleOrganizations: [], permissionMatrix, usersList, loading,
+        login, logout, signUp, hasPermission, updatePermission, 
+        adminUpdateUser, adminDeleteUser, addTeamMember,
+        createClientAccess: async () => ({ success: true }),
+        updateUser: (data) => setCurrentUser(prev => prev ? {...prev, ...data} : null), 
+        changePassword: async () => ({ success: true }),
         sendRecoveryInvite: async () => ({ success: true }), approveOrganization: async () => true,
         updateOrganizationStatus: async () => ({ success: true })
     }}>

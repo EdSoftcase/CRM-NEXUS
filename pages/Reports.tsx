@@ -20,7 +20,7 @@ import { analyzeBusinessData } from '../services/geminiService';
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e'];
 
 export const Reports: React.FC = () => {
-    const { leads, clients, tickets, invoices, campaigns, projects } = useData();
+    const { leads = [], clients = [], tickets = [], invoices = [], campaigns = [], projects = [] } = useData();
     const { currentUser } = useAuth();
     
     // UI State
@@ -38,7 +38,7 @@ export const Reports: React.FC = () => {
 
     // --- DATA PREPARATION ---
     
-    const currentMRR = useMemo(() => clients.filter(c => c.status === 'Active').reduce((acc, c) => acc + (c.totalSpecialPrice || c.ltv || 0), 0), [clients]);
+    const currentMRR = useMemo(() => (clients || []).filter(c => c?.status === 'Active').reduce((acc, c) => acc + (c?.totalSpecialPrice || c?.ltv || 0), 0), [clients]);
     
     const revenueBySegmentData = useMemo(() => {
         const targetCategories = [
@@ -53,9 +53,9 @@ export const Reports: React.FC = () => {
         
         const segments: Record<string, number> = {};
         
-        clients.forEach(c => {
+        (clients || []).forEach(c => {
+            if (!c) return;
             const clientSeg = (c.segment || '').trim();
-            // Tenta encontrar um match exato ou aproximado na lista de alvos
             const matchedCategory = targetCategories.find(cat => 
                 cat.toLowerCase() === clientSeg.toLowerCase() || 
                 clientSeg.toLowerCase().includes(cat.toLowerCase())
@@ -69,39 +69,38 @@ export const Reports: React.FC = () => {
             }
         });
 
-        // Converte para array e ordena por valor para o gráfico ficar bonito
         return Object.entries(segments)
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value);
     }, [clients]);
 
     const radarData = useMemo(() => [
-        { subject: 'Vendas', A: Math.min(100, leads.filter(l => l.status === LeadStatus.CLOSED_WON).length * 15), fullMark: 100 },
-        { subject: 'Mkt', A: Math.min(100, campaigns.length * 20), fullMark: 100 },
-        { subject: 'Suporte', A: Math.max(20, 100 - (tickets.filter(t => t.status === 'Aberto').length * 10)), fullMark: 100 },
-        { subject: 'Retenção', A: clients.filter(c => c.status === 'Active').length > 0 ? 85 : 0, fullMark: 100 },
-        { subject: 'Projetos', A: projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + p.progress, 0) / projects.length) : 0, fullMark: 100 },
+        { subject: 'Vendas', A: Math.min(100, (leads || []).filter(l => l?.status === LeadStatus.CLOSED_WON).length * 15), fullMark: 100 },
+        { subject: 'Mkt', A: Math.min(100, (campaigns || []).length * 20), fullMark: 100 },
+        { subject: 'Suporte', A: Math.max(20, 100 - ((tickets || []).filter(t => t?.status === 'Aberto').length * 10)), fullMark: 100 },
+        { subject: 'Retenção', A: (clients || []).filter(c => c?.status === 'Active').length > 0 ? 85 : 0, fullMark: 100 },
+        { subject: 'Projetos', A: (projects || []).length > 0 ? Math.round(projects.reduce((acc, p) => acc + (p?.progress || 0), 0) / projects.length) : 0, fullMark: 100 },
     ], [leads, campaigns, tickets, clients, projects]);
 
     const pipelineData = useMemo(() => [
-        { name: 'Novos', value: leads.filter(l => l.status === LeadStatus.NEW).length },
-        { name: 'Qualif.', value: leads.filter(l => l.status === LeadStatus.QUALIFIED).length },
-        { name: 'Proposta', value: leads.filter(l => l.status === LeadStatus.PROPOSAL).length },
-        { name: 'Negoc.', value: leads.filter(l => l.status === LeadStatus.NEGOTIATION).length },
-        { name: 'Ganhos', value: leads.filter(l => l.status === LeadStatus.CLOSED_WON).length },
+        { name: 'Novos', value: (leads || []).filter(l => l?.status === LeadStatus.NEW).length },
+        { name: 'Qualif.', value: (leads || []).filter(l => l?.status === LeadStatus.QUALIFIED).length },
+        { name: 'Proposta', value: (leads || []).filter(l => l?.status === LeadStatus.PROPOSAL).length },
+        { name: 'Negoc.', value: (leads || []).filter(l => l?.status === LeadStatus.NEGOTIATION).length },
+        { name: 'Ganhos', value: (leads || []).filter(l => l?.status === LeadStatus.CLOSED_WON).length },
     ], [leads]);
 
     const opsData = useMemo(() => [
-        { name: 'Kitting', value: projects.filter(p => p.status === 'Kitting').length },
-        { name: 'Montagem', value: projects.filter(p => p.status === 'Assembly').length },
-        { name: 'Execução', value: projects.filter(p => p.status === 'Execution').length },
-        { name: 'Finalizado', value: projects.filter(p => p.status === 'Completed').length },
+        { name: 'Kitting', value: (projects || []).filter(p => p?.status === 'Kitting').length },
+        { name: 'Montagem', value: (projects || []).filter(p => p?.status === 'Assembly').length },
+        { name: 'Execução', value: (projects || []).filter(p => p?.status === 'Execution').length },
+        { name: 'Finalizado', value: (projects || []).filter(p => p?.status === 'Completed').length },
     ], [projects]);
 
     const financialComparisonData = useMemo(() => [
-        { name: 'Previsto', value: invoices.reduce((acc, i) => acc + i.amount, 0) },
-        { name: 'Realizado', value: invoices.filter(i => i.status === InvoiceStatus.PAID).reduce((acc, i) => acc + i.amount, 0) },
-        { name: 'Atrasado', value: invoices.filter(i => i.status === InvoiceStatus.OVERDUE).reduce((acc, i) => acc + i.amount, 0) },
+        { name: 'Previsto', value: (invoices || []).reduce((acc, i) => acc + (i?.amount || 0), 0) },
+        { name: 'Realizado', value: (invoices || []).filter(i => i?.status === InvoiceStatus.PAID).reduce((acc, i) => acc + (i?.amount || 0), 0) },
+        { name: 'Atrasado', value: (invoices || []).filter(i => i?.status === InvoiceStatus.OVERDUE).reduce((acc, i) => acc + (i?.amount || 0), 0) },
     ], [invoices]);
 
     const handleSendQuery = async () => {
@@ -214,7 +213,6 @@ export const Reports: React.FC = () => {
                     </div>
                 )}
 
-                {/* ABA FINANCEIRA */}
                 {activeTab === 'financial' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
                         <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[450px]">
@@ -259,7 +257,6 @@ export const Reports: React.FC = () => {
                     </div>
                 )}
 
-                {/* ABA PRODUÇÃO */}
                 {activeTab === 'ops' && (
                     <div className="grid grid-cols-1 gap-8 animate-fade-in">
                         <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[500px]">
@@ -279,7 +276,6 @@ export const Reports: React.FC = () => {
                     </div>
                 )}
 
-                {/* ABA VENDAS */}
                 {activeTab === 'sales' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
                         <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-[450px]">
@@ -299,36 +295,7 @@ export const Reports: React.FC = () => {
                         <div className="bg-indigo-600 p-10 rounded-[2.5rem] text-white flex flex-col justify-center relative overflow-hidden shadow-2xl shadow-indigo-500/30">
                             <div className="absolute top-0 right-0 p-8 opacity-10"><TrendingUp size={180}/></div>
                             <h3 className="text-3xl font-black uppercase tracking-tighter mb-4">Performance Comercial</h3>
-                            <p className="text-indigo-100 text-lg leading-relaxed max-w-md">Branding Soft Case: A taxa de conversão atual entre Proposta e Ganho é de <strong className="text-white">{(leads.filter(l=>l.status === 'Ganho').length / (leads.filter(l=>l.status === 'Proposta').length || 1) * 100).toFixed(0)}%</strong>.</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* ABA INSIGHTS */}
-                {activeTab === 'insights' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-                        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-[2.5rem] text-white shadow-xl flex flex-col justify-between">
-                            <div>
-                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6"><Lightbulb size={28}/></div>
-                                <h3 className="text-2xl font-black uppercase tracking-tighter mb-2">Diagnóstico Soft IA</h3>
-                                <p className="text-blue-100 text-sm leading-relaxed">Sua base de dados indica que <strong className="text-white">{clients.filter(c=>c.status === 'Churn Risk').length} clientes</strong> estão em zona de atenção. Inicie o protocolo de retenção hoje.</p>
-                            </div>
-                            <button onClick={() => setActiveTab('bi')} className="mt-8 bg-white text-indigo-600 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition">Ver Análise Completa</button>
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                            <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-6 flex items-center gap-2"><PieIcon className="text-emerald-500" size={20}/> Eficiência Operacional</h4>
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center"><span className="text-sm text-slate-500">Tickets Resolvidos</span><span className="font-bold text-emerald-500">92%</span></div>
-                                <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full w-[92%]"></div></div>
-                                <p className="text-xs text-slate-400 mt-4 leading-relaxed italic">Sua equipe de suporte está acima da média de mercado (85%).</p>
-                            </div>
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
-                            <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-6 flex items-center gap-2"><Target className="text-orange-500" size={20}/> Meta de Upsell</h4>
-                            <div className="space-y-4">
-                                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">Identificamos <strong className="text-slate-900 dark:text-white">{clients.filter(c=>c.ltv < 2000).length} clientes</strong> com ticket médio baixo que poderiam migrar para o plano LPR Full.</p>
-                                <button className="w-full border-2 border-slate-100 dark:border-slate-700 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition">Gerar Lista de Leads</button>
-                            </div>
+                            <p className="text-indigo-100 text-lg leading-relaxed max-w-md">Branding Soft Case: A taxa de conversão atual entre Proposta e Ganho é de <strong className="text-white">{((leads || []).filter(l=>l?.status === 'Ganho').length / ((leads || []).filter(l=>l?.status === 'Proposta').length || 1) * 100).toFixed(0)}%</strong>.</p>
                         </div>
                     </div>
                 )}

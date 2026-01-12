@@ -14,85 +14,63 @@ export const useActivities = () => {
       const saved = localStorage.getItem('nexus_activities');
       const fallbackData = saved ? JSON.parse(saved) : MOCK_ACTIVITIES;
       
-      // Fallback to local storage or mock if offline/no config
       if (!supabase) {
-        return fallbackData;
+        return Array.isArray(fallbackData) ? fallbackData : [];
       }
 
       try {
         const { data, error } = await supabase
           .from('activities')
           .select('*')
-          .order('dueDate', { ascending: false });
+          .order('due_date', { ascending: false });
 
         if (error) {
-            // Robust Error Handling for Permissions or Network issues
-            console.warn("⚠️ Error fetching activities from Supabase:", error.message);
-            return fallbackData;
+            console.warn("⚠️ Error fetching activities:", error.message);
+            return Array.isArray(fallbackData) ? fallbackData : [];
         }
 
-        return data as Activity[];
+        return (data || []).map((item: any) => ({
+            ...item,
+            organizationId: item.organization_id,
+            dueDate: item.due_date,
+            relatedTo: item.related_to
+        })) as Activity[];
       } catch (err: any) {
-        console.warn("Network/Fetch Error in useActivities (Using Fallback):", err);
-        // Critical Fallback for 'Failed to fetch' (Network Down/Block)
-        return fallbackData;
+        console.warn("Network Error in useActivities:", err);
+        return Array.isArray(fallbackData) ? fallbackData : [];
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes cache
+    staleTime: 1000 * 60 * 5,
   });
 
   const addActivityMutation = useMutation({
     mutationFn: async (activity: Activity) => {
       const supabase = getSupabase();
       if (supabase) {
-          // Attempt to save to cloud, but don't break if it fails
           try {
-            await supabase.from('activities').upsert(activity);
+            await supabase.from('activities').upsert({
+                ...activity,
+                organization_id: activity.organizationId,
+                due_date: activity.dueDate,
+                related_to: activity.relatedTo
+            });
           } catch (e) {
-            console.warn("Could not persist activity to cloud (Offline mode?)");
+            console.warn("Could not persist activity to cloud");
           }
       }
       return activity;
     },
     onSuccess: (newActivity) => {
-      // Optimistic Update: Update cache immediately
       queryClient.setQueryData(['activities'], (old: Activity[] | undefined) => {
           return [newActivity, ...(old || [])];
       });
-      // Save to local storage for persistence
-      const current = queryClient.getQueryData(['activities']) as Activity[];
-      if (current) {
-          localStorage.setItem('nexus_activities', JSON.stringify(current));
-      }
     },
-  });
-
-  const updateActivityMutation = useMutation({
-    mutationFn: async (activity: Activity) => {
-        const supabase = getSupabase();
-        if (supabase) {
-            try {
-                await supabase.from('activities').upsert(activity);
-            } catch (e) {
-                console.warn("Could not update activity in cloud");
-            }
-        }
-        return activity;
-    },
-    onSuccess: (updatedActivity) => {
-        queryClient.setQueryData(['activities'], (old: Activity[] | undefined) => {
-            const newList = old ? old.map(a => a.id === updatedActivity.id ? updatedActivity : a) : [];
-            localStorage.setItem('nexus_activities', JSON.stringify(newList));
-            return newList;
-        });
-    }
   });
 
   return {
-    activities,
+    activities: Array.isArray(activities) ? activities : [],
     isLoading,
     error,
     addActivity: addActivityMutation.mutate,
-    updateActivity: updateActivityMutation.mutate,
   };
 };

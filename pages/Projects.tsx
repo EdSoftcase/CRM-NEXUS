@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Project, ProjectTask, MarketingContent } from '../types';
-import { Trello, Plus, Calendar, User, MoreHorizontal, CheckSquare, Sparkles, X, Save, Trash2, Clock, CheckCircle, Archive, AlertCircle, History, Megaphone } from 'lucide-react';
+import { Trello, Plus, Calendar, User, MoreHorizontal, CheckSquare, Sparkles, X, Save, Trash2, Clock, CheckCircle, Archive, AlertCircle, History, Megaphone, BookOpen } from 'lucide-react';
 import { generateProjectTasks } from '../services/geminiService';
 
 export const Projects: React.FC = () => {
@@ -25,11 +25,12 @@ export const Projects: React.FC = () => {
 
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-    // Nova tabela de progresso sincronizada com Operations
+    // TABELA DE PROGRESSO TOTALMENTE SINCRONIZADA COM OPERATIONS
     const columns = [
-        { id: 'Kitting', label: 'Kitting', color: 'border-orange-300 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800', progress: 25 },
-        { id: 'Assembly', label: 'Montagem', color: 'border-purple-300 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-800', progress: 50 },
-        { id: 'Execution', label: 'Execução', color: 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800', progress: 75 },
+        { id: 'Kitting', label: 'Separação', color: 'border-orange-300 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800', progress: 20 },
+        { id: 'Assembly', label: 'Montagem', color: 'border-purple-300 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-800', progress: 40 },
+        { id: 'Execution', label: 'Instalação', color: 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800', progress: 60 },
+        { id: 'Training', label: 'Treinamento', color: 'border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800', progress: 80 },
         { id: 'Completed', label: 'Concluído', color: 'border-green-300 bg-green-50 dark:bg-green-900/20 dark:border-green-800', progress: 100 },
     ];
 
@@ -54,7 +55,7 @@ export const Projects: React.FC = () => {
             title: newProjForm.title,
             clientName: newProjForm.client,
             status: 'Kitting', 
-            progress: 25, // Inicia em 25% conforme regra de status
+            progress: 20, 
             startDate: newProjForm.start,
             deadline: new Date(new Date(newProjForm.start).setDate(new Date().getDate() + 45)).toISOString(),
             manager: currentUser.name,
@@ -70,11 +71,7 @@ export const Projects: React.FC = () => {
 
     const handleToggleTask = (project: Project, taskId: string) => {
         const updatedTasks = project.tasks.map(t => t.id === taskId ? { ...t, status: t.status === 'Done' ? 'Pending' : 'Done' as any } : t);
-        
-        // Agora o progresso NÃO é mais calculado por aqui.
-        // O progresso segue o STATUS definido no Kanban da Produção.
         updateProject(currentUser, { ...project, tasks: updatedTasks });
-        
         if(selectedProject?.id === project.id) {
             setSelectedProject({ ...project, tasks: updatedTasks });
         }
@@ -101,32 +98,37 @@ export const Projects: React.FC = () => {
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Trello className="text-indigo-600 dark:text-indigo-400"/> Gestão de Projetos
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400">Progresso calculado automaticamente pelo estágio da produção.</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">Fluxo comercial integrado à produção (5 estágios).</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => setViewMode('board')} className={`px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'board' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'text-slate-50'}`}>Quadro</button>
-                    <button onClick={() => setViewMode('history')} className={`px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'history' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'text-slate-50'}`}>Histórico</button>
+                    <button onClick={() => setViewMode('board')} className={`px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'board' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-50'}`}>Quadro</button>
+                    <button onClick={() => setViewMode('history')} className={`px-4 py-2 rounded-md text-sm font-medium transition ${viewMode === 'history' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-50'}`}>Histórico</button>
                 </div>
                 <button onClick={() => setIsNewProjectOpen(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-sm transition">Novo Projeto</button>
             </div>
 
             {viewMode === 'board' ? (
                 <div className="flex-1 overflow-x-auto pb-4">
-                    <div className="flex gap-6 h-full min-w-max">
+                    <div className="flex gap-6 h-full min-w-[1200px]">
                         {columns.map(col => (
-                            <div key={col.id} className="w-80 flex flex-col bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                                <div className={`p-4 font-bold border-b ${col.color} flex justify-between`}>
-                                    {col.label} <span className="text-[10px] bg-white/50 px-1.5 rounded">{col.progress}%</span>
+                            <div key={col.id} className="w-72 flex flex-col bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                <div className={`p-4 font-bold border-b ${col.color} flex justify-between items-center`}>
+                                    <span className="flex items-center gap-2">
+                                        {col.id === 'Training' && <BookOpen size={14}/>}
+                                        {col.label}
+                                    </span>
+                                    <span className="text-[10px] bg-white/50 px-1.5 rounded font-mono">{col.progress}%</span>
                                 </div>
                                 <div className="p-3 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
                                     {activeProjects.filter(p => p.status === col.id).map(proj => (
-                                        <div key={proj.id} onClick={() => setSelectedProject(proj)} className="bg-white dark:bg-slate-700 p-4 rounded-lg border border-slate-200 dark:border-slate-600 hover:shadow-md cursor-pointer transition">
+                                        <div key={proj.id} onClick={() => setSelectedProject(proj)} className="bg-white dark:bg-slate-700 p-4 rounded-lg border border-slate-200 dark:border-slate-600 hover:shadow-md cursor-pointer transition relative overflow-hidden group">
+                                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500 opacity-30 group-hover:opacity-100 transition-opacity"></div>
                                             <h4 className="font-bold text-sm mb-1">{proj.clientName}</h4>
                                             <p className="text-xs text-slate-500 truncate">{proj.title}</p>
-                                            <div className="mt-3 w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                                <div className="bg-blue-500 h-full transition-all" style={{width:`${proj.progress}%`}}></div>
+                                            <div className="mt-3 w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                                                <div className="bg-indigo-500 h-full transition-all" style={{width:`${proj.progress}%`}}></div>
                                             </div>
-                                            <div className="mt-2 text-[9px] font-bold text-slate-400 uppercase text-right">{proj.progress}% Concluído</div>
+                                            <div className="mt-2 text-[9px] font-bold text-slate-400 uppercase text-right">{proj.progress}%</div>
                                         </div>
                                     ))}
                                 </div>
@@ -195,18 +197,17 @@ export const Projects: React.FC = () => {
                                 <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 shadow-inner overflow-hidden">
                                     <div className="h-full bg-indigo-600 transition-all duration-700 shadow-lg" style={{width: `${selectedProject.progress}%`}}></div>
                                 </div>
-                                <p className="mt-4 text-[10px] text-slate-400 text-center font-medium italic">A evolução é vinculada ao estágio atual na aba Produção.</p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
                                 {columns.map(c => (
                                     <button 
                                         key={c.id} 
                                         onClick={() => handleUpdateProjectStatusInProjects(selectedProject, c.id)}
-                                        className={`p-3 rounded-lg border text-xs font-bold transition flex items-center justify-between ${selectedProject.status === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white dark:bg-slate-700 border-slate-200 text-slate-500 dark:text-slate-400 hover:border-indigo-400'}`}
+                                        className={`p-3 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-1 ${selectedProject.status === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white dark:bg-slate-700 border-slate-200 text-slate-500 dark:text-slate-400 hover:border-indigo-400'}`}
                                     >
                                         <span>{c.label}</span>
-                                        <span className="opacity-50">{c.progress}%</span>
+                                        <span className="opacity-50 font-mono text-[9px]">{c.progress}%</span>
                                     </button>
                                 ))}
                             </div>
