@@ -1,11 +1,9 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Project, ProjectTask, ProjectNote, MarketingContent } from '../types';
-import { MonitorPlay, Minimize, Wrench, MapPin, Calendar, User, Clock, CheckCircle, AlertCircle, AlertTriangle, Filter, X, Search, Image as ImageIcon, Camera, FileText, Upload, CheckSquare, ChevronRight, Edit2, Save, FilePlus, MessageSquare, Send, StopCircle, RefreshCw, Package, Archive, Sparkles, History, Box, Cpu, ClipboardCheck, ArrowRight, Megaphone, Timer, FileDown, Loader2, Trello, Plus, PackageOpen, ListChecks, Activity, AlignLeft, ClipboardList, Monitor, GripVertical, BookOpen } from 'lucide-react';
-import { generateProjectTasks } from '../services/geminiService';
-import { AcceptanceDocument } from '../components/AcceptanceDocument';
+import { Project, ProjectTask } from '../types';
+import { MonitorPlay, Minimize, Wrench, Clock, CheckCircle, X, Search, History, Trello, Box, Activity, AlignLeft, GripVertical, BookOpen, Monitor } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 
 export const Operations: React.FC = () => {
@@ -24,7 +22,6 @@ export const Operations: React.FC = () => {
     // ESTADO LOCAL INICIALIZADO COM OS DADOS GLOBAIS
     const [localProjects, setLocalProjects] = useState<Project[]>([]);
 
-    // Apenas inicializamos ou atualizamos se houver mudança externa real e não estivermos arrastando
     useEffect(() => {
         if (!draggedProjectId) {
             setLocalProjects(globalProjects);
@@ -77,7 +74,7 @@ export const Operations: React.FC = () => {
         setDraggedProjectId(null);
     };
 
-    const handleUpdateStatus = (id: string, newStatus: string) => {
+    const handleUpdateStatus = async (id: string, newStatus: string) => {
         const projIndex = localProjects.findIndex(p => p.id === id);
         if (projIndex !== -1) {
             const statusConfig = columns.find(c => c.id === newStatus);
@@ -88,7 +85,8 @@ export const Operations: React.FC = () => {
                 status: newStatus, 
                 progress: newProgress,
                 statusUpdatedAt: new Date().toISOString(),
-                completedAt: newStatus === 'Completed' ? new Date().toISOString() : localProjects[projIndex].completedAt
+                completedAt: newStatus === 'Completed' ? new Date().toISOString() : localProjects[projIndex].completedAt,
+                archived: newStatus === 'Completed' // Se concluído, arquiva para histórico
             };
 
             // 1. ATUALIZAÇÃO VISUAL INSTANTÂNEA NO ESTADO LOCAL
@@ -98,14 +96,14 @@ export const Operations: React.FC = () => {
                 setSelectedProject(updatedProjectData);
             }
 
-            // 2. PERSISTÊNCIA NO CONTEXTO (QUE SALVA NO SUPABASE)
-            updateProject(currentUser, updatedProjectData);
+            // 2. PERSISTÊNCIA NO CONTEXTO (QUE SALVA NO SUPABASE E LOCALSTORAGE)
+            await updateProject(currentUser, updatedProjectData);
             
             addSystemNotification("Produção Atualizada", `Projeto movido para ${newStatus}.`, "success");
         }
     };
 
-    const handleToggleTask = (project: Project, taskId: string) => {
+    const handleToggleTask = async (project: Project, taskId: string) => {
         const updatedTasks = project.tasks.map(t => t.id === taskId ? { ...t, status: t.status === 'Done' ? 'Pending' : 'Done' as any } : t);
         const updatedProject = { ...project, tasks: updatedTasks };
         
@@ -114,7 +112,7 @@ export const Operations: React.FC = () => {
             setSelectedProject(updatedProject);
         }
         
-        updateProject(currentUser, updatedProject);
+        await updateProject(currentUser, updatedProject);
     };
 
     return (
@@ -273,7 +271,7 @@ export const Operations: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Checklist de Atividades</h4>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckCircle size={14}/> Checklist de Atividades</h4>
                                     <div className="space-y-3">
                                         {selectedProject.tasks && selectedProject.tasks.length > 0 ? selectedProject.tasks.map(t => (
                                             <div 
@@ -324,7 +322,7 @@ export const Operations: React.FC = () => {
                                 </div>
 
                                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><PackageOpen size={14}/> Materiais / Hardware</h4>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><Box size={14}/> Materiais / Hardware</h4>
                                     <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
                                         {selectedProject.products && selectedProject.products.length > 0 ? (
                                             selectedProject.products.map((p, i) => (

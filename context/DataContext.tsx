@@ -106,12 +106,12 @@ const mapKeysToApp = (data: any[] | null | undefined): any[] => {
         if (newItem.trigger_event) newItem.triggerEvent = newItem.trigger_event;
         if (newItem.start_date) newItem.startDate = newItem.start_date;
         if (newItem.completed_at) newItem.completedAt = newItem.completed_at;
+        if (newItem.status_updated_at) newItem.statusUpdatedAt = newItem.status_updated_at;
 
         if (newItem.actions) {
             if (typeof newItem.actions === 'string') {
                 try { newItem.actions = JSON.parse(newItem.actions); } catch (e) { newItem.actions = []; }
             }
-            if (!Array.isArray(newItem.actions)) newItem.actions = [];
         }
 
         if (newItem.messages && !Array.isArray(newItem.messages)) {
@@ -119,8 +119,10 @@ const mapKeysToApp = (data: any[] | null | undefined): any[] => {
             catch (e) { newItem.messages = []; }
         }
 
-        if (newItem.tasks && typeof newItem.tasks === 'string') {
-            try { newItem.tasks = JSON.parse(newItem.tasks); } catch (e) { newItem.tasks = []; }
+        if (newItem.tasks) {
+            if (typeof newItem.tasks === 'string') {
+                try { newItem.tasks = JSON.parse(newItem.tasks); } catch (e) { newItem.tasks = []; }
+            }
         }
 
         return newItem;
@@ -141,8 +143,15 @@ const mapToDb = (data: any) => {
     if (payload.companyName) { payload.company_name = payload.companyName; delete payload.companyName; }
     if (payload.clientName) { payload.client_name = payload.clientName; delete payload.clientName; }
     if (payload.completedAt) { payload.completed_at = payload.completedAt; delete payload.completedAt; }
-    if (payload.tasks && Array.isArray(payload.tasks)) { payload.tasks = JSON.stringify(payload.tasks); }
-    if (payload.products && Array.isArray(payload.products)) { payload.products = payload.products; } // stays as is if jsonb
+    if (payload.statusUpdatedAt) { payload.status_updated_at = payload.statusUpdatedAt; delete payload.statusUpdatedAt; }
+    
+    // Crucial: Manter como JSON ou converter para string se a coluna for TEXT
+    // Supabase lida bem com JSONB, mas se for String no App e JSONB no banco, precisa converter
+    if (payload.tasks && Array.isArray(payload.tasks)) {
+        // Se sua coluna for JSONB, não precisa de stringify. Se for TEXT, precisa.
+        // Assumindo que a maioria usa JSONB para facilidade.
+        payload.tasks = payload.tasks; 
+    }
     
     return payload;
 };
@@ -241,16 +250,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
 
     const updateProject = async (user: User | null, project: Project) => {
+        // 1. Atualizar Estado Global (Obrigatório para persistência em memória)
         setProjects(prev => prev.map(p => p.id === project.id ? project : p));
+        
+        // 2. Persistência em Nuvem
         const sb = getSupabase();
         if (sb) {
             try {
                 const payload = mapToDb(project);
-                await sb.from('projects').upsert(payload);
+                const { error } = await sb.from('projects').upsert(payload);
+                if (error) throw error;
             } catch (e) {
                 console.error("Error updating project in Supabase:", e);
+                addToast({ title: 'Erro de Sincronização', message: 'O projeto foi movido mas não pôde ser salvo na nuvem.', type: 'warning' });
             }
         }
+    };
+
+    const addToast = (message: Omit<ToastMessage, 'id'>) => {
+        const id = `TOAST-${Date.now()}`;
+        setToasts(prev => [...prev, { ...message, id }]);
     };
 
     const toggleTheme = () => {
@@ -290,6 +309,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             deleteCustomField: async (id) => { /* logic */ },
             addSystemNotification: (t, m, tp) => setNotifications(p => [{ id: `NOTIF-${Date.now()}`, title: t, message: m, type: tp || 'info', timestamp: new Date().toISOString(), read: false }, ...p]),
             markNotificationRead: (id) => setNotifications(p => p.map(n => n.id === id ? { ...n, read: true } : n)),
+            addToast, 
+            removeToast: (id) => setToasts(prev => prev.filter(t => t.id !== id)),
             addCompetitor: async (u, c) => { /* logic */ },
             updateCompetitor: async (u, c) => { /* logic */ },
             deleteCompetitor: async (u, id) => { /* logic */ },
