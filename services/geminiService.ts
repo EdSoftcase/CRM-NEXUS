@@ -14,23 +14,51 @@ const getAI = () => {
 export const analyzeCompetitor = async (name: string, website: string, sector: string): Promise<Partial<Competitor>> => {
     try {
         const ai = getAI();
-        const prompt = `Analise concorrente "${name}" (${website}) no setor ${sector}. 
-        Retorne APENAS um objeto JSON com chaves:
-        "swot": {"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
-        "battlecard": {"pricing": "", "killPoints": [], "defensePoints": []}.
-        Arrays curtos (3 itens). Seja conciso.`;
+        const prompt = `Realize uma análise competitiva profunda da empresa "${name}" (${website}) que atua no setor de ${sector}. 
+        Extraia informações sobre pontos fortes, fracos, posicionamento de preço e argumentos de venda para vencer este concorrente.
+        Retorne os dados estritamente no formato JSON definido pelo esquema.`;
 
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        swot: {
+                            type: Type.OBJECT,
+                            properties: {
+                                strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                opportunities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                threats: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            },
+                            required: ["strengths", "weaknesses"]
+                        },
+                        battlecard: {
+                            type: Type.OBJECT,
+                            properties: {
+                                pricing: { type: Type.STRING },
+                                killPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                defensePoints: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            },
+                            required: ["pricing", "killPoints", "defensePoints"]
+                        }
+                    },
+                    required: ["swot", "battlecard"]
+                }
             }
         });
-        return JSON.parse(response.text || "{}");
+        
+        const text = response.text;
+        if (!text) throw new Error("IA retornou resposta vazia");
+        
+        const parsed = JSON.parse(text);
+        return parsed;
     } catch (error) { 
         console.error("Gemini Analysis Error:", error);
-        return {}; 
+        throw error; // Repassa para que a UI capture a falha
     }
 };
 
@@ -142,7 +170,7 @@ export const analyzePhoneCall = async (audioBase64: string, duration: string): P
             contents: { 
                 parts: [
                     { inlineData: { mimeType: 'audio/wav', data: audioBase64.split(',')[1] || audioBase64 } }, 
-                    { text: "Resuma chamada de ${duration}. Retorne JSON: sentiment, summary, nextSteps." }
+                    { text: `Resuma esta chamada de duração ${duration}. Retorne JSON: sentiment, summary, nextSteps.` }
                 ] 
             },
             config: { responseMimeType: "application/json" }

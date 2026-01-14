@@ -131,7 +131,10 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear }) =
     const handleSave = () => {
         const canvas = canvasRef.current;
         if (canvas && hasSignature) {
-            onSave(canvas.toDataURL());
+            // Delay para garantir que o traço final foi renderizado
+            setTimeout(() => {
+                onSave(canvas.toDataURL('image/png', 0.8));
+            }, 100);
         }
     };
 

@@ -55,42 +55,29 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => `
--- FIX SCHEMA v72.0 (RESTAURAÇÃO SOFT SPY)
+-- NEXUS SCHEMA REPAIR v86.0
+-- Este script deve ser executado no SQL Editor do Supabase para corrigir erros de colunas ausentes.
 
--- 1. Garante tabela de concorrentes
-CREATE TABLE IF NOT EXISTS competitors (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    website TEXT,
-    sector TEXT,
-    swot JSONB DEFAULT '{}'::jsonb,
-    battlecard JSONB DEFAULT '{}'::jsonb,
-    last_analysis TIMESTAMPTZ,
-    organization_id TEXT NOT NULL DEFAULT 'org-1'
-);
+-- 1. Tabela de Propostas (Garante campos de precificação e metadados)
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS monthly_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS setup_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS battlecard JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 2. Garante tabela de tendências de mercado
-CREATE TABLE IF NOT EXISTS market_trends (
-    id TEXT PRIMARY KEY,
-    title TEXT,
-    description TEXT,
-    sentiment TEXT,
-    impact TEXT,
-    organization_id TEXT DEFAULT 'org-1'
-);
+-- 2. Tabela de Competidores (Inteligência Nexus Spy)
+ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS last_analysis TIMESTAMPTZ;
+ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS swot JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS battlecard JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 3. Reset de RLS para Competitors
-ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Full access to auth users on competitors" ON competitors;
-CREATE POLICY "Full access to auth users on competitors" ON competitors 
-FOR ALL USING (true) WITH CHECK (true);
+-- 3. Tabela de Projetos (Operações)
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS tasks JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS products JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 4. Reset de RLS para Market Trends
-ALTER TABLE market_trends ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Full access to auth users on market_trends" ON market_trends;
-CREATE POLICY "Full access to auth users on market_trends" ON market_trends 
-FOR ALL USING (true) WITH CHECK (true);
-
--- 5. Recarrega Cache da API
+-- 4. Forçar Atualização do Cache da API (CRUCIAL PARA RECONHECER NOVAS COLUNAS)
 NOTIFY pgrst, 'reload schema';
 `;

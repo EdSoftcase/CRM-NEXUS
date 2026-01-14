@@ -24,10 +24,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
     if (!isSyncing) setInitialLoadDone(true);
   }, [isSyncing]);
 
+  // A lista 'clients' já vem filtrada do DataContext para o perfil 'client'
+  // Mas garantimos aqui uma dupla checagem para exibição
+  const myUnits = useMemo(() => clients || [], [clients]);
+  
   const pendingInvoices = useMemo(() => invoices.filter(i => i.status !== InvoiceStatus.PAID), [invoices]);
   const openTickets = useMemo(() => tickets.filter(t => t.status !== TicketStatus.CLOSED && t.status !== TicketStatus.RESOLVED), [tickets]);
-  
-  // Cálculo robusto do total em aberto
+  const visibleProposals = useMemo(() => proposals.filter(p => p.status !== 'Draft'), [proposals]);
+
   const totalBalanceDue = useMemo(() => {
     return pendingInvoices.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
   }, [pendingInvoices]);
@@ -36,7 +40,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
     return (
         <div className="h-[60vh] flex flex-col items-center justify-center animate-fade-in">
             <Loader2 className="text-indigo-600 animate-spin mb-4" size={48}/>
-            <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Sincronizando dados...</p>
+            <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Sincronizando dados da conta...</p>
         </div>
     );
   }
@@ -62,30 +66,32 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
                 <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><ShieldCheck size={24}/></div>
                 <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status de Gestão</p>
-                    <p className="text-sm font-bold text-slate-900 uppercase">{clients.length} Unidades Operacionais</p>
+                    <p className="text-sm font-bold text-slate-900 uppercase">
+                        {myUnits.length} {myUnits.length === 1 ? 'Unidade Operacional' : 'Unidades Operacionais'}
+                    </p>
                 </div>
             </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
                 <Building2 className="text-indigo-600 mb-4" size={20}/>
                 <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Unidades Ativas</h3>
-                <p className="text-2xl font-black text-slate-900">{clients.length}</p>
+                <p className="text-2xl font-black text-slate-900">{myUnits.length}</p>
             </div>
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-emerald-300 transition-colors">
                 <DollarSign className="text-emerald-600 mb-4" size={20}/>
                 <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Total em Aberto</h3>
                 <p className="text-2xl font-black text-emerald-600">
                     R$ {totalBalanceDue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                 </p>
             </div>
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-blue-300 transition-colors">
                 <FileText className="text-blue-600 mb-4" size={20}/>
                 <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Contratos</h3>
-                <p className="text-2xl font-black text-slate-900">{proposals.length}</p>
+                <p className="text-2xl font-black text-slate-900">{visibleProposals.length}</p>
             </div>
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-amber-300 transition-colors">
                 <LifeBuoy className="text-amber-600 mb-4" size={20}/>
                 <h3 className="text-slate-500 text-[10px] font-black uppercase mb-1">Suporte</h3>
                 <p className="text-2xl font-black text-slate-900">{openTickets.length}</p>
@@ -119,15 +125,19 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
             <div className="space-y-6">
                 <h3 className="font-black text-xl uppercase tracking-tighter">Sua Carteira</h3>
                 <div className="space-y-3">
-                    {clients.map(unit => (
+                    {myUnits.length > 0 ? myUnits.map(unit => (
                         <div key={unit.id} className="bg-white p-5 rounded-[2rem] border border-slate-200 flex items-center justify-between group hover:border-indigo-400 transition-all">
                             <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-400">{unit.name.charAt(0)}</div>
+                                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">{unit.name.charAt(0)}</div>
                                 <div className="min-w-0"><p className="text-xs font-black text-slate-800 uppercase truncate max-w-[140px]">{unit.name}</p></div>
                             </div>
                             <Badge color={unit.status === 'Active' ? 'green' : 'red'}>{unit.status === 'Active' ? 'OK' : 'RISCO'}</Badge>
                         </div>
-                    ))}
+                    )) : (
+                        <div className="p-10 text-center border-2 border-dashed border-slate-100 rounded-[2rem]">
+                            <p className="text-slate-400 font-bold text-[10px] uppercase">Nenhuma unidade listada</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

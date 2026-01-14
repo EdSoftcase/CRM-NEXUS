@@ -108,6 +108,7 @@ export interface Proposal {
   clientEmail?: string; 
   clientName: string;
   companyName: string;
+  groupName?: string;
   createdDate: string;
   validUntil: string;
   status: ProposalStatus;
@@ -309,13 +310,6 @@ export interface ProjectTask {
     status: 'Pending' | 'Done';
 }
 
-export interface ProjectNote {
-    id: string;
-    text: string;
-    author: string;
-    created_at: string;
-}
-
 export interface Project {
     id: string;
     title: string;
@@ -329,10 +323,12 @@ export interface Project {
     products?: string[];
     manager?: string;
     description?: string;
+    scope?: string[];
     tasks: ProjectTask[];
     organizationId?: string;
     installAddress?: string;
     statusUpdatedAt?: string;
+    unit?: string;
 }
 
 export interface IssueNote {

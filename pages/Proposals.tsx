@@ -5,8 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { Proposal, Lead, Client, ProposalItem, Product } from '../types';
 import { 
     Plus, Search, FileText, Edit2, Trash2, X, Save, 
-    ArrowLeft, Send, Eye, Loader2, EyeOff, CheckCircle, 
-    ChevronRight, Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, ListChecks, AlertTriangle
+    ArrowLeft, Send, Eye, Loader2, CheckCircle, 
+    Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, AlertTriangle, Lock, Unlock
 } from 'lucide-react';
 import { ProposalDocument } from '../components/ProposalDocument';
 import { SectionTitle, Badge } from '../components/Widgets';
@@ -24,10 +24,10 @@ export const Proposals: React.FC = () => {
     
     const [view, setView] = useState<'list' | 'create'>('list');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isEditLocked, setIsEditLocked] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [targetSearch, setTargetSearch] = useState('');
     const [isTargetDropdownOpen, setIsTargetDropdownOpen] = useState(false);
-    const [targetType, setTargetType] = useState<'lead' | 'client'>('lead');
     const [selectedProductId, setSelectedProductId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [newScopeItem, setNewScopeItem] = useState('');
@@ -38,7 +38,9 @@ export const Proposals: React.FC = () => {
         leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
         unit: '', groupName: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
         introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
-        scope: [] as string[], items: [] as ProposalItem[], includesDevelopment: false
+        scope: [] as string[], items: [] as ProposalItem[], includesDevelopment: false,
+        status: 'Draft' as any,
+        createdDate: new Date().toISOString()
     });
 
     useEffect(() => {
@@ -51,112 +53,75 @@ export const Proposals: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const formatCurrency = (value: number) => 
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    const formatCurrency = (value: any) => {
+        const num = Number(value) || 0;
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+    };
 
     const getItemSubtotal = (item: ProposalItem) => {
-        const base = (item.price || 0) * (item.quantity || 1);
-        const disc = item.discount || 0;
+        const base = (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        const disc = Number(item.discount) || 0;
         return base * (1 - disc / 100);
     };
 
     const finalSetupInvestment = useMemo(() => {
-        const equipment = formData.items.filter(item => item.category === 'Product').reduce((acc, item) => acc + getItemSubtotal(item), 0);
-        return equipment + Number(formData.setupCost || 0);
+        const equipmentTotal = (formData.items || [])
+            .filter(item => item.category === 'Product')
+            .reduce((acc, item) => acc + getItemSubtotal(item), 0);
+        return (Number(formData.setupCost) || 0) + equipmentTotal;
     }, [formData.items, formData.setupCost]);
 
     const finalMonthlyRecurrence = useMemo(() => {
-        const services = formData.items.filter(item => item.category !== 'Product').reduce((acc, item) => acc + getItemSubtotal(item), 0);
-        return services + Number(formData.monthlyCost || 0);
+        const servicesTotal = (formData.items || [])
+            .filter(item => item.category !== 'Product')
+            .reduce((acc, item) => acc + getItemSubtotal(item), 0);
+        return (Number(formData.monthlyCost) || 0) + servicesTotal;
     }, [formData.items, formData.monthlyCost]);
 
     const filteredTargets = useMemo(() => {
-        const query = targetSearch.toLowerCase();
+        const query = (targetSearch || '').toLowerCase();
         const leadResults = leads
-            .filter(l => l.company.toLowerCase().includes(query) || l.name.toLowerCase().includes(query))
+            .filter(l => (l.company || '').toLowerCase().includes(query) || (l.name || '').toLowerCase().includes(query))
             .map(l => ({ id: l.id, name: l.name, company: l.company, type: 'lead' as const, email: l.email }));
         
         const clientResults = clients
-            .filter(c => c.name.toLowerCase().includes(query) || c.contactPerson.toLowerCase().includes(query))
+            .filter(c => (c.name || '').toLowerCase().includes(query) || (c.contactPerson || '').toLowerCase().includes(query))
             .map(c => ({ id: c.id, name: c.contactPerson, company: c.name, type: 'client' as const, email: c.email, unit: c.unit, groupName: c.groupName }));
 
         return [...leadResults, ...clientResults];
     }, [leads, clients, targetSearch]);
 
     const handleSelectTarget = (target: any) => {
-        setTargetType(target.type);
-        setTargetSearch(target.company);
-        if (target.type === 'lead') {
-            setFormData(prev => ({
-                ...prev, leadId: target.id, clientId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '', groupName: '',
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev, clientId: target.id, leadId: '', clientEmail: target.email || '', clientName: target.name || '', companyName: target.company || '', unit: target.unit || '', groupName: (target.groupName || '').toUpperCase()
-            }));
-        }
+        setTargetSearch(target.company || '');
+        setFormData(prev => ({
+            ...prev,
+            leadId: target.type === 'lead' ? target.id : '',
+            clientId: target.type === 'client' ? target.id : '',
+            clientEmail: target.email || '',
+            clientName: target.name || '',
+            companyName: target.company || '',
+            unit: target.unit || '',
+            groupName: (target.groupName || '').toUpperCase()
+        }));
         setIsTargetDropdownOpen(false);
     };
 
-    const handleAddScope = () => {
-        if (newScopeItem.trim()) {
-            setFormData(prev => ({ ...prev, scope: [...prev.scope, newScopeItem.trim()] }));
-            setNewScopeItem('');
-        }
-    };
-
-    const handleRemoveScope = (index: number) => {
-        setFormData(prev => ({ ...prev, scope: prev.scope.filter((_, i) => i !== index) }));
-    };
-
     const handleSave = async (shouldSend: boolean = false) => {
-        // VALIDAÇÃO REFORÇADA
-        if (!formData.title.trim()) {
-            addSystemNotification("Campo Obrigatório", "Por favor, defina um título para a proposta.", "warning");
-            return;
-        }
-        if (!formData.companyName.trim()) {
-            addSystemNotification("Alvo não selecionado", "Você precisa vincular a proposta a um Lead ou Unidade.", "warning");
-            return;
-        }
-        if (formData.items.length === 0) {
-            addSystemNotification("Proposta sem itens", "Adicione ao menos um Equipamento ou Serviço ao orçamento.", "warning");
+        if (!formData.title.trim() || !formData.companyName.trim()) {
+            addSystemNotification("Campos Obrigatórios", "Defina um título e selecione um cliente.", "warning");
             return;
         }
 
         setIsSaving(true);
-        
-        let finalGroupName = formData.groupName;
-        if (!finalGroupName) {
-            const matchedClient = clients.find(c => c.name.trim().toUpperCase() === formData.companyName.trim().toUpperCase());
-            if (matchedClient) finalGroupName = (matchedClient.groupName || '').toUpperCase();
-        }
-
-        const proposalData: any = {
+        const proposalData: Proposal = {
+            ...formData,
             id: editingId || `PC-${Date.now()}`,
-            title: formData.title,
-            leadId: targetType === 'lead' ? formData.leadId : undefined,
-            clientId: targetType === 'client' ? formData.clientId : undefined,
-            clientEmail: formData.clientEmail,
-            clientName: formData.clientName,
-            companyName: formData.companyName,
-            groupName: finalGroupName.trim().toUpperCase(),
-            unit: formData.unit,
-            items: formData.items,
-            customClause: formData.customClause,
-            price: finalSetupInvestment, 
-            monthlyCost: finalMonthlyRecurrence,
-            setupCost: Number(formData.setupCost), 
-            includesDevelopment: formData.includesDevelopment,
-            createdDate: editingId ? (proposals.find(p => p.id === editingId)?.createdDate || new Date().toISOString()) : new Date().toISOString(),
-            validUntil: new Date(new Date().setDate(new Date().getDate() + 20)).toISOString(),
-            status: shouldSend ? 'Sent' : (editingId ? (proposals.find(p => p.id === editingId)?.status || 'Draft') : 'Draft'),
-            introduction: formData.introduction,
-            scope: formData.scope,
-            timeline: formData.timeline,
-            terms: formData.terms,
+            price: Number(finalSetupInvestment), 
+            monthlyCost: Number(finalMonthlyRecurrence),
+            setupCost: Number(formData.setupCost),
+            status: shouldSend ? 'Sent' : formData.status,
             organizationId: currentUser?.organizationId || 'org-1'
-        };
+        } as any;
 
         try {
             if (editingId) {
@@ -164,45 +129,68 @@ export const Proposals: React.FC = () => {
             } else {
                 await addProposal(currentUser, proposalData);
             }
-            addSystemNotification("Sucesso", "Proposta salva e sincronizada.", "success");
+            
+            addSystemNotification("Sucesso", shouldSend ? "Proposta enviada!" : "Proposta salva.", "success");
             setView('list');
             setEditingId(null);
-        } catch (e: any) { 
-            console.error("Erro ao salvar proposta:", e);
-            addSystemNotification("Falha", e.message || "Erro de sincronização.", "alert");
+        } catch (e) { 
+            console.error("Save Error:", e);
+            addSystemNotification("Erro", "Falha ao salvar no banco. Verifique as permissões de coluna.", "alert");
         } finally { 
             setIsSaving(false); 
         }
     };
 
+    const handleOpenEdit = (prop: Proposal) => {
+        const isDraft = prop.status === 'Draft';
+        setEditingId(prop.id);
+        setTargetSearch(prop.companyName || '');
+        setFormData({
+            ...prop,
+            setupCost: Number(prop.setupCost) || 0,
+            monthlyCost: Number(prop.monthlyCost) || 0,
+            items: Array.isArray(prop.items) ? prop.items : [],
+            scope: Array.isArray(prop.scope) ? prop.scope : [],
+            status: prop.status || 'Draft'
+        } as any);
+        
+        setIsEditLocked(!isDraft);
+        setView('create');
+    };
+
+    const handleNewProposal = () => {
+        setEditingId(null); 
+        setTargetSearch(''); 
+        setIsEditLocked(false);
+        setFormData({
+            leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
+            unit: '', groupName: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
+            introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
+            scope: [], items: [], includesDevelopment: false, status: 'Draft',
+            createdDate: new Date().toISOString()
+        });
+        setView('create'); 
+    };
+
     const filteredProposals = useMemo(() => {
+        const query = (searchTerm || '').toLowerCase();
         return proposals.filter(p => 
-            p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            (p.companyName && p.companyName.toLowerCase().includes(searchTerm.toLowerCase()))
-        ).sort((a,b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
+            (p.title || '').toLowerCase().includes(query) || 
+            (p.companyName || '').toLowerCase().includes(query)
+        ).sort((a,b) => new Date(b.createdDate || 0).getTime() - new Date(a.createdDate || 0).getTime());
     }, [proposals, searchTerm]);
 
     return (
         <div className="p-0 h-full flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors overflow-hidden font-sans">
             {view === 'list' ? (
-                <div className="p-6 md:p-8 flex flex-col flex-1 h-full">
+                <div className="p-6 md:p-8 flex flex-col flex-1 h-full animate-fade-in">
                     <div className="flex justify-between items-center mb-8">
                         <div>
                             <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Propostas</h1>
-                            <p className="text-slate-500 font-medium">Orçamentos e conversão comercial.</p>
+                            <p className="text-slate-500 font-medium">Gestão de orçamentos e contratos.</p>
                         </div>
-                        <button onClick={() => { 
-                            setEditingId(null); 
-                            setTargetSearch(''); 
-                            setFormData({
-                                leadId: '', clientId: '', clientEmail: '', title: '', clientName: '', companyName: '', 
-                                unit: '', groupName: '', setupCost: 0, monthlyCost: 0, timeline: '45 dias',
-                                introduction: DEFAULT_INTRO, terms: DEFAULT_TERMS, customClause: '',
-                                scope: [], items: [], includesDevelopment: false
-                            });
-                            setView('create'); 
-                        }} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-500/20 flex items-center gap-2">
-                            <Plus size={18}/> Gerar Proposta
+                        <button onClick={handleNewProposal} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-500/20 flex items-center gap-2">
+                            <Plus size={18}/> Nova Proposta
                         </button>
                     </div>
 
@@ -210,7 +198,7 @@ export const Proposals: React.FC = () => {
                         <div className="p-4 border-b flex items-center gap-4 bg-slate-50/50 dark:bg-slate-900/50">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-2.5 text-slate-400" size={18}/>
-                                <input type="text" placeholder="Buscar proposta pelo título ou empresa..." className="w-full pl-10 pr-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-sm outline-none border border-transparent focus:border-indigo-500 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <input type="text" placeholder="Buscar por título ou cliente..." className="w-full pl-10 pr-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-sm outline-none border border-transparent focus:border-indigo-500 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -218,31 +206,31 @@ export const Proposals: React.FC = () => {
                                 <thead className="bg-slate-50 dark:bg-slate-900 text-[10px] font-black uppercase text-slate-400 sticky top-0 z-10">
                                     <tr>
                                         <th className="p-6">Proposta / Cliente</th>
-                                        <th className="p-6 text-right">Setup (Capex)</th>
-                                        <th className="p-6 text-right">Mensal (Opex)</th>
+                                        <th className="p-6 text-right">CAPEX (Setup)</th>
+                                        <th className="p-6 text-right">OPEX (Mensal)</th>
                                         <th className="p-6 text-center">Status</th>
                                         <th className="p-6 text-right">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                     {filteredProposals.map(prop => (
-                                        <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition cursor-pointer group" onClick={() => { 
-                                            setEditingId(prop.id); 
-                                            setTargetSearch(prop.companyName || ''); 
-                                            setFormData({...prop, setupCost: prop.setupCost || 0, monthlyCost: prop.monthlyCost || 0, scope: prop.scope || [], items: prop.items || []} as any); 
-                                            setView('create'); 
-                                        }}>
+                                        <tr key={prop.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition cursor-pointer group" onClick={() => handleOpenEdit(prop)}>
                                             <td className="p-6">
                                                 <p className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-lg">{prop.title}</p>
-                                                <p className="text-[10px] text-slate-400 uppercase font-black mt-1 flex items-center gap-2">
-                                                    {prop.companyName} {prop.status === 'Sent' && <span className="flex items-center gap-1 text-indigo-500 animate-pulse"><Eye size={12}/> Visualizado</span>}
-                                                </p>
+                                                <p className="text-[10px] text-slate-400 uppercase font-black mt-1">{prop.companyName}</p>
                                             </td>
-                                            <td className="p-6 text-right font-mono font-black text-emerald-600">{formatCurrency(prop.price || 0)}</td>
-                                            <td className="p-6 text-right font-mono font-black text-indigo-600">{formatCurrency(prop.monthlyCost || 0)}</td>
-                                            <td className="p-6 text-center"><Badge color={prop.status === 'Accepted' ? 'green' : 'blue'}>{prop.status.toUpperCase()}</Badge></td>
+                                            <td className="p-6 text-right font-mono font-black text-emerald-600">{formatCurrency(prop.price)}</td>
+                                            <td className="p-6 text-right font-mono font-black text-indigo-600">{formatCurrency(prop.monthlyCost)}</td>
+                                            <td className="p-6 text-center">
+                                                <Badge color={prop.status === 'Accepted' ? 'green' : prop.status === 'Sent' ? 'purple' : 'blue'}>
+                                                    {String(prop.status || 'DRAFT').toUpperCase()}
+                                                </Badge>
+                                            </td>
                                             <td className="p-6 text-right">
-                                                <button onClick={(e) => { e.stopPropagation(); if(confirm("Excluir?")) removeProposal(currentUser, prop.id, "Manual"); }} className="p-3 text-slate-300 hover:text-red-500 transition"><Trash2 size={16}/></button>
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(prop); }} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Edit2 size={16}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); if(confirm("Deseja realmente excluir esta proposta?")) removeProposal(currentUser, prop.id, "Manual"); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -253,184 +241,149 @@ export const Proposals: React.FC = () => {
                 </div>
             ) : (
                 <div className="flex h-screen overflow-hidden bg-slate-200 dark:bg-slate-950">
-                    {/* ESQUERDA: EDITOR */}
-                    <div className="w-[450px] bg-white dark:bg-slate-900 border-r border-slate-300 dark:border-slate-800 flex flex-col shrink-0 shadow-2xl z-20">
+                    {/* Painel lateral de edição */}
+                    <div className="w-[450px] bg-white dark:bg-slate-900 border-r border-slate-300 dark:border-slate-800 flex flex-col shrink-0 shadow-2xl z-20 animate-slide-in-left">
                         <div className="p-6 border-b flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
                             <div className="flex items-center gap-4">
                                 <button onClick={() => setView('list')} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl text-slate-500 transition"><ArrowLeft size={20}/></button>
                                 <h2 className="font-black text-xl uppercase tracking-tighter">Editor</h2>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => handleSave(false)} disabled={isSaving} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 transition">
-                                    {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
-                                </button>
-                                <button onClick={() => handleSave(true)} title="Salvar e Enviar para o Portal" disabled={isSaving} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg">
-                                    <Send size={18}/>
-                                </button>
+                                {isEditLocked ? (
+                                    <button onClick={() => setIsEditLocked(false)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-amber-600 transition">
+                                        <Unlock size={14}/> Desbloquear
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button onClick={() => handleSave(false)} disabled={isSaving} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 transition" title="Salvar Rascunho">
+                                            {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
+                                        </button>
+                                        <button onClick={() => handleSave(true)} disabled={isSaving} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg" title="Enviar Proposta Final">
+                                            <Send size={18}/>
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                        <div className={`flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar transition-opacity ${isEditLocked ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
                             <div className="space-y-4">
-                                <SectionTitle title="Identificação do Alvo" />
-                                
+                                <SectionTitle title="Cliente Alvo" />
                                 <div className="relative" ref={dropdownRef}>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Pesquisar Lead ou Unidade</label>
-                                    <div className="relative">
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                            <Search size={18} />
-                                        </div>
-                                        <input 
-                                            type="text"
-                                            className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl pl-11 pr-10 py-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition-all"
-                                            placeholder="Digite o nome para buscar..."
-                                            value={targetSearch}
-                                            onChange={(e) => {
-                                                setTargetSearch(e.target.value);
-                                                setIsTargetDropdownOpen(true);
-                                            }}
-                                            onFocus={() => setIsTargetDropdownOpen(true)}
-                                        />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                            <ChevronDown size={18} className={`transition-transform ${isTargetDropdownOpen ? 'rotate-180' : ''}`} />
-                                        </div>
-                                    </div>
-
+                                    <input 
+                                        type="text"
+                                        className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl pl-4 pr-10 py-4 font-bold bg-transparent outline-none focus:border-indigo-600"
+                                        placeholder="Pesquisar Lead ou Cliente..."
+                                        value={targetSearch}
+                                        onChange={(e) => { setTargetSearch(e.target.value); setIsTargetDropdownOpen(true); }}
+                                        onFocus={() => setIsTargetDropdownOpen(true)}
+                                    />
                                     {isTargetDropdownOpen && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-[100] max-h-64 overflow-y-auto custom-scrollbar animate-fade-in">
-                                            {filteredTargets.length > 0 ? (
-                                                filteredTargets.map((target) => (
-                                                    <div 
-                                                        key={`${target.type}-${target.id}`}
-                                                        onClick={() => handleSelectTarget(target)}
-                                                        className="p-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center justify-between border-b border-slate-50 dark:border-slate-700 last:border-0 group"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`p-2 rounded-lg ${target.type === 'lead' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
-                                                                {target.type === 'lead' ? <Target size={16}/> : <Building2 size={16}/>}
-                                                            </div>
-                                                            <div>
-                                                                <p className="font-bold text-slate-900 dark:text-white text-sm">{target.company}</p>
-                                                                <p className="text-[10px] font-medium text-slate-500 uppercase flex items-center gap-1">
-                                                                    <User size={10}/> {target.name}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <Badge color={target.type === 'lead' ? 'yellow' : 'blue'}>
-                                                            {target.type === 'lead' ? 'LEAD' : 'UNID'}
-                                                        </Badge>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="p-8 text-center text-slate-400">
-                                                    <p className="text-xs font-bold uppercase tracking-widest">Nenhum resultado encontrado</p>
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border rounded-2xl shadow-2xl z-[100] max-h-64 overflow-y-auto">
+                                            {filteredTargets.map(t => (
+                                                <div key={`${t.type}-${t.id}`} onClick={() => handleSelectTarget(t)} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center justify-between border-b last:border-0">
+                                                    <div><p className="font-bold text-sm">{t.company}</p><p className="text-[10px] text-slate-500">{t.name}</p></div>
+                                                    <Badge color={t.type === 'lead' ? 'yellow' : 'blue'}>{String(t.type).toUpperCase()}</Badge>
                                                 </div>
-                                            )}
+                                            ))}
                                         </div>
                                     )}
                                 </div>
+                                <input type="text" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" placeholder="Título da Proposta" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                            </div>
 
-                                <input type="text" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" placeholder="Título da Proposta (ex: Projeto LPR V1)" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                            <div className="space-y-4">
+                                <SectionTitle title="Valores Base de Contrato" />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Setup / CAPEX</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-3.5 text-xs font-bold text-slate-400">R$</span>
+                                            <input type="number" className="w-full pl-8 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 font-bold bg-slate-50 dark:bg-slate-900" value={formData.setupCost} onChange={e => setFormData({...formData, setupCost: parseFloat(e.target.value) || 0})} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Mensal / OPEX</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-3.5 text-xs font-bold text-slate-400">R$</span>
+                                            <input type="number" className="w-full pl-8 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 font-bold bg-slate-50 dark:bg-slate-900" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: parseFloat(e.target.value) || 0})} />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-4">
                                 <SectionTitle title="Escopo do Projeto" />
                                 <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        className="flex-1 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 text-xs font-bold bg-transparent outline-none focus:border-indigo-600"
-                                        placeholder="Descreva um item do escopo..."
-                                        value={newScopeItem}
-                                        onChange={e => setNewScopeItem(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleAddScope()}
-                                    />
-                                    <button onClick={handleAddScope} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition">
-                                        <Plus size={20}/>
-                                    </button>
+                                    <input type="text" className="flex-1 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 text-xs font-bold" placeholder="Digite uma etapa do escopo..." value={newScopeItem} onChange={e => setNewScopeItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && (setFormData(prev => ({...prev, scope: [...prev.scope, newScopeItem.trim()]})), setNewScopeItem(''))} />
+                                    <button onClick={() => { if(newScopeItem.trim()) { setFormData(prev => ({...prev, scope: [...prev.scope, newScopeItem.trim()]})); setNewScopeItem(''); } }} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition-colors"><Plus size={20}/></button>
                                 </div>
                                 <div className="space-y-2">
                                     {formData.scope.map((item, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 group">
-                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                                <CheckCircle size={14} className="text-indigo-500" /> {item}
-                                            </span>
-                                            <button onClick={() => handleRemoveScope(idx)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                                                <Trash2 size={14}/>
-                                            </button>
+                                        <div key={idx} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border group">
+                                            <span className="text-xs font-medium">{item}</span>
+                                            <button onClick={() => setFormData(prev => ({...prev, scope: prev.scope.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                                         </div>
                                     ))}
-                                    {formData.scope.length === 0 && <p className="text-[10px] text-slate-400 italic text-center py-2">Nenhum item de escopo adicionado.</p>}
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <SectionTitle title="Equipamentos & Serviços" />
+                                <SectionTitle title="Itens e Equipamentos" />
                                 <div className="flex gap-2">
-                                    <select className="flex-1 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 text-xs font-bold bg-transparent outline-none" value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}>
-                                        <option value="">Adicionar Item do Catálogo...</option>
-                                        {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>[{p.category === 'Product' ? 'Equip' : 'Serv'}] {p.name}</option>)}
+                                    <select className="flex-1 border-2 border-slate-100 dark:border-slate-800 rounded-xl p-3 text-xs font-bold bg-transparent" value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)}>
+                                        <option value="">Selecionar do Catálogo...</option>
+                                        {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
                                     <button onClick={() => {
                                         const p = products.find(prod => prod.id === selectedProductId);
-                                        if(p) setFormData(prev => ({...prev, items: [...prev.items, {id: p.id, name: p.name, price: p.price, quantity: 1, discount: 0, category: p.category}]}));
+                                        if(p) setFormData(prev => ({...prev, items: [...prev.items, {id: p.id, name: p.name, price: Number(p.price), quantity: 1, discount: 0, category: p.category}]}));
                                         setSelectedProductId('');
-                                    }} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20"><Plus size={20}/></button>
+                                    }} className="bg-indigo-600 text-white p-3 rounded-xl"><Plus size={20}/></button>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {formData.items.map((item, idx) => (
-                                        <div key={idx} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700 flex flex-col gap-3 group relative">
+                                        <div key={idx} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border space-y-3 shadow-inner">
                                             <div className="flex justify-between font-black text-[10px] uppercase">
-                                                <span className="truncate pr-4">{item.name}</span>
-                                                <button onClick={() => setFormData(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="text-slate-300 hover:text-red-500 transition-colors"><X size={16}/></button>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge color={item.category === 'Product' ? 'blue' : 'purple'}>{item.category === 'Product' ? 'HARDWARE' : 'SERVIÇO'}</Badge>
+                                                    <span className="truncate max-w-[150px]">{item.name}</span>
+                                                </div>
+                                                <button onClick={() => setFormData(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="text-red-500 hover:text-red-600 transition-colors"><Trash2 size={14}/></button>
                                             </div>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                <div>
-                                                    <label className="text-[8px] font-black uppercase text-slate-400 block mb-1">Qtd</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-slate-400 font-bold ml-1 uppercase">Quantidade</span>
                                                     <input type="number" className="w-full bg-white dark:bg-slate-800 border rounded-lg p-2 text-xs font-bold" value={item.quantity} onChange={e => {const n=[...formData.items]; n[idx].quantity=parseInt(e.target.value)||1; setFormData({...formData, items:n});}} />
                                                 </div>
-                                                <div>
-                                                    <label className="text-[8px] font-black uppercase text-slate-400 block mb-1">Desc %</label>
-                                                    <input type="number" className="w-full bg-white dark:bg-slate-800 border rounded-lg p-2 text-xs font-bold text-indigo-600" value={item.discount} onChange={e => {const n=[...formData.items]; n[idx].discount=parseFloat(e.target.value)||0; setFormData({...formData, items:n});}} />
-                                                </div>
-                                                <div className="text-right flex flex-col justify-end">
-                                                    <label className="text-[8px] font-black uppercase text-slate-400 block mb-1">Total</label>
-                                                    <div className="text-[10px] font-black text-slate-900 dark:text-white py-2">{formatCurrency(getItemSubtotal(item))}</div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-slate-400 font-bold ml-1 uppercase">Desconto (%)</span>
+                                                    <input type="number" className="w-full bg-white dark:bg-slate-800 border rounded-lg p-2 text-xs font-bold" value={item.discount} onChange={e => {const n=[...formData.items]; n[idx].discount=parseFloat(e.target.value)||0; setFormData({...formData, items:n});}} />
                                                 </div>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                {formData.items.length === 0 && (
-                                    <div className="p-6 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col items-center gap-2">
-                                        <AlertTriangle size={24} className="text-amber-500 opacity-50"/>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center leading-tight">Você deve adicionar itens para<br/>poder salvar o orçamento.</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
-                                    <p className="text-[9px] font-black text-emerald-600 uppercase mb-2 flex items-center gap-1"><DollarSign size={10}/> Ajuste Capex</p>
-                                    <input type="number" className="w-full bg-transparent border-none text-xl font-black outline-none text-emerald-700 dark:text-emerald-400" value={formData.setupCost} onChange={e => setFormData({...formData, setupCost: parseFloat(e.target.value) || 0})} />
-                                </div>
-                                <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/50">
-                                    <p className="text-[9px] font-black text-blue-600 uppercase mb-2 flex items-center gap-1"><RefreshCw size={10}/> Ajuste Opex</p>
-                                    <input type="number" className="w-full bg-transparent border-none text-xl font-black outline-none text-blue-700 dark:text-blue-400" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: parseFloat(e.target.value) || 0})} />
-                                </div>
                             </div>
                         </div>
+                        
+                        {isEditLocked && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-100 dark:border-amber-800 flex items-center gap-3 animate-pulse">
+                                <Lock size={16} className="text-amber-600 shrink-0"/>
+                                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-tight">Registro bloqueado para preservar integridade. Use "Desbloquear" para permitir alterações.</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex-1 p-10 overflow-y-auto custom-scrollbar flex justify-center bg-slate-200 dark:bg-slate-950">
-                        <div className="transform origin-top scale-[0.85] lg:scale-100 w-[210mm] pointer-events-none rounded-lg shadow-2xl">
+                        <div className="transform origin-top scale-[0.85] lg:scale-100 w-[210mm] pointer-events-none rounded-lg shadow-2xl mb-20">
                             <ProposalDocument data={{
                                 ...formData,
-                                id: editingId || 'NOVA',
-                                price: finalSetupInvestment,
-                                monthlyCost: finalMonthlyRecurrence,
-                                createdDate: new Date().toISOString(),
-                                validUntil: new Date(new Date().setDate(new Date().getDate() + 20)).toISOString(),
-                                status: 'Draft'
+                                id: editingId || 'EM GERAÇÃO',
+                                price: Number(finalSetupInvestment),
+                                monthlyCost: Number(finalMonthlyRecurrence),
+                                createdDate: formData.createdDate,
+                                validUntil: new Date(new Date(formData.createdDate).getTime() + 20 * 24 * 60 * 60 * 1000).toISOString()
                             }} />
                         </div>
                     </div>

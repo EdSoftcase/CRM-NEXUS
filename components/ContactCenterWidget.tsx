@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Client, Activity } from '../types';
-import { Phone, CheckCircle, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy, Save, X, Calendar, PlusCircle, PartyPopper, Loader2, PhoneForwarded, BarChart3 } from 'lucide-react';
+// Fix: Added Plus to the lucide-react import list to resolve the "Cannot find name 'Plus'" error on line 256.
+import { Phone, CheckCircle, Target, UserPlus, Sparkles, Package, ThumbsDown, Trophy, Save, X, Calendar, PlusCircle, PartyPopper, Loader2, PhoneForwarded, BarChart3, ShoppingCart, Tag, Plus } from 'lucide-react';
 
 interface DailyTarget {
     clientId: string;
@@ -17,7 +18,7 @@ interface DailySelection {
 }
 
 export const ContactCenterWidget: React.FC = () => {
-    const { clients, updateClientContact, addSystemNotification } = useData();
+    const { clients, updateClientContact, addSystemNotification, products } = useData();
     const { currentUser } = useAuth();
 
     const [dailySelection, setDailySelection] = useState<DailySelection | null>(null);
@@ -26,6 +27,7 @@ export const ContactCenterWidget: React.FC = () => {
     
     const [interactionNote, setInteractionNote] = useState('');
     const [problemsReported, setProblemsReported] = useState('');
+    const [futureInterests, setFutureInterests] = useState<string[]>([]);
 
     // --- LOGICA DE SELEÇÃO INTELIGENTE ---
     useEffect(() => {
@@ -64,26 +66,16 @@ export const ContactCenterWidget: React.FC = () => {
         }
     }, [clients]);
 
-    // --- CÁLCULO DE MÉTRICAS (DIÁRIA E MENSAL) ---
+    // --- CÁLCULO DE MÉTRICAS ---
     const metrics = useMemo(() => {
-        // 1. Meta Diária
         const completedDaily = dailySelection?.targets.filter(t => t.status === 'done').length || 0;
         const totalDaily = dailySelection?.targets.length || 0;
         const dailyPercent = totalDaily > 0 ? Math.round((completedDaily / totalDaily) * 100) : 0;
-
-        // 2. Meta Mensal (Base Ativa Contatada no Mês)
         const activeClients = clients.filter(c => c.status === 'Active');
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        
-        const contactedThisMonth = activeClients.filter(c => {
-            if (!c.lastContact) return false;
-            return new Date(c.lastContact) >= startOfMonth;
-        }).length;
-
-        const monthlyPercent = activeClients.length > 0 
-            ? Math.round((contactedThisMonth / activeClients.length) * 100) 
-            : 0;
+        const contactedThisMonth = activeClients.filter(c => c.lastContact && new Date(c.lastContact) >= startOfMonth).length;
+        const monthlyPercent = activeClients.length > 0 ? Math.round((contactedThisMonth / activeClients.length) * 100) : 0;
 
         return {
             daily: { count: completedDaily, total: totalDaily, percent: dailyPercent },
@@ -98,14 +90,22 @@ export const ContactCenterWidget: React.FC = () => {
             setSelectedTarget(client);
             setInteractionNote('');
             setProblemsReported('');
+            setFutureInterests([]);
             setIsModalOpen(true);
         }
+    };
+
+    const toggleInterest = (productName: string) => {
+        setFutureInterests(prev => 
+            prev.includes(productName) ? prev.filter(p => p !== productName) : [...prev, productName]
+        );
     };
 
     const handleSubmitContact = async () => {
         if (!selectedTarget || !dailySelection) return;
         
-        const finalDescription = `[CENTRAL] ${interactionNote}${problemsReported ? ` | RECLAMAÇÃO: ${problemsReported}` : ''}`;
+        const interestStr = futureInterests.length > 0 ? ` | INTERESSES FUTUROS: ${futureInterests.join(', ')}` : '';
+        const finalDescription = `[CENTRAL] ${interactionNote}${problemsReported ? ` | RECLAMAÇÃO: ${problemsReported}` : ''}${interestStr}`;
         
         const newActivity: Activity = { 
             id: `ACT-DAILY-${Date.now()}`, 
@@ -115,7 +115,11 @@ export const ContactCenterWidget: React.FC = () => {
             completed: true, 
             relatedTo: selectedTarget.name, 
             assignee: currentUser?.id || 'system', 
-            description: finalDescription 
+            description: finalDescription,
+            metadata: {
+                interests: futureInterests,
+                hasProblems: !!problemsReported
+            }
         };
 
         await updateClientContact(selectedTarget, newActivity);
@@ -134,12 +138,7 @@ export const ContactCenterWidget: React.FC = () => {
             .filter(c => c.status === 'Active' && !currentIds.has(c.id))
             .sort((a, b) => (a.lastContact ? new Date(a.lastContact).getTime() : 0) - (b.lastContact ? new Date(b.lastContact).getTime() : 0))
             .slice(0, 3);
-
-        if (next.length === 0) {
-            alert("Todos os clientes ativos já estão na sua lista.");
-            return;
-        }
-
+        if (next.length === 0) return;
         const newSelection = {
             ...dailySelection!,
             targets: [...(dailySelection?.targets || []), ...next.map(c => ({ clientId: c.id, status: 'pending' as const }))]
@@ -147,8 +146,6 @@ export const ContactCenterWidget: React.FC = () => {
         setDailySelection(newSelection);
         localStorage.setItem('nexus_daily_contacts', JSON.stringify(newSelection));
     };
-
-    if (clients.length === 0) return null;
 
     return (
         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl border border-slate-800 relative overflow-hidden mb-8">
@@ -162,7 +159,6 @@ export const ContactCenterWidget: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-8 bg-slate-800/50 p-6 rounded-[2rem] border border-slate-700">
-                    {/* Gauge Diário */}
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Meta Diária</p>
@@ -176,10 +172,7 @@ export const ContactCenterWidget: React.FC = () => {
                             <div className="absolute inset-0 flex items-center justify-center text-[8px] font-black">{metrics.daily.percent}%</div>
                         </div>
                     </div>
-
                     <div className="h-10 w-px bg-slate-700"></div>
-
-                    {/* Gauge Mensal */}
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Cobertura Mês</p>
@@ -201,7 +194,6 @@ export const ContactCenterWidget: React.FC = () => {
                     const client = clients.find(c => c.id === target.clientId);
                     if (!client) return null;
                     const isDone = target.status === 'done';
-                    
                     return (
                         <div 
                             key={target.clientId} 
@@ -220,18 +212,14 @@ export const ContactCenterWidget: React.FC = () => {
                         </div>
                     );
                 })}
-                <button 
-                    onClick={handleRequestMore}
-                    className="p-6 rounded-[2rem] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 hover:text-indigo-400 hover:border-indigo-400 transition-all bg-transparent"
-                >
-                    <PlusCircle size={24} className="mb-2"/>
-                    <span className="text-[9px] font-black uppercase tracking-widest">Nomes Extras</span>
+                <button onClick={handleRequestMore} className="p-6 rounded-[2rem] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 hover:text-indigo-400 hover:border-indigo-400 transition-all bg-transparent">
+                    <PlusCircle size={24} className="mb-2"/><span className="text-[9px] font-black uppercase tracking-widest">Nomes Extras</span>
                 </button>
             </div>
 
             {isModalOpen && selectedTarget && createPortal(
                 <div className="fixed inset-0 bg-slate-950/90 z-[10000] flex items-center justify-center p-4 backdrop-blur-md">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
                             <div>
                                 <h3 className="font-black text-xl text-slate-900 dark:text-white uppercase tracking-tighter">Registrar Contato</h3>
@@ -240,7 +228,7 @@ export const ContactCenterWidget: React.FC = () => {
                             <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-400 hover:text-red-500 transition"><X size={24}/></button>
                         </div>
                         
-                        <div className="p-8 space-y-6">
+                        <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
                             <div className="flex items-center gap-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800">
                                 <Phone className="text-indigo-600" size={24}/>
                                 <div>
@@ -251,33 +239,34 @@ export const ContactCenterWidget: React.FC = () => {
 
                             <div className="space-y-4">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase ml-1">Observações da Chamada</label>
-                                <textarea 
-                                    className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 h-32 resize-none"
-                                    placeholder="Ex: Cliente satisfeito, solicitou treinamento..."
-                                    value={interactionNote}
-                                    onChange={e => setInteractionNote(e.target.value)}
-                                />
+                                <textarea className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 h-24 resize-none" placeholder="O que foi conversado?" value={interactionNote} onChange={e => setInteractionNote(e.target.value)} />
                             </div>
 
                             <div className="space-y-4">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                                    <ThumbsDown size={14} className="text-red-500"/> Pontos de Atenção
+                                    <Tag size={14} className="text-amber-500"/> Prováveis Contratações (Interesse de Upsell)
                                 </label>
-                                <input 
-                                    className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-red-500"
-                                    placeholder="Alguma queixa técnica ou comercial?"
-                                    value={problemsReported}
-                                    onChange={e => setProblemsReported(e.target.value)}
-                                />
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {products.filter(p => p.active).map(prod => (
+                                        <button
+                                            key={prod.id}
+                                            type="button"
+                                            onClick={() => toggleInterest(prod.name)}
+                                            className={`p-3 rounded-xl border-2 text-[10px] font-black uppercase transition-all flex items-center gap-2 ${futureInterests.includes(prod.name) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400'}`}
+                                        >
+                                            {futureInterests.includes(prod.name) ? <CheckCircle size={12}/> : <Plus size={12}/>}
+                                            <span className="truncate">{prod.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
-                            <button 
-                                onClick={handleSubmitContact}
-                                disabled={!interactionNote}
-                                className="w-full bg-indigo-600 text-white font-black py-5 rounded-[2rem] hover:bg-indigo-700 transition shadow-2xl disabled:opacity-50 uppercase tracking-widest text-xs"
-                            >
-                                Salvar Atividade
-                            </button>
+                            <div className="space-y-4">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2"><ThumbsDown size={14} className="text-red-500"/> Pontos de Atenção</label>
+                                <input className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-red-500" placeholder="Alguma queixa ou problema?" value={problemsReported} onChange={e => setProblemsReported(e.target.value)} />
+                            </div>
+
+                            <button onClick={handleSubmitContact} disabled={!interactionNote} className="w-full bg-indigo-600 text-white font-black py-5 rounded-[2rem] hover:bg-indigo-700 transition shadow-2xl disabled:opacity-50 uppercase tracking-widest text-xs">SALVAR ATIVIDADE</button>
                         </div>
                     </div>
                 </div>,

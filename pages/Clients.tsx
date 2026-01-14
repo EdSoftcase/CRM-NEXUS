@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -22,7 +23,7 @@ export const Clients: React.FC = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
-    const [viewMode, setViewMode] = useState<'list' | 'group'>('group'); // Default to Group view
+    const [viewMode, setViewMode] = useState<'list' | 'group'>('group');
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentClient, setCurrentClient] = useState<Partial<Client>>({});
@@ -48,7 +49,7 @@ export const Clients: React.FC = () => {
             groupId: currentClient.groupId?.trim().toUpperCase() || '',
             since: currentClient.since || new Date().toISOString(),
             ltv: Number(currentClient.ltv) || 0,
-            unit: currentClient.unit || currentClient.name,
+            unit: currentClient.unit || currentClient.name || '',
             organizationId: currentUser?.organizationId,
         };
 
@@ -70,16 +71,16 @@ export const Clients: React.FC = () => {
     };
 
     const filteredClients = useMemo(() => {
+        const query = (searchTerm || '').toLowerCase();
         return clients.filter(c => {
-            const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                 (c.groupId && c.groupId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                 (c.groupName && c.groupName.toLowerCase().includes(searchTerm.toLowerCase()));
+            const matchesSearch = (c.name || '').toLowerCase().includes(query) || 
+                                 (c.groupId || '').toLowerCase().includes(query) ||
+                                 (c.groupName || '').toLowerCase().includes(query);
             const matchesStatus = statusFilter === 'All' || c.status === statusFilter;
             return matchesSearch && matchesStatus;
         });
     }, [clients, searchTerm, statusFilter]);
 
-    // Grouping Logic
     const groupedData = useMemo(() => {
         const groups: Record<string, GroupData> = {};
         const independent: Client[] = [];
@@ -103,7 +104,6 @@ export const Clients: React.FC = () => {
         return { groups, independent };
     }, [filteredClients]);
 
-    // Render Helper for Desktop Table Row
     const renderClientRow = (client: Client) => (
         <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer border-b border-slate-100 dark:border-slate-800 last:border-0" onClick={() => setSelectedClientFor360(client)}>
             <td className="p-6">
@@ -123,8 +123,8 @@ export const Clients: React.FC = () => {
                 )}
             </td>
             <td className="p-6 font-bold text-slate-600 dark:text-slate-300">{client.segment}</td>
-            <td className="p-6 text-right font-mono font-black text-emerald-600 text-lg">R$ {client.ltv.toLocaleString()}</td>
-            <td className="p-6 text-center"><Badge color={client.status === 'Active' ? 'green' : 'red'}>{client.status.toUpperCase()}</Badge></td>
+            <td className="p-6 text-right font-mono font-black text-emerald-600 text-lg">R$ {(client.ltv || 0).toLocaleString()}</td>
+            <td className="p-6 text-center"><Badge color={client.status === 'Active' ? 'green' : 'red'}>{client.status?.toUpperCase()}</Badge></td>
             <td className="p-6 text-right">
                 <div className="flex justify-end gap-2">
                     <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setCurrentClient(client); setIsModalOpen(true); }} className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-indigo-600 rounded-xl transition shadow-sm"><Edit2 size={16}/></button>
@@ -134,7 +134,6 @@ export const Clients: React.FC = () => {
         </tr>
     );
 
-    // Render Helper for Mobile Card
     const renderMobileClientCard = (client: Client) => (
         <div key={client.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mb-3 active:scale-[0.99] transition-transform" onClick={() => setSelectedClientFor360(client)}>
             <div className="flex justify-between items-start mb-3">
@@ -148,19 +147,12 @@ export const Clients: React.FC = () => {
             <div className="grid grid-cols-2 gap-4 text-xs text-slate-600 dark:text-slate-300 mb-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
                 <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">LTV Mensal</span>
-                    <span className="font-mono font-black text-emerald-600 text-sm">R$ {client.ltv.toLocaleString()}</span>
+                    <span className="font-mono font-black text-emerald-600 text-sm">R$ {(client.ltv || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Segmento</span>
                     <span className="font-bold">{client.segment}</span>
                 </div>
-                {client.groupId && (
-                    <div className="col-span-2 border-t border-slate-200 dark:border-slate-700 pt-2 mt-1">
-                        <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
-                            <LinkIcon size={12}/> {client.groupName || client.groupId}
-                        </div>
-                    </div>
-                )}
             </div>
 
             <div className="flex gap-2">
@@ -224,7 +216,6 @@ export const Clients: React.FC = () => {
                 </div>
                 
                 <div className="flex-1 overflow-auto custom-scrollbar p-0 md:p-0 bg-slate-50 dark:bg-slate-900 md:bg-white md:dark:bg-slate-800">
-                    {/* DESKTOP TABLE VIEW */}
                     <table className="w-full text-left text-sm hidden md:table">
                         <thead className="bg-slate-50 dark:bg-slate-900 text-[10px] font-black uppercase text-slate-400 sticky top-0 z-10 shadow-sm">
                             <tr>
@@ -241,7 +232,6 @@ export const Clients: React.FC = () => {
                                 filteredClients.map(renderClientRow)
                             ) : (
                                 <>
-                                    {/* Render Groups First */}
                                     {Object.entries(groupedData.groups).map(([groupId, data]) => {
                                         const groupData = data as GroupData;
                                         return (
@@ -278,8 +268,6 @@ export const Clients: React.FC = () => {
                                             </React.Fragment>
                                         );
                                     })}
-
-                                    {/* Render Independent Units */}
                                     {groupedData.independent.length > 0 && (
                                         <>
                                             <tr className="bg-slate-50 dark:bg-slate-800/30 border-y border-slate-200 dark:border-slate-700">
@@ -294,57 +282,18 @@ export const Clients: React.FC = () => {
                             )}
                         </tbody>
                     </table>
-
-                    {/* MOBILE CARD VIEW */}
                     <div className="md:hidden p-4 pb-20">
-                        {viewMode === 'list' ? (
-                            filteredClients.map(renderMobileClientCard)
-                        ) : (
-                            <>
-                                {Object.entries(groupedData.groups).map(([groupId, data]) => {
-                                    const groupData = data as GroupData;
-                                    return (
-                                        <div key={groupId} className="mb-6">
-                                            <div className="flex items-center gap-2 mb-3 px-1 text-indigo-600 dark:text-indigo-400">
-                                                <Building2 size={16}/>
-                                                <span className="font-black uppercase text-xs tracking-wider">{groupData.groupName || groupId}</span>
-                                                <span className="ml-auto bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full text-[10px] font-bold">{groupData.clients.length}</span>
-                                            </div>
-                                            {groupData.clients.map(renderMobileClientCard)}
-                                        </div>
-                                    );
-                                })}
-                                
-                                {groupedData.independent.length > 0 && (
-                                    <div className="mb-6">
-                                        <div className="flex items-center gap-2 mb-3 px-1 text-slate-400">
-                                            <Briefcase size={16}/>
-                                            <span className="font-black uppercase text-xs tracking-wider">Independentes</span>
-                                        </div>
-                                        {groupedData.independent.map(renderMobileClientCard)}
-                                    </div>
-                                )}
-                            </>
-                        )}
-                        
-                        {filteredClients.length === 0 && (
-                            <div className="text-center py-12 opacity-50">
-                                <Search size={48} className="mx-auto mb-4 text-slate-300"/>
-                                <p className="text-slate-500 font-medium">Nenhum cliente encontrado.</p>
-                            </div>
-                        )}
+                        {filteredClients.map(renderMobileClientCard)}
                     </div>
                 </div>
             </div>
 
-            {/* Modal de Cadastro/Edição */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-scale-in border">
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                             <div>
                                 <h3 className="font-black text-2xl uppercase tracking-tighter">{isEditing ? 'Editar Unidade' : 'Nova Unidade'}</h3>
-                                <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Configurações técnicas e comerciais</p>
                             </div>
                             <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-400 hover:text-red-500 transition"><X size={24}/></button>
                         </div>
@@ -354,32 +303,23 @@ export const Clients: React.FC = () => {
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Razão Social / Nome da Unidade</label>
                                     <input required className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition" value={currentClient.name || ''} onChange={e => setCurrentClient({...currentClient, name: e.target.value})} placeholder="EX: ESTACIONAMENTO SHOPPING NEXUS" />
                                 </div>
-                                
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">ID de Agrupamento (GroupId)</label>
-                                    <div className="relative">
-                                        <LinkIcon className="absolute left-4 top-4 text-blue-500" size={20}/>
-                                        <input className="w-full pl-12 border-2 border-blue-100 dark:border-blue-900 rounded-2xl p-4 font-black uppercase bg-blue-50/20 dark:bg-blue-900/10 outline-none focus:border-blue-600" value={currentClient.groupId || ''} onChange={e => setCurrentClient({...currentClient, groupId: e.target.value})} placeholder="EX: MAUA-01" />
-                                    </div>
-                                    <p className="text-[9px] text-slate-400 mt-2 italic">Obrigatório para consolidar unidades no mesmo grupo.</p>
+                                    <input className="w-full border-2 border-blue-100 dark:border-blue-900 rounded-2xl p-4 font-black uppercase bg-blue-50/20 dark:bg-blue-900/10 outline-none focus:border-blue-600" value={currentClient.groupId || ''} onChange={e => setCurrentClient({...currentClient, groupId: e.target.value})} placeholder="EX: MAUA-01" />
                                 </div>
-
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Nome do Grupo Econômico</label>
                                     <input className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition" value={currentClient.groupName || ''} onChange={e => setCurrentClient({...currentClient, groupName: e.target.value})} placeholder="EX: GRUPO MAUÁ" />
                                 </div>
-
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">CNPJ / CPF</label>
                                     <input className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition" value={currentClient.document || ''} onChange={e => setCurrentClient({...currentClient, document: e.target.value})} />
                                 </div>
-
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">LTV Estimado (Mensal)</label>
-                                    <input type="number" className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: parseFloat(e.target.value)})} placeholder="0.00" />
+                                    <input type="number" className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600 transition" value={currentClient.ltv || ''} onChange={e => setCurrentClient({...currentClient, ltv: parseFloat(e.target.value) || 0})} placeholder="0.00" />
                                 </div>
                             </div>
-                            
                             <button 
                                 type="submit" 
                                 disabled={isSaving}
