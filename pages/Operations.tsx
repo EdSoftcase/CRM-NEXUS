@@ -3,7 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Project, ProjectTask } from '../types';
-import { MonitorPlay, Minimize, Wrench, Clock, CheckCircle, X, Search, History, Trello, Box, Activity, AlignLeft, GripVertical, BookOpen, Monitor, Package, ListTodo, ClipboardList, CheckSquare, MapPin, Building2, Layout, ChevronRight, AlertCircle, ShoppingBag } from 'lucide-react';
+import { 
+    MonitorPlay, Minimize, Wrench, Clock, CheckCircle, X, Search, 
+    History, Trello, Box, Activity, AlignLeft, GripVertical, 
+    Monitor, Package, Building2, Layout, ChevronRight, AlertCircle, 
+    ShoppingBag, List, LayoutGrid, Maximize2, 
+    CheckSquare
+} from 'lucide-react';
 import { Badge } from '../components/Widgets';
 
 export const Operations: React.FC = () => {
@@ -12,6 +18,7 @@ export const Operations: React.FC = () => {
     
     const [tvMode, setTvMode] = useState(false);
     const [viewMode, setViewMode] = useState<'board' | 'history'>('board');
+    const [displayDensity, setDisplayDensity] = useState<'standard' | 'compact'>('standard');
     
     const [historySearch, setHistorySearch] = useState('');
     const [managerFilter, setManagerFilter] = useState('All');
@@ -25,9 +32,19 @@ export const Operations: React.FC = () => {
         setLocalProjects(globalProjects);
     }, [globalProjects]);
 
+    // Lógica de Persistência: Projetos concluídos há menos de 30 dias ainda aparecem no Board
+    const isRecentlyCompleted = (proj: Project) => {
+        if (proj.status !== 'Completed' || !proj.completedAt) return false;
+        const completionDate = new Date(proj.completedAt);
+        const today = new Date();
+        const diffTime = Math.abs(today.getTime() - completionDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 30;
+    };
+
     const historyProjects = useMemo(() => {
         return localProjects.filter(p => {
-            const isArchived = p.archived;
+            const isArchived = p.archived || (p.status === 'Completed' && !isRecentlyCompleted(p));
             const matchesSearch = (p.title || '').toLowerCase().includes(historySearch.toLowerCase()) || 
                                  (p.clientName || '').toLowerCase().includes(historySearch.toLowerCase()) ||
                                  (p.unit || '').toLowerCase().includes(historySearch.toLowerCase());
@@ -45,7 +62,18 @@ export const Operations: React.FC = () => {
     ];
 
     const getProjectsByStatus = (statusId: string) => {
-        return localProjects.filter(p => p.status === statusId && !p.archived);
+        return localProjects.filter(p => {
+            const matchStatus = p.status === statusId;
+            if (!matchStatus) return false;
+            
+            // Se estiver no board e for 'Completed', só mostra se for recente (SLA 30 dias)
+            if (statusId === 'Completed') {
+                return isRecentlyCompleted(p);
+            }
+            
+            // Para outros status, mostra se não estiver arquivado
+            return !p.archived;
+        });
     };
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -83,7 +111,8 @@ export const Operations: React.FC = () => {
             progress: newProgress,
             statusUpdatedAt: new Date().toISOString(),
             completedAt: isFinished ? new Date().toISOString() : proj.completedAt,
-            archived: isFinished
+            // Importante: Não marcamos 'archived: true' imediatamente para persistir no board por 30 dias
+            archived: false 
         };
 
         setLocalProjects(prev => prev.map(p => p.id === id ? updatedProjectData : p));
@@ -128,28 +157,49 @@ export const Operations: React.FC = () => {
     };
 
     return (
-        <div className={tvMode ? "fixed inset-0 z-[9999] bg-slate-950 p-6 overflow-hidden flex flex-col transition-all duration-500" : "p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors"}>
-            <div className={`flex justify-between items-center shrink-0 ${tvMode ? 'mb-8 border-b border-slate-800 pb-6' : 'mb-6'}`}>
+        <div className={tvMode ? "fixed inset-0 z-[9999] bg-slate-950 p-6 overflow-hidden flex flex-col transition-all duration-500" : "p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors font-sans"}>
+            {/* Header com Controles de Visualização */}
+            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-4 ${tvMode ? 'mb-8 border-b border-slate-800 pb-6' : 'mb-6'}`}>
                 <div>
                     <h1 className={`${tvMode ? 'text-4xl' : 'text-3xl'} font-black flex items-center gap-3 text-slate-900 dark:text-white uppercase tracking-tighter`}>
                         {tvMode ? (
                             <><Monitor className="text-indigo-400 animate-pulse" size={40}/> Dashboard de Operações</>
                         ) : (
-                            <><Wrench className="text-indigo-600 dark:text-indigo-400"/> Painel de Produção</>
+                            <><Wrench className="text-indigo-600 dark:text-indigo-400"/> Esteira de Produção</>
                         )}
                     </h1>
-                    <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-2">Esteira de Fabricação e Implementação</p>
+                    <div className="flex items-center gap-4 mt-2">
+                        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.3em]">Status de Implantação e Logística</p>
+                        {!tvMode && (
+                             <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-300 dark:border-slate-700">
+                                <button 
+                                    onClick={() => setDisplayDensity('standard')}
+                                    className={`p-1 rounded-md transition-all ${displayDensity === 'standard' ? 'bg-white dark:bg-slate-600 text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                    title="Visualização Padrão"
+                                >
+                                    <LayoutGrid size={14}/>
+                                </button>
+                                <button 
+                                    onClick={() => setDisplayDensity('compact')}
+                                    className={`p-1 rounded-md transition-all ${displayDensity === 'compact' ? 'bg-white dark:bg-slate-600 text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                    title="Visualização Reduzida"
+                                >
+                                    <List size={14}/>
+                                </button>
+                             </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 w-full md:w-auto">
                     {!tvMode && (
-                        <button onClick={() => setViewMode(viewMode === 'board' ? 'history' : 'board')} className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs uppercase tracking-widest">
-                            {viewMode === 'board' ? <History size={18}/> : <Trello size={18}/>}
+                        <button onClick={() => setViewMode(viewMode === 'board' ? 'history' : 'board')} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold transition border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest shadow-sm">
+                            {viewMode === 'board' ? <History size={16}/> : <Trello size={16}/>}
                             {viewMode === 'board' ? 'Histórico' : 'Quadro'}
                         </button>
                     )}
-                    <button onClick={() => setTvMode(!tvMode)} className={`flex items-center gap-2 px-6 py-2 rounded-xl font-black transition text-xs uppercase tracking-widest shadow-2xl bg-indigo-600 text-white hover:bg-indigo-700`}>
-                        {tvMode ? <Minimize size={20}/> : <MonitorPlay size={18}/>} {tvMode ? 'Sair TV' : 'Modo TV'}
+                    <button onClick={() => setTvMode(!tvMode)} className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-xl font-black transition text-[10px] uppercase tracking-widest shadow-2xl ${tvMode ? 'bg-slate-800 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                        {tvMode ? <Minimize size={18}/> : <MonitorPlay size={16}/>} {tvMode ? 'Sair TV' : 'Modo TV'}
                     </button>
                 </div>
             </div>
@@ -162,73 +212,95 @@ export const Operations: React.FC = () => {
                                 key={col.id} 
                                 onDragOver={handleDragOver}
                                 onDrop={(e) => handleDrop(e, col.id)}
-                                className={`flex flex-col w-80 rounded-[2rem] border-t-8 bg-slate-100/50 dark:bg-slate-800/50 shadow-inner transition-all ${draggedProjectId ? 'border-dashed opacity-80' : ''}`} 
+                                className={`flex flex-col w-80 rounded-[2.5rem] border-t-8 bg-slate-100/50 dark:bg-slate-800/50 shadow-inner transition-all ${draggedProjectId ? 'border-dashed opacity-80 scale-[0.98]' : ''}`} 
                                 style={{borderColor: col.color}}
                             >
-                                <div className="p-4 border-b border-slate-200 dark:border-slate-700 font-black uppercase flex justify-between items-center bg-white/50 dark:bg-slate-800/50 rounded-t-[1.8rem] tracking-widest text-[10px]">
+                                <div className="p-5 border-b border-slate-200 dark:border-slate-700 font-black uppercase flex justify-between items-center bg-white/50 dark:bg-slate-800/50 rounded-t-[2.3rem] tracking-widest text-[10px]">
                                     <span className="text-slate-700 dark:text-slate-200 truncate pr-2">{col.label}</span>
                                     <Badge color="gray">{getProjectsByStatus(col.id).length}</Badge>
                                 </div>
-                                <div className="p-2 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
+                                
+                                <div className="p-3 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
                                     {getProjectsByStatus(col.id).map(proj => {
                                         const sla = getSLASignal(proj.deadline);
+                                        const items = safeArray(proj.products);
+                                        
                                         return (
                                             <div 
                                                 key={proj.id} 
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, proj.id)}
                                                 onClick={() => setSelectedProject(proj)} 
-                                                className={`p-5 bg-white dark:bg-slate-800 rounded-[1.8rem] border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-xl transition-all group relative overflow-hidden active:scale-95 active:cursor-grabbing animate-fade-in`}
+                                                className={`
+                                                    bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-xl transition-all group relative overflow-hidden active:scale-95 active:cursor-grabbing animate-fade-in
+                                                    ${displayDensity === 'compact' ? 'p-3 rounded-2xl' : 'p-5 rounded-[2rem]'}
+                                                `}
                                             >
+                                                {/* Progress Indicator */}
                                                 <div className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000" style={{width: `${proj.progress}%`}}></div>
                                                 
-                                                <div className="flex justify-between items-start mb-4">
+                                                <div className="flex justify-between items-start mb-2">
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white flex items-center gap-1 ${sla.color}`}>
-                                                                {sla.icon} {sla.label}
-                                                            </span>
-                                                        </div>
-                                                        <h3 className="font-black text-slate-900 dark:text-white text-[15px] uppercase tracking-tighter leading-tight mb-2 truncate" title={proj.title}>
+                                                        {displayDensity === 'standard' && (
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white flex items-center gap-1 ${sla.color}`}>
+                                                                    {sla.icon} {sla.label}
+                                                                </span>
+                                                                {proj.status === 'Completed' && (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-indigo-100 text-indigo-600 uppercase">
+                                                                        Persistente 30d
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <h3 className={`font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-tight truncate ${displayDensity === 'compact' ? 'text-xs' : 'text-[15px] mb-1'}`} title={proj.title}>
                                                             {proj.title}
                                                         </h3>
                                                         <div className="flex items-center gap-1.5 text-slate-400">
-                                                            <Building2 size={11} className="shrink-0"/>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest truncate">
-                                                                {proj.clientName || "NOME NÃO CARREGADO"}
+                                                            <Building2 size={displayDensity === 'compact' ? 10 : 12} className="shrink-0"/>
+                                                            <p className={`font-black uppercase tracking-widest truncate ${displayDensity === 'compact' ? 'text-[8px]' : 'text-[9px]'}`}>
+                                                                {proj.clientName || "UNIDADE NÃO IDENTIFICADA"}
                                                             </p>
                                                         </div>
                                                     </div>
                                                     <GripVertical size={14} className="text-slate-300 shrink-0 ml-2 group-hover:text-indigo-400 transition-colors"/>
                                                 </div>
                                                 
-                                                <div className="space-y-4">
-                                                    <div className="bg-indigo-50 dark:bg-slate-900/40 p-3.5 rounded-xl border border-indigo-100 dark:border-slate-700/50 shadow-inner">
-                                                        <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                                            <ShoppingBag size={12}/> Itens Contratados
-                                                        </p>
-                                                        <div className="space-y-1">
-                                                            {safeArray(proj.products).length > 0 ? (
-                                                                safeArray(proj.products).slice(0, 5).map((p, i) => (
-                                                                    <p key={i} className="text-[10px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1.5 truncate">
-                                                                        <span className="w-1 h-1 rounded-full bg-indigo-400 shrink-0"></span> {p}
-                                                                    </p>
+                                                {/* ÁREA DE ITENS CONTRATADOS - VERSÃO REDUZIDA FOCO AQUI */}
+                                                <div className={`mt-3 ${displayDensity === 'compact' ? 'space-y-1' : 'space-y-4'}`}>
+                                                    <div className={`${displayDensity === 'compact' ? 'bg-transparent p-0' : 'bg-indigo-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-indigo-100 dark:border-slate-700/50 shadow-inner'}`}>
+                                                        {displayDensity === 'standard' && (
+                                                            <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                                                <ShoppingBag size={12}/> Itens Contratados
+                                                            </p>
+                                                        )}
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {items.length > 0 ? (
+                                                                items.slice(0, displayDensity === 'compact' ? 2 : 5).map((p, i) => (
+                                                                    <span key={i} className={`font-bold uppercase rounded-md px-1.5 py-0.5 border ${displayDensity === 'compact' ? 'text-[7px] bg-slate-50 dark:bg-slate-700 text-slate-500 border-slate-200' : 'text-[9px] bg-white dark:bg-slate-800 text-indigo-600 border-indigo-100'}`}>
+                                                                        {p}
+                                                                    </span>
                                                                 ))
                                                             ) : (
-                                                                <p className="text-[10px] text-slate-400 italic">Consulte detalhes da proposta.</p>
+                                                                <p className="text-[8px] text-slate-400 italic">Ver proposta vinculada.</p>
+                                                            )}
+                                                            {displayDensity === 'compact' && items.length > 2 && (
+                                                                <span className="text-[7px] font-black text-slate-400">+{items.length - 2}</span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50 dark:border-slate-700/50">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                                                            <Clock size={11}/> {new Date(proj.deadline).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
-                                                        </span>
+                                                {displayDensity === 'standard' && (
+                                                    <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50 dark:border-slate-700/50">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                                                                <Clock size={11}/> {new Date(proj.deadline).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{proj.progress}%</span>
                                                     </div>
-                                                    <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{proj.progress}%</span>
-                                                </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -238,13 +310,13 @@ export const Operations: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 overflow-hidden">
-                    <div className="p-4 border-b bg-slate-50 dark:bg-slate-900/50 flex flex-wrap items-center gap-4">
+                <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 overflow-hidden">
+                    <div className="p-5 border-b bg-slate-50 dark:bg-slate-900/50 flex flex-wrap items-center gap-4">
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-4 top-3 text-slate-400" size={18}/>
                             <input 
                                 type="text" 
-                                placeholder="Buscar no histórico de produção..." 
+                                placeholder="Filtrar histórico..." 
                                 className="w-full pl-12 pr-4 py-3 rounded-2xl border-none bg-white dark:bg-slate-800 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                 value={historySearch}
                                 onChange={e => setHistorySearch(e.target.value)}
@@ -271,14 +343,15 @@ export const Operations: React.FC = () => {
                 </div>
             )}
 
+            {/* Modal de Detalhes do Projeto */}
             {selectedProject && (
                 <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] w-full max-w-5xl h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-scale-in border border-white/10">
+                    <div className="bg-white dark:bg-slate-800 rounded-[3rem] w-full max-w-5xl h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-scale-in border border-white/10">
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none mb-2">{selectedProject.title}</h2>
                                 <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Building2 size={12}/> {selectedProject.clientName || "Empresa não informada"}
+                                    <Building2 size={12}/> {selectedProject.clientName || "Unidade não informada"}
                                 </p>
                             </div>
                             <button onClick={() => setSelectedProject(null)} className="p-3 hover:bg-red-50 hover:text-red-500 rounded-2xl text-slate-400 transition-all"><X size={24}/></button>
@@ -287,24 +360,14 @@ export const Operations: React.FC = () => {
                         <div className="p-8 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-2 gap-10 custom-scrollbar">
                              <div className="space-y-8">
                                 <div>
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><AlignLeft size={14}/> Escopo e Descritivo Operacional</h4>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><AlignLeft size={14}/> Descritivo Técnico</h4>
                                     <div className="bg-indigo-50/30 dark:bg-indigo-900/10 p-6 rounded-3xl border border-indigo-100/50 dark:border-indigo-800/50 space-y-4 shadow-inner">
                                         <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-relaxed italic">{selectedProject.description}</p>
-                                        <div className="pt-4 border-t border-indigo-100/50 dark:border-indigo-800/50">
-                                            <p className="text-[10px] font-black text-indigo-400 uppercase mb-2">Checklist de Tarefas:</p>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {safeArray(selectedProject.scope).map((s, i) => (
-                                                    <div key={i} className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> {s}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Controle de Atividades</h4>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Tarefas de Implantação</h4>
                                     <div className="space-y-3">
                                         {safeArray(selectedProject.tasks).length > 0 ? safeArray(selectedProject.tasks).map(t => (
                                             <div 
@@ -317,15 +380,15 @@ export const Operations: React.FC = () => {
                                                 </div>
                                                 <span className={`text-xs font-bold ${t.status === 'Done' ? 'line-through text-slate-500' : 'text-slate-800 dark:text-white'}`}>{t.title}</span>
                                             </div>
-                                        )) : <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border text-center">Nenhuma etapa cadastrada.</p>}
+                                        )) : <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border text-center">Nenhum checklist definido.</p>}
                                     </div>
                                 </div>
                              </div>
 
                              <div className="flex flex-col gap-8">
-                                <div className="bg-slate-900 p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
+                                <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
                                     <div className="absolute right-[-20px] top-[-20px] text-white/5"><Activity size={150}/></div>
-                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase mb-6 tracking-widest relative z-10">Mover Estágio</h4>
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase mb-6 tracking-widest relative z-10">Alterar Estágio Manual</h4>
                                     
                                     <div className="grid grid-cols-2 gap-3 relative z-10">
                                         {columns.map(c => (
@@ -351,8 +414,8 @@ export const Operations: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><ShoppingBag size={14}/> Itens Contratados</h4>
+                                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><ShoppingBag size={14}/> Inventário do Projeto</h4>
                                     <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
                                         {safeArray(selectedProject.products).length > 0 ? (
                                             safeArray(selectedProject.products).map((p, i) => (

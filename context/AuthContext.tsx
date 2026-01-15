@@ -24,6 +24,7 @@ interface AuthContextType {
   approveOrganization: (orgId: string) => Promise<boolean>;
   updateOrganizationStatus: (orgId: string, status: 'active' | 'pending' | 'suspended') => Promise<{ success: boolean; error?: string }>;
   loading: boolean;
+  refreshUsers: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,7 +43,6 @@ const createDefaultMatrix = (): PermissionMatrix => {
   const matrix: PermissionMatrix = {};
   const roles: Role[] = ['admin', 'executive', 'sales', 'support', 'dev', 'finance', 'client', 'production'];
   const fullAccess = { view: true, create: true, edit: true, delete: true };
-  const viewOnly = { view: true, create: false, edit: false, delete: false };
   const noAccess = { view: false, create: false, edit: false, delete: false };
 
   roles.forEach(role => {
@@ -76,6 +76,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const saved = localStorage.getItem('nexus_perm_matrix_v4');
     return saved ? JSON.parse(saved) : createDefaultMatrix();
   });
+
+  const refreshUsers = useCallback(async () => {
+    const sb = getSupabase();
+    if (!sb || !currentUser?.organizationId) return;
+
+    try {
+        const { data, error } = await sb
+            .from('profiles')
+            .select('*')
+            .eq('organization_id', currentUser.organizationId);
+
+        if (!error && data) {
+            const mapped: User[] = data.map(p => ({
+                id: p.id,
+                name: p.full_name,
+                email: p.email,
+                role: (p.role as Role) || 'sales',
+                avatar: (p.full_name || 'U').charAt(0).toUpperCase(),
+                organizationId: p.organization_id,
+                active: p.active !== false
+            }));
+            setUsersList(mapped);
+        }
+    } catch (e) {
+        console.error("Error refreshing users:", e);
+    }
+  }, [currentUser?.organizationId]);
 
   const createMasterSession = useCallback((email: string) => {
     const safeEmail = (email || '').trim().toLowerCase();
@@ -134,6 +161,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     init();
   }, [fetchProfileAndOrg, createMasterSession]);
+
+  useEffect(() => {
+    if (currentUser?.organizationId) {
+        refreshUsers();
+    }
+  }, [currentUser?.organizationId, refreshUsers]);
 
   const signUp = async (email: string, password: string, fullName: string, companyName: string) => {
     const sb = getSupabase();
@@ -200,48 +233,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const createClientAccess = async (client: Client, email: string) => {
-      const sb = getSupabase();
-      if (!sb) return { success: false, error: "Sem conexão Cloud." };
+  const addTeamMember = async (name: string, email: string, role: Role) => {
+    const sb = getSupabase();
+    if (!sb || !currentUser?.organizationId) return { success: false, error: "Sem conexão Cloud." };
+    
+    const tempPassword = "SC" + Math.random().toString(36).slice(-6).toUpperCase() + "!";
+    
+    try {
+        const { data, error: authError } = await sb.auth.signUp({
+            email: email.trim().toLowerCase(),
+            password: tempPassword,
+            options: { data: { full_name: name } }
+        });
 
-      const tempPassword = "PK" + Math.random().toString(36).slice(-6).toUpperCase() + "!";
-      const cleanEmail = (email || '').toLowerCase().trim();
-      if (!cleanEmail) return { success: false, error: "E-mail inválido." };
+        if (authError) throw authError;
 
-      try {
-          const { data, error: authError } = await sb.auth.signUp({
-              email: cleanEmail,
-              password: tempPassword,
-              options: { data: { full_name: client.contactPerson || client.name } }
-          });
+        if (data.user) {
+            await sb.from('profiles').insert({
+                id: data.user.id,
+                full_name: name,
+                email: email.trim().toLowerCase(),
+                role: role,
+                organization_id: currentUser.organizationId,
+                active: true
+            });
+            await refreshUsers();
+            return { success: true, password: tempPassword };
+        }
+        return { success: false, error: "Erro ao criar credenciais." };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+  };
 
-          if (authError && !authError.message.includes('already registered')) throw authError;
-
-          const userId = data?.user?.id || null;
-          
-          const profilePayload = {
-              full_name: client.contactPerson || client.name,
-              email: cleanEmail,
-              role: 'client',
-              organization_id: client.organizationId || MASTER_ORG_ID,
-              related_client_id: client.id,
-              managed_group_name: client.groupName || client.groupId,
-              active: true
-          };
-
-          if (userId) {
-              const { error: profileError } = await sb.from('profiles').upsert({ id: userId, ...profilePayload });
-              if (profileError) throw profileError;
-          } else {
-              const { error: updateError } = await sb.from('profiles').update(profilePayload).eq('email', cleanEmail);
-              if (updateError) throw updateError;
-          }
-
-          return { success: true, password: tempPassword };
-      } catch (e: any) {
-          console.error("Portal Provision Error:", e);
-          return { success: false, error: e.message };
-      }
+  const adminDeleteUser = async (userId: string) => {
+    const sb = getSupabase();
+    if (!sb) return;
+    try {
+        const { error } = await sb.from('profiles').delete().eq('id', userId);
+        if (!error) await refreshUsers();
+    } catch (e) { console.error(e); }
   };
 
   const logout = async () => {
@@ -276,8 +307,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider value={{ 
         currentUser, currentOrganization, accessibleOrganizations: [], permissionMatrix, usersList, loading,
         login, logout, signUp, hasPermission, updatePermission, 
-        adminUpdateUser: async () => {}, adminDeleteUser: async () => {}, addTeamMember: async () => ({ success: true }),
-        createClientAccess,
+        adminUpdateUser: async () => {}, adminDeleteUser, addTeamMember,
+        createClientAccess: async () => ({ success: true }),
+        refreshUsers,
         updateUser: (data) => setCurrentUser(prev => prev ? {...prev, ...data} : null), 
         changePassword: async () => ({ success: true }),
         sendRecoveryInvite: async () => ({ success: true }), approveOrganization: async () => true,

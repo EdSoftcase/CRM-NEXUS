@@ -11,7 +11,6 @@ import {
     Globe, CheckCircle, TrendingUp, DollarSign, MessageSquare, MessageCircle, 
     QrCode, Mail, UserPlus, Eye, Search, Layers, ToggleRight, Radio, 
     Laptop, Phone, LogOut, Code, Lock, Unlock, Key, Link as LinkIcon, Check, Target, Send, Group, Edit2, ShieldCheck, MailPlus,
-    // Fix: Added Play icon to the lucide-react import list.
     Play
 } from 'lucide-react';
 import { SectionTitle, Badge, KPICard } from '../components/Widgets';
@@ -20,7 +19,7 @@ import { getSupabaseConfig, getSupabaseSchema, saveSupabaseConfig, getSupabase }
 import { checkBridgeStatus, sendBridgeEmail } from '../services/bridgeService';
 
 export const Settings: React.FC = () => {
-    const { currentUser, currentOrganization, permissionMatrix, updatePermission, usersList, addTeamMember, adminDeleteUser } = useAuth();
+    const { currentUser, currentOrganization, permissionMatrix, updatePermission, usersList, addTeamMember, adminDeleteUser, refreshUsers } = useAuth();
     const { 
         products, addProduct, removeProduct, refreshData,
         addSystemNotification, logs: contextLogs,
@@ -46,21 +45,16 @@ export const Settings: React.FC = () => {
     const [bridgeStatus, setBridgeStatus] = useState<any>(null);
     const [supabaseForm, setSupabaseForm] = useState({ url: '', key: '' });
     
-    // Modals
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [newProduct, setNewProduct] = useState<Partial<Product>>({ category: 'Service', price: 0, active: true });
     const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
-    const [newField, setNewField] = useState<Partial<CustomFieldDefinition>>({ type: 'text', module: 'leads' });
     const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
-    const [newWebhook, setNewWebhook] = useState<Partial<WebhookConfig>>({ method: 'POST', active: true, triggerEvent: 'deal_won' });
     
-    // Equipe State
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'sales' as Role });
     const [provisionedUser, setProvisionedUser] = useState<{email: string, password?: string} | null>(null);
     const [isActionExecuting, setIsActionExecuting] = useState(false);
 
-    // SQL State
     const [sqlQuery, setSqlQuery] = useState(getSupabaseSchema());
     const [sqlResult, setSqlResult] = useState<{success: boolean, message: string} | null>(null);
 
@@ -72,7 +66,10 @@ export const Settings: React.FC = () => {
         if (activeTab === 'bridge') {
             handleTestBridge();
         }
-    }, [activeTab]);
+        if (activeTab === 'team') {
+            refreshUsers();
+        }
+    }, [activeTab, refreshUsers]);
 
     const handleTestBridge = async () => {
         const status = await checkBridgeStatus();
@@ -81,7 +78,7 @@ export const Settings: React.FC = () => {
 
     const handleSaveSupabase = () => {
         saveSupabaseConfig(supabaseForm.url, supabaseForm.key);
-        addSystemNotification("Cloud", "Configurações do Supabase salvas. O sistema será reiniciado.", "success");
+        addSystemNotification("Cloud", "Configurações do Supabase salvas.", "success");
         setTimeout(() => window.location.reload(), 1500);
     };
 
@@ -94,7 +91,7 @@ export const Settings: React.FC = () => {
             if (error) throw error;
             setSqlResult({ success: true, message: "Script executado com sucesso!" });
         } catch (e: any) {
-            setSqlResult({ success: false, message: e.message || "Erro ao executar SQL. Certifique-se que a função rpc exec_sql existe." });
+            setSqlResult({ success: false, message: e.message || "Erro ao executar SQL." });
         } finally {
             setIsActionExecuting(false);
         }
@@ -108,10 +105,12 @@ export const Settings: React.FC = () => {
             const result = await addTeamMember(newUserForm.name, newUserForm.email, newUserForm.role);
             if (result.success) {
                 setProvisionedUser({ email: newUserForm.email, password: result.password });
-                addSystemNotification("Membro Provisionado", `Acesso criado para ${newUserForm.name}.`, "success");
+                addSystemNotification("Sucesso", "Credenciais geradas.", "success");
+            } else {
+                addSystemNotification("Erro", result.error || "Falha ao criar.", "alert");
             }
         } catch (e) {
-            addSystemNotification("Erro", "Falha ao criar acesso.", "alert");
+            addSystemNotification("Erro", "Falha crítica.", "alert");
         } finally { setIsActionExecuting(false); }
     };
 
@@ -231,10 +230,10 @@ export const Settings: React.FC = () => {
                             <button onClick={() => { setProvisionedUser(null); setIsUserModalOpen(true); }} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20"><UserPlus size={20}/> Provisionar Membro</button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {usersList.map(user => (
+                            {usersList.length > 0 ? usersList.map(user => (
                                 <div key={user.id} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm group hover:border-indigo-500 transition-all">
                                     <div className="flex justify-between items-start mb-6">
-                                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">{user.avatar}</div>
+                                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">{user.avatar || user.name.charAt(0)}</div>
                                         <Badge color={user.active ? 'green' : 'gray'}>{user.active ? 'ATIVO' : 'INATIVO'}</Badge>
                                     </div>
                                     <h3 className="font-black text-lg uppercase tracking-tighter truncate">{user.name}</h3>
@@ -249,7 +248,11 @@ export const Settings: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-                            ))}
+                            )) : (
+                                <div className="col-span-full py-12 text-center text-slate-400 font-bold uppercase tracking-widest bg-white dark:bg-slate-800 rounded-2xl border">
+                                    Nenhum membro listado.
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -304,14 +307,16 @@ export const Settings: React.FC = () => {
                                     <tr><th className="p-4">Item</th><th className="p-4">Categoria</th><th className="p-4 text-right">Preço Base</th><th className="p-4 text-right">Ações</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {products.map(p => (
+                                    {products.length > 0 ? products.map(p => (
                                         <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
                                             <td className="p-4 font-bold">{p.name}</td>
                                             <td className="p-4"><Badge color={p.category === 'Product' ? 'blue' : 'purple'}>{p.category}</Badge></td>
-                                            <td className="p-4 text-right font-mono">R$ {p.price.toLocaleString()}</td>
+                                            <td className="p-4 text-right font-mono">R$ {(p.price || 0).toLocaleString()}</td>
                                             <td className="p-4 text-right"><button onClick={() => removeProduct(currentUser, p.id)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16}/></button></td>
                                         </tr>
-                                    ))}
+                                    )) : (
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Nenhum produto cadastrado.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -335,7 +340,6 @@ export const Settings: React.FC = () => {
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
                             <SectionTitle title="Campos Customizados" subtitle="Personalize os formulários do sistema." />
-                            <button onClick={() => setIsFieldModalOpen(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Plus size={18}/> Novo Campo</button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {customFields.map(field => (
@@ -352,7 +356,6 @@ export const Settings: React.FC = () => {
                     <div className="animate-fade-in space-y-6">
                         <div className="flex justify-between items-center">
                             <SectionTitle title="Integrações Webhooks" subtitle="Envie dados do Nexus para outras plataformas." />
-                            <button onClick={() => setIsWebhookModalOpen(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Plus size={18}/> Novo Webhook</button>
                         </div>
                         <div className="space-y-4">
                             {webhooks.map(hook => (
@@ -377,16 +380,10 @@ export const Settings: React.FC = () => {
                                     <Laptop size={32}/>
                                     <div>
                                         <p className="font-black uppercase tracking-tighter">Status do Bridge</p>
-                                        <p className="text-xs font-bold">{bridgeStatus?.error ? 'DESCONECTADO' : 'CONECTADO - 127.0.0.1:3001'}</p>
+                                        <p className="text-xs font-bold">{bridgeStatus?.error ? 'DESCONECTADO' : 'CONECTADO'}</p>
                                     </div>
                                 </div>
                                 <button onClick={handleTestBridge} className="bg-white px-4 py-2 rounded-xl text-xs font-black shadow-sm">RECONECTAR</button>
-                            </div>
-                            <div className="space-y-6 text-sm">
-                                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border">
-                                    <h4 className="font-bold mb-2 flex items-center gap-2"><Mail size={16}/> SMTP Status</h4>
-                                    <p className="text-slate-500 text-xs">{bridgeStatus?.smtp?.configured ? `Configurado: ${bridgeStatus.smtp.user}` : 'Aguardando configuração em server/smtp-config.json'}</p>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -398,7 +395,7 @@ export const Settings: React.FC = () => {
                         <div className="bg-white dark:bg-slate-800 rounded-3xl border p-8 shadow-sm space-y-6">
                             <div className="p-6 bg-slate-900 text-white rounded-2xl border border-white/10 flex items-center gap-4">
                                 <Database size={32} className="text-indigo-400"/>
-                                <div><p className="font-bold uppercase text-xs">Supabase Real-time</p><p className="text-xs text-slate-400">As chaves abaixo controlam a persistência em nuvem.</p></div>
+                                <div><p className="font-bold uppercase text-xs">Supabase Real-time</p><p className="text-xs text-slate-400">Configurações de persistência.</p></div>
                             </div>
                             <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Project URL</label><input className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl p-4 font-mono text-xs bg-slate-50 dark:bg-slate-900" value={supabaseForm.url} onChange={e => setSupabaseForm({...supabaseForm, url: e.target.value})} /></div>
                             <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Anon / Public Key</label><input type="password" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-xl p-4 font-mono text-xs bg-slate-50 dark:bg-slate-900" value={supabaseForm.key} onChange={e => setSupabaseForm({...supabaseForm, key: e.target.value})} /></div>
@@ -432,93 +429,56 @@ export const Settings: React.FC = () => {
 
                 {activeTab === 'database' && (
                     <div className="max-w-4xl animate-fade-in space-y-6">
-                        <SectionTitle title="SQL Patch Editor" subtitle="Correções diretas no banco via RPC." />
+                        <SectionTitle title="SQL Patch Editor" subtitle="Correções diretas no banco." />
                         <div className="bg-slate-900 rounded-3xl border border-white/10 p-8 shadow-2xl">
-                             <div className="flex items-center gap-3 text-red-400 mb-6">
-                                <AlertTriangle size={20}/>
-                                <p className="text-[10px] font-black uppercase tracking-widest">Área Restrita: Alterações diretas podem corromper dados.</p>
-                             </div>
                              <textarea 
                                 className="w-full h-80 bg-slate-950 border border-white/10 rounded-2xl p-6 font-mono text-sm text-indigo-300 outline-none focus:border-indigo-500"
                                 value={sqlQuery}
                                 onChange={e => setSqlQuery(e.target.value)}
                              />
                              <div className="flex justify-between items-center mt-6">
-                                <button onClick={() => setSqlQuery(getSupabaseSchema())} className="text-slate-500 text-[10px] font-black uppercase hover:text-white">Carregar Schema v72.0</button>
-                                <button 
-                                    onClick={handleExecuteSQL}
-                                    disabled={isActionExecuting}
-                                    className="bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center gap-2"
-                                >
+                                <button onClick={handleExecuteSQL} disabled={isActionExecuting} className="bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs shadow-xl flex items-center gap-2">
                                     {isActionExecuting ? <Loader2 className="animate-spin" size={16}/> : <Play size={16}/>}
                                     Executar Query
                                 </button>
                              </div>
-                             {sqlResult && (
-                                 <div className={`mt-6 p-4 rounded-xl font-bold text-xs ${sqlResult.success ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                                     {sqlResult.message}
-                                 </div>
-                             )}
                         </div>
                     </div>
                 )}
             </main>
 
-            {/* MODAL PROVISIONAR EQUIPE */}
             {isUserModalOpen && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-scale-in border">
                         <div className="p-8 border-b flex justify-between bg-slate-50 dark:bg-slate-900/50">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl"><ShieldCheck size={24}/></div>
-                                <div>
-                                    <h3 className="font-black text-xl uppercase tracking-tighter">Provisionar Acesso</h3>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Equipe Operacional</p>
-                                </div>
-                            </div>
+                            <h3 className="font-black text-xl uppercase tracking-tighter">Provisionar Acesso</h3>
                             <button onClick={() => setIsUserModalOpen(false)}><X size={24}/></button>
                         </div>
                         
                         {!provisionedUser ? (
                             <form onSubmit={handleCreateMemberAccess} className="p-8 space-y-6">
-                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nome Completo</label><input required className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} placeholder="Ex: Lucas Suporte" /></div>
-                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">E-mail Corporativo</label><input required type="email" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} placeholder="lucas@softcase.com" /></div>
+                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nome Completo</label><input required className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} /></div>
+                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">E-mail</label><input required type="email" className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} /></div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Cargo / Perfil de Acesso</label>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Cargo</label>
                                     <select className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value as any})}>
-                                        <option value="sales">Vendedor / Comercial</option>
-                                        <option value="support">Analista de Suporte</option>
-                                        <option value="dev">Desenvolvedor / Técnico</option>
+                                        <option value="sales">Vendas</option>
+                                        <option value="support">Suporte</option>
+                                        <option value="dev">Dev</option>
                                         <option value="finance">Financeiro</option>
-                                        <option value="production">Produção / Operacional</option>
-                                        <option value="executive">Executivo (Somente Leitura)</option>
-                                        <option value="admin">Administrador Geral</option>
+                                        <option value="production">Produção</option>
+                                        <option value="admin">Admin</option>
                                     </select>
                                 </div>
-                                <button type="submit" disabled={isActionExecuting} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest shadow-xl flex items-center justify-center gap-2">
-                                    {isActionExecuting ? <Loader2 className="animate-spin" size={20}/> : <><Zap size={18}/> Gerar Credenciais</>}
+                                <button type="submit" disabled={isActionExecuting} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest shadow-xl">
+                                    {isActionExecuting ? <Loader2 className="animate-spin" size={20}/> : "Gerar Acesso"}
                                 </button>
                             </form>
                         ) : (
                             <div className="p-8 space-y-8 animate-fade-in">
                                 <div className="bg-emerald-50 dark:bg-emerald-950 p-6 rounded-[2rem] border border-emerald-200">
-                                    <p className="text-[10px] font-black uppercase text-emerald-600 mb-4">Acesso Criado com Sucesso</p>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <p className="text-[9px] font-black text-slate-400 uppercase">Login (E-mail)</p>
-                                            <div className="flex items-center justify-between">
-                                                <p className="font-bold text-slate-800 dark:text-white">{provisionedUser.email}</p>
-                                                <button onClick={() => { navigator.clipboard.writeText(provisionedUser.email); alert("E-mail copiado!"); }} className="text-indigo-600"><Copy size={16}/></button>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <p className="text-[9px] font-black text-slate-400 uppercase">Senha Temporária</p>
-                                            <div className="flex items-center justify-between">
-                                                <p className="font-mono font-black text-xl text-indigo-600 tracking-widest">{provisionedUser.password}</p>
-                                                <button onClick={() => { navigator.clipboard.writeText(provisionedUser.password || ''); alert("Senha copiada!"); }} className="text-indigo-600"><Copy size={16}/></button>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <p className="font-bold text-slate-800 dark:text-white mb-2">E-mail: {provisionedUser.email}</p>
+                                    <p className="font-mono font-black text-xl text-indigo-600">Senha: {provisionedUser.password}</p>
                                 </div>
                                 <button onClick={() => setIsUserModalOpen(false)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Concluído</button>
                             </div>
@@ -527,7 +487,6 @@ export const Settings: React.FC = () => {
                 </div>
             )}
 
-            {/* MODAL PRODUTOS */}
             {isProductModalOpen && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border">
@@ -539,9 +498,9 @@ export const Settings: React.FC = () => {
                             <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nome</label><input className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newProduct.name || ''} onChange={e => setNewProduct({...newProduct, name: e.target.value})} /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Categoria</label><select className="w-full border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}><option value="Product">Equipamento</option><option value="Service">Serviço</option></select></div>
-                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Preço Base</label><input type="number" className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} /></div>
+                                <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Preço</label><input type="number" className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-4 font-bold bg-transparent outline-none focus:border-indigo-600" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} /></div>
                             </div>
-                            <button onClick={() => { addProduct(currentUser, { ...newProduct, id: `P-${Date.now()}` } as Product); setIsProductModalOpen(false); }} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest shadow-xl">Salvar no Catálogo</button>
+                            <button onClick={() => { addProduct(currentUser, { ...newProduct, id: `P-${Date.now()}` } as Product); setIsProductModalOpen(false); }} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest shadow-xl">Salvar</button>
                         </div>
                     </div>
                 </div>
