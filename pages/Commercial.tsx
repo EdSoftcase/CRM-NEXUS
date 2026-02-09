@@ -1,16 +1,18 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Lead, LeadStatus } from '../types';
+import { extractLeadFromImage } from '../services/geminiService';
 import { 
     Users, Plus, Search, MessageCircle, Mail, 
     X, User, Sparkles, Phone, ChevronRight, 
-    Target, Save, SortAsc, Calendar, AlignLeft
+    Target, Save, SortAsc, Calendar, AlignLeft, Loader2, Camera, Upload, Send
 } from 'lucide-react';
 import { Badge, SectionTitle } from '../components/Widgets';
 import { SendEmailModal } from '../components/SendEmailModal';
+import { sendBridgeWhatsApp } from '../services/bridgeService';
 
 type SortOption = 'date_desc' | 'date_asc' | 'name_asc';
 
@@ -18,11 +20,14 @@ export const Commercial: React.FC = () => {
     const { leads = [], updateLead, updateLeadStatus, addLead, addActivity, addSystemNotification, activities, logs } = useData();
     const { currentUser } = useAuth();
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState<SortOption>('date_desc');
     const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isVisionLoading, setIsVisionLoading] = useState(false);
     
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [whatsAppMessage, setWhatsAppMessage] = useState('');
@@ -32,14 +37,12 @@ export const Commercial: React.FC = () => {
     const filteredLeads = useMemo(() => {
         const safeLeads = Array.isArray(leads) ? [...leads] : [];
         
-        // 1. Filtragem por busca
         let result = safeLeads.filter(l => {
             if (!l) return false;
             return (l.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                    (l.company || '').toLowerCase().includes(searchTerm.toLowerCase());
         });
 
-        // 2. Ordenação
         result.sort((a, b) => {
             if (sortBy === 'date_desc') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             if (sortBy === 'date_asc') return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -73,13 +76,80 @@ export const Commercial: React.FC = () => {
         }
     };
 
+    const handleSaveLead = async () => {
+        if (!leadForm.name || !leadForm.company) {
+            addSystemNotification("Campos Vazios", "Nome e Empresa são obrigatórios.", "warning");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            if (selectedLead && !isNewLeadOpen) {
+                const updatedLead = { ...selectedLead, ...leadForm } as Lead;
+                await updateLead(currentUser, updatedLead);
+                addSystemNotification("Sucesso", "Dados do lead atualizados.", "success");
+            } else {
+                const newLead = {
+                    id: `L-${Date.now()}`,
+                    ...leadForm,
+                    status: LeadStatus.NEW,
+                    source: leadForm.source || 'Manual',
+                    createdAt: new Date().toISOString(),
+                    lastContact: new Date().toISOString(),
+                    organizationId: currentUser?.organizationId || 'org-1'
+                } as Lead;
+                await addLead(currentUser, newLead);
+                addSystemNotification("Sucesso", "Novo lead cadastrado.", "success");
+            }
+            setIsNewLeadOpen(false);
+            setSelectedLead(null);
+        } catch (error: any) {
+            addSystemNotification("Erro ao Salvar", "Não foi possível sincronizar com o banco.", "alert");
+            console.error(error);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleVisionImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsVisionLoading(true);
+        addSystemNotification("Lead Vision", "A IA está analisando a imagem...", "info");
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            const base64 = reader.result as string;
+            try {
+                const data = await extractLeadFromImage(base64);
+                setLeadForm({
+                    ...leadForm,
+                    ...data,
+                    source: 'Lead Vision IA'
+                });
+                setIsNewLeadOpen(true);
+                addSystemNotification("Sucesso", "Dados extraídos com sucesso!", "success");
+            } catch (err) {
+                addSystemNotification("Erro Vision", "Não foi possível ler a imagem.", "alert");
+            } finally {
+                setIsVisionLoading(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            }
+        };
+    };
+
+    // Fix: Added handleSendWhatsApp function to resolve "Cannot find name" error.
     const handleSendWhatsApp = async () => {
         if (!selectedLead || !whatsAppMessage) return;
         setSendingWhatsApp(true);
         try {
-            const url = `https://wa.me/${(selectedLead.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
-            window.open(url, '_blank');
-            setShowWhatsAppModal(false);
+            // Tentativa via Nexus Bridge
+            await sendBridgeWhatsApp(selectedLead.phone || '', whatsAppMessage);
+            addSystemNotification('WhatsApp Enviado', `Mensagem enviada para ${selectedLead.name} via Bridge.`, 'success');
+            
+            // Log activity
             addActivity(currentUser, {
                 id: `ACT-WA-${Date.now()}`,
                 title: 'WhatsApp Enviado',
@@ -90,34 +160,15 @@ export const Commercial: React.FC = () => {
                 assignee: currentUser?.id || 'system',
                 description: whatsAppMessage
             });
+            setShowWhatsAppModal(false);
         } catch (error) {
-            console.error(error);
+            console.warn("Bridge offline, falling back to wa.me link", error);
+            const url = `https://wa.me/${selectedLead.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(whatsAppMessage)}`;
+            window.open(url, '_blank');
+            setShowWhatsAppModal(false);
         } finally {
             setSendingWhatsApp(false);
         }
-    };
-
-    const handleSaveLead = async () => {
-        if (!leadForm.name || !leadForm.company) return;
-
-        if (selectedLead && !isNewLeadOpen) {
-            await updateLead(currentUser, { ...selectedLead, ...leadForm } as Lead);
-            addSystemNotification("Sucesso", "Dados do lead atualizados.", "success");
-        } else {
-            const newLead = {
-                id: `L-${Date.now()}`,
-                ...leadForm,
-                status: LeadStatus.NEW,
-                source: 'Manual',
-                createdAt: new Date().toISOString(),
-                lastContact: new Date().toISOString(),
-                organizationId: currentUser?.organizationId || 'org-1'
-            } as Lead;
-            await addLead(currentUser, newLead);
-            addSystemNotification("Sucesso", "Novo lead cadastrado.", "success");
-        }
-        setIsNewLeadOpen(false);
-        setSelectedLead(null);
     };
 
     const leadTimeline = useMemo(() => {
@@ -151,6 +202,23 @@ export const Commercial: React.FC = () => {
                     <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Gestão de {filteredLeads.length} oportunidades ativas.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*" 
+                        onChange={handleVisionImport} 
+                    />
+                    
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isVisionLoading}
+                        className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-6 py-2.5 rounded-xl font-black uppercase text-xs tracking-widest border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {isVisionLoading ? <Loader2 size={16} className="animate-spin"/> : <Camera size={16}/>}
+                        {isVisionLoading ? 'Analisando...' : 'Lead Vision'}
+                    </button>
+
                     <div className="flex bg-white dark:bg-slate-800 rounded-xl border p-1 shadow-sm">
                         <button 
                             onClick={() => setSortBy('date_desc')}
@@ -243,7 +311,6 @@ export const Commercial: React.FC = () => {
                 </div>
             </div>
 
-            {/* --- MODAL LEAD 360 (VISTA COMPLETA) --- */}
             {selectedLead && !isNewLeadOpen && (
                 <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-sm z-[10000] flex justify-end animate-fade-in" onClick={() => setSelectedLead(null)}>
                     <div className="bg-white dark:bg-slate-900 w-full max-w-4xl h-full shadow-2xl animate-slide-in-right flex flex-col border-l border-slate-200 dark:border-slate-800" onClick={e => e.stopPropagation()}>
@@ -300,15 +367,27 @@ export const Commercial: React.FC = () => {
                                         <SectionTitle title="Dados Detalhados" />
                                         <div className="space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
-                                                <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Contato</label><input className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} /></div>
-                                                <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Valor (R$)</label><input type="number" className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold" value={leadForm.value || 0} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value)})} /></div>
+                                                <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Contato</label><input className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" value={leadForm.name || ''} onChange={e => setLeadForm({...leadForm, name: e.target.value})} /></div>
+                                                <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Valor (R$)</label><input type="number" className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" value={leadForm.value || 0} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value)})} /></div>
                                             </div>
-                                            <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">E-mail</label><input className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} /></div>
+                                            <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">E-mail</label><input className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" value={leadForm.email || ''} onChange={e => setLeadForm({...leadForm, email: e.target.value})} /></div>
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2"><AlignLeft size={12}/> Breve Descritivo (Exibe no Card)</label>
-                                                <textarea className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold h-24" value={leadForm.description || ''} onChange={e => setLeadForm({...leadForm, description: e.target.value})} placeholder="Contexto rápido da oportunidade..." />
+                                                <textarea 
+                                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm font-bold h-24 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                                    value={leadForm.description || ''} 
+                                                    onChange={e => setLeadForm({...leadForm, description: e.target.value})} 
+                                                    placeholder="Contexto rápido da oportunidade..." 
+                                                />
                                             </div>
-                                            <button onClick={handleSaveLead} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-600 transition shadow-xl"><Save size={18}/> Salvar Alterações</button>
+                                            <button 
+                                                onClick={handleSaveLead} 
+                                                disabled={isSaving}
+                                                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-600 transition shadow-xl disabled:opacity-50"
+                                            >
+                                                {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
+                                                {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -350,13 +429,19 @@ export const Commercial: React.FC = () => {
                                 <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Valor (R$)</label><input type="number" className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 font-bold bg-transparent outline-none focus:border-blue-500" value={leadForm.value || ''} onChange={e => setLeadForm({...leadForm, value: parseFloat(e.target.value) || 0})} /></div>
                             </div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Breve Descritivo</label><textarea className="w-full border-2 border-slate-100 dark:border-slate-700 rounded-xl p-3 font-bold bg-transparent outline-none focus:border-blue-500 h-20" value={leadForm.description || ''} onChange={e => setLeadForm({...leadForm, description: e.target.value})} placeholder="Contexto rápido..." /></div>
-                            <button onClick={handleSaveLead} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest hover:bg-blue-700 shadow-xl transition-all mt-4">Criar Oportunidade</button>
+                            <button 
+                                onClick={handleSaveLead} 
+                                disabled={isSaving}
+                                className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest hover:bg-blue-700 shadow-xl transition-all mt-4 disabled:opacity-50"
+                            >
+                                {isSaving ? <Loader2 className="animate-spin mr-2" size={20}/> : null}
+                                {isSaving ? 'Criando...' : 'Criar Oportunidade'}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* WhatsApp Modal */}
             {showWhatsAppModal && selectedLead && createPortal(
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[10001] p-4">
                     <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">

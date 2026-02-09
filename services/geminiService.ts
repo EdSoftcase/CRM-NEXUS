@@ -11,6 +11,43 @@ const getAI = () => {
     return new GoogleGenAI({ apiKey });
 };
 
+export const extractLeadFromImage = async (base64Image: string): Promise<Partial<Lead>> => {
+    try {
+        const ai = getAI();
+        const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: [
+                {
+                    inlineData: {
+                        mimeType: "image/jpeg",
+                        data: base64Image.split(',')[1] || base64Image
+                    }
+                },
+                {
+                    text: "Extraia os dados de contato desta imagem para um CRM. Procure por: Nome da Empresa, Nome do Responsável (Pessoa), Telefone/WhatsApp e E-mail. Retorne estritamente em JSON."
+                }
+            ],
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        company: { type: Type.STRING },
+                        name: { type: Type.STRING },
+                        phone: { type: Type.STRING },
+                        email: { type: Type.STRING },
+                        description: { type: Type.STRING }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (error) {
+        console.error("Lead Vision Error:", error);
+        throw error;
+    }
+};
+
 export const analyzeCompetitor = async (name: string, website: string, sector: string): Promise<Partial<Competitor>> => {
     try {
         const ai = getAI();
@@ -58,7 +95,7 @@ export const analyzeCompetitor = async (name: string, website: string, sector: s
         return parsed;
     } catch (error) { 
         console.error("Gemini Analysis Error:", error);
-        throw error; // Repassa para que a UI capture a falha
+        throw error;
     }
 };
 

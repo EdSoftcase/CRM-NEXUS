@@ -266,6 +266,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const createClientAccess = async (client: Client, email: string) => {
+    const sb = getSupabase();
+    const tempPassword = "SC" + Math.random().toString(36).slice(-6).toUpperCase() + "!";
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!sb || !currentUser?.organizationId) {
+        // Fallback para modo offline/demonstração
+        return { success: true, password: tempPassword };
+    }
+
+    try {
+        // 1. Criar o usuário no Auth do Supabase
+        const { data: authData, error: authError } = await sb.auth.signUp({
+            email: cleanEmail,
+            password: tempPassword,
+            options: { data: { full_name: client.name } }
+        });
+
+        if (authError && authError.message.includes('already registered')) {
+            // Se já existir, apenas tentamos atualizar o perfil para garantir o vínculo
+            const { data: existingUser } = await sb.from('profiles').select('id').eq('email', cleanEmail).maybeSingle();
+            if (existingUser) {
+                await sb.from('profiles').update({
+                    role: 'client',
+                    related_client_id: client.id,
+                    managed_group_name: client.groupName || null,
+                    active: true
+                }).eq('id', existingUser.id);
+                return { success: true, password: "(Usuário já existente - Senha mantida)" };
+            }
+            throw authError;
+        }
+
+        if (authData.user) {
+            // 2. Criar o perfil vinculado
+            await sb.from('profiles').insert({
+                id: authData.user.id,
+                full_name: client.name,
+                email: cleanEmail,
+                role: 'client',
+                organization_id: currentUser.organizationId,
+                related_client_id: client.id,
+                managed_group_name: client.groupName || null,
+                active: true
+            });
+            return { success: true, password: tempPassword };
+        }
+        return { success: false, error: "Falha ao provisionar Auth." };
+    } catch (e: any) {
+        console.error("Provisioning error:", e);
+        return { success: false, error: e.message };
+    }
+  };
+
   const adminDeleteUser = async (userId: string) => {
     const sb = getSupabase();
     if (!sb) return;
@@ -308,7 +362,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         currentUser, currentOrganization, accessibleOrganizations: [], permissionMatrix, usersList, loading,
         login, logout, signUp, hasPermission, updatePermission, 
         adminUpdateUser: async () => {}, adminDeleteUser, addTeamMember,
-        createClientAccess: async () => ({ success: true }),
+        createClientAccess,
         refreshUsers,
         updateUser: (data) => setCurrentUser(prev => prev ? {...prev, ...data} : null), 
         changePassword: async () => ({ success: true }),

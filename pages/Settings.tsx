@@ -233,10 +233,10 @@ export const Settings: React.FC = () => {
                             {usersList.length > 0 ? usersList.map(user => (
                                 <div key={user.id} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm group hover:border-indigo-500 transition-all">
                                     <div className="flex justify-between items-start mb-6">
-                                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">{user.avatar || user.name.charAt(0)}</div>
+                                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">{user.avatar || (user.name ? user.name.charAt(0) : 'U')}</div>
                                         <Badge color={user.active ? 'green' : 'gray'}>{user.active ? 'ATIVO' : 'INATIVO'}</Badge>
                                     </div>
-                                    <h3 className="font-black text-lg uppercase tracking-tighter truncate">{user.name}</h3>
+                                    <h3 className="font-black text-lg uppercase tracking-tighter truncate">{user.name || 'Usuário sem nome'}</h3>
                                     <p className="text-xs text-slate-500 mb-6 truncate">{user.email}</p>
                                     <div className="pt-6 border-t border-slate-50 flex justify-between items-center">
                                         <div className="flex flex-col">
@@ -249,8 +249,9 @@ export const Settings: React.FC = () => {
                                     </div>
                                 </div>
                             )) : (
-                                <div className="col-span-full py-12 text-center text-slate-400 font-bold uppercase tracking-widest bg-white dark:bg-slate-800 rounded-2xl border">
-                                    Nenhum membro listado.
+                                <div className="col-span-full py-12 text-center text-slate-400 font-bold uppercase tracking-widest bg-white dark:bg-slate-800 rounded-2xl border flex flex-col items-center gap-4">
+                                    <Loader2 className="animate-spin text-indigo-600" size={32}/>
+                                    Carregando membros da equipe...
                                 </div>
                             )}
                         </div>
@@ -307,15 +308,15 @@ export const Settings: React.FC = () => {
                                     <tr><th className="p-4">Item</th><th className="p-4">Categoria</th><th className="p-4 text-right">Preço Base</th><th className="p-4 text-right">Ações</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {products.length > 0 ? products.map(p => (
+                                    {products && products.length > 0 ? products.map(p => (
                                         <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
-                                            <td className="p-4 font-bold">{p.name}</td>
-                                            <td className="p-4"><Badge color={p.category === 'Product' ? 'blue' : 'purple'}>{p.category}</Badge></td>
-                                            <td className="p-4 text-right font-mono">R$ {(p.price || 0).toLocaleString()}</td>
+                                            <td className="p-4 font-bold">{p.name || 'Item sem nome'}</td>
+                                            <td className="p-4"><Badge color={p.category === 'Product' ? 'blue' : 'purple'}>{p.category || 'Service'}</Badge></td>
+                                            <td className="p-4 text-right font-mono">R$ {(Number(p.price) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                             <td className="p-4 text-right"><button onClick={() => removeProduct(currentUser, p.id)} className="text-slate-300 hover:text-red-500 transition"><Trash2 size={16}/></button></td>
                                         </tr>
                                     )) : (
-                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Nenhum produto cadastrado.</td></tr>
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Nenhum produto cadastrado no catálogo.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -449,7 +450,7 @@ export const Settings: React.FC = () => {
 
             {isUserModalOpen && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-scale-in border">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-scale-in border border-slate-200 dark:border-slate-700">
                         <div className="p-8 border-b flex justify-between bg-slate-50 dark:bg-slate-900/50">
                             <h3 className="font-black text-xl uppercase tracking-tighter">Provisionar Acesso</h3>
                             <button onClick={() => setIsUserModalOpen(false)}><X size={24}/></button>
@@ -480,7 +481,7 @@ export const Settings: React.FC = () => {
                                     <p className="font-bold text-slate-800 dark:text-white mb-2">E-mail: {provisionedUser.email}</p>
                                     <p className="font-mono font-black text-xl text-indigo-600">Senha: {provisionedUser.password}</p>
                                 </div>
-                                <button onClick={() => setIsUserModalOpen(false)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Concluído</button>
+                                <button onClick={() => { setIsUserModalOpen(false); setProvisionedUser(null); }} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Concluído</button>
                             </div>
                         )}
                     </div>
@@ -489,7 +490,7 @@ export const Settings: React.FC = () => {
 
             {isProductModalOpen && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700">
                         <div className="p-8 border-b flex justify-between bg-slate-50 dark:bg-slate-900/50">
                             <h3 className="font-black text-xl uppercase tracking-tighter">Catálogo de Itens</h3>
                             <button onClick={() => setIsProductModalOpen(false)}><X size={24}/></button>

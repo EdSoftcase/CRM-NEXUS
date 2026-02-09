@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, LifeBuoy, Code, DollarSign, PieChart, Settings, 
   LogOut, Briefcase, X, HeartPulse, FileText, ShieldAlert, Calendar as CalendarIcon, 
   Megaphone, Workflow, Map, Trello, Moon, Sun, Target, Sword, Wrench, 
-  MessageSquare, Phone, ChevronLeft, ChevronRight, Zap, RefreshCw
+  MessageSquare, Phone, ChevronLeft, ChevronRight, Zap, RefreshCw, ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -51,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       {
         label: 'Operações & Entrega',
         items: [
+          { id: 'visits', label: 'Vistorias Técnicas', icon: ClipboardCheck },
           { id: 'operations', label: 'Produção', icon: Wrench },
           { id: 'projects', label: 'Projetos', icon: Trello },
           { id: 'calendar', label: 'Agenda', icon: CalendarIcon },
@@ -83,7 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
       }
     ];
 
-    // Filtragem baseada em hasPermission
     return groups.map(group => ({
         ...group,
         items: group.items.filter(item => hasPermission(item.id, 'view'))
@@ -223,7 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeModule,
                 )}
                 {!isCollapsed && <span>{isSyncing ? 'SYNC' : 'CLOUD'}</span>}
             </div>
-            {!isCollapsed && <span>V46.6</span>}
+            {!isCollapsed && <span>V46.7</span>}
         </div>
       </div>
 

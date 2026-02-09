@@ -5,7 +5,7 @@ import {
     Workflow, AuditLog, SystemNotification, ToastMessage, Competitor, MarketTrend, 
     ProspectingHistoryItem, CustomFieldDefinition, WebhookConfig, InboxConversation,
     User, LeadStatus, InvoiceStatus, TicketStatus, Proposal, Organization,
-    Activity, TriggerType
+    Activity, TriggerType, TechnicalVisit, VisitStatus
 } from '../types';
 import { getSupabase } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
@@ -33,6 +33,7 @@ interface DataContextType {
   notifications: SystemNotification[];
   toasts: ToastMessage[];
   inboxConversations: InboxConversation[];
+  technicalVisits: TechnicalVisit[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   theme: 'light' | 'dark';
@@ -76,6 +77,8 @@ interface DataContextType {
   updateProposal: (user: User | null, proposal: Proposal) => Promise<void>;
   removeProposal: (user: User | null, id: string, reason: string) => void;
   addInboxInteraction: (contactName: string, type: string, text: string, contactIdentifier: string) => void;
+  addTechnicalVisit: (user: User | null, visit: TechnicalVisit) => Promise<void>;
+  updateTechnicalVisit: (user: User | null, visit: TechnicalVisit) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -96,6 +99,8 @@ const mapToApp = (data: any[] | null | undefined): any[] => {
         if (newItem.created_date) newItem.createdDate = safeDate(newItem.created_date);
         if (newItem.valid_until) newItem.validUntil = safeDate(newItem.valid_until);
         if (newItem.due_date) newItem.dueDate = safeDate(newItem.due_date);
+        if (newItem.last_contact) newItem.lastContact = safeDate(newItem.last_contact);
+        if (newItem.scheduled_date) newItem.scheduledDate = safeDate(newItem.scheduled_date);
         if (newItem.group_name) newItem.groupName = newItem.group_name;
         if (newItem.group_id) newItem.groupId = newItem.group_id;
         if (newItem.company_name) newItem.companyName = newItem.company_name;
@@ -107,6 +112,12 @@ const mapToApp = (data: any[] | null | undefined): any[] => {
         if (newItem.monthly_cost) newItem.monthlyCost = newItem.monthly_cost;
         if (newItem.signed_at) newItem.signedAt = newItem.signed_at;
         if (newItem.signed_by_ip) newItem.signedByIp = newItem.signed_by_ip;
+        if (newItem.target_id) newItem.targetId = newItem.target_id;
+        if (newItem.target_name) newItem.targetName = newItem.target_name;
+        if (newItem.target_type) newItem.targetType = newItem.target_type;
+        if (newItem.technician_name) newItem.technicianName = newItem.technician_name;
+        if (newItem.infrastructure_notes) newItem.infrastructureNotes = newItem.infrastructure_notes;
+        if (newItem.suggested_items) newItem.suggestedItems = newItem.suggested_items;
 
         const parseJson = (val: any) => {
             if (!val) return [];
@@ -120,6 +131,7 @@ const mapToApp = (data: any[] | null | undefined): any[] => {
         newItem.scope = parseJson(newItem.scope);
         newItem.tasks = parseJson(newItem.tasks);
         newItem.products = parseJson(newItem.products);
+        newItem.suggestedItems = parseJson(newItem.suggestedItems);
         return newItem;
     }).filter(Boolean);
 };
@@ -130,6 +142,21 @@ const mapToDb = (data: any, table: string) => {
         id: p.id,
         organization_id: p.organizationId || MASTER_ORG_ID
     };
+
+    if (table === 'leads') {
+        payload.name = p.name || '';
+        payload.company = p.company || '';
+        payload.email = p.email || '';
+        payload.phone = p.phone || '';
+        payload.value = Number(p.value) || 0;
+        payload.status = p.status || 'Novo';
+        payload.source = p.source || 'Manual';
+        payload.description = p.description || '';
+        payload.last_contact = p.lastContact || new Date().toISOString();
+        payload.created_at = p.createdAt || new Date().toISOString();
+        payload.address = p.address || '';
+        payload.cep = p.cep || '';
+    }
 
     if (table === 'clients') {
         payload.name = p.name || '';
@@ -189,6 +216,18 @@ const mapToDb = (data: any, table: string) => {
         if (p.unit) payload.unit = p.unit;
     }
 
+    if (table === 'technical_visits') {
+        payload.target_id = p.targetId;
+        payload.target_name = p.targetName;
+        payload.target_type = p.targetType;
+        payload.scheduled_date = p.scheduledDate;
+        payload.technician_name = p.technicianName;
+        payload.status = p.status;
+        payload.report = p.report;
+        payload.infrastructure_notes = p.infrastructureNotes;
+        payload.suggested_items = JSON.stringify(p.suggestedItems || []);
+    }
+
     return payload;
 };
 
@@ -205,6 +244,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
     const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
     const [proposals, setProposals] = useState<Proposal[]>([]);
+    const [technicalVisits, setTechnicalVisits] = useState<TechnicalVisit[]>([]);
     const [notifications, setNotifications] = useState<SystemNotification[]>([]);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
     const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -215,7 +255,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [disqualifiedProspects, setDisqualifiedProspects] = useState<string[]>([]);
     const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>([]);
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
-    const [marketTrends, setMarketTrends] = useState<MarketTrend[]>([]);
+    const [marketTrends, setMarketTrendsState] = useState<MarketTrend[]>([]);
     
     const processedProposalsRef = useRef<Set<string>>(new Set());
 
@@ -262,6 +302,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
+    const addTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
+        const sb = getSupabase();
+        if (sb) {
+            const payload = mapToDb(visit, 'technical_visits');
+            const { error } = await sb.from('technical_visits').insert(payload);
+            if (error) throw error;
+            setTechnicalVisits(prev => [...prev, visit]);
+        }
+    };
+
+    const updateTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
+        const sb = getSupabase();
+        if (sb) {
+            const payload = mapToDb(visit, 'technical_visits');
+            const { error } = await sb.from('technical_visits').upsert(payload);
+            if (error) throw error;
+            setTechnicalVisits(prev => prev.map(v => v.id === visit.id ? visit : v));
+        }
+    };
+
     const refreshData = useCallback(async () => {
         const sb = getSupabase();
         if (!sb || !currentUser) return;
@@ -286,6 +346,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             let proposalQuery = sb.from('proposals').select('*').eq('organization_id', userOrgId);
             let ticketQuery = sb.from('tickets').select('*').eq('organization_id', userOrgId);
             let projectQuery = sb.from('projects').select('*').eq('organization_id', userOrgId);
+            let visitQuery = sb.from('technical_visits').select('*').eq('organization_id', userOrgId);
 
             if (isClient && myClientIds.length > 0) {
                 const idFilter = `client_id.in.(${myClientIds.map(id => `"${id}"`).join(',')})`;
@@ -294,6 +355,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 proposalQuery = proposalQuery.or(`${idFilter}${groupFilter}`);
                 const nameFilter = `customer.in.(${myClients.map(c => `"${c.name}"`).join(',')})`;
                 ticketQuery = ticketQuery.or(nameFilter);
+                visitQuery = visitQuery.eq('target_id', relatedClientId || 'none');
             }
 
             const results = await Promise.allSettled([
@@ -307,7 +369,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 sb.from('audit_logs').select('*').eq('organization_id', userOrgId).limit(50),
                 sb.from('prospecting_history').select('*').eq('organization_id', userOrgId),
                 sb.from('competitors').select('*').eq('organization_id', userOrgId),
-                sb.from('market_trends').select('*').eq('organization_id', userOrgId)
+                sb.from('market_trends').select('*').eq('organization_id', userOrgId),
+                visitQuery
             ]);
 
             const getData = (index: number) => {
@@ -326,62 +389,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const fetchedProjects = getData(4);
             const fetchedProducts = getData(5);
             const fetchedProposals = getData(6);
-
-            // --- RECONCILIAÇÃO AUTOMÁTICA COM REGRA DE SLA (45 DIAS APÓS ASSINATURA) ---
-            if (currentUser.role !== 'client') {
-                const acceptedProposals = fetchedProposals.filter(p => p.status === 'Accepted');
-                
-                const existingProjectRefIds = new Set(fetchedProjects.map(p => {
-                    const match = p.description?.match(/Referência: (PC-\d+)/);
-                    if (match) return match[1];
-                    const idMatch = p.id?.match(/PROJ-(PC-\d+)/);
-                    if (idMatch) return idMatch[1];
-                    return null;
-                }).filter(Boolean));
-
-                for (const prop of acceptedProposals) {
-                    if (!existingProjectRefIds.has(prop.id) && !processedProposalsRef.current.has(prop.id)) {
-                        processedProposalsRef.current.add(prop.id);
-
-                        const scopeItems = prop.scope && prop.scope.length > 0 
-                            ? prop.scope 
-                            : ["Instalação de Equipamentos", "Configuração de Software LPR", "Treinamento Operacional"];
-
-                        // SLA: 45 dias cravados a partir de signedAt
-                        const signatureDate = prop.signedAt ? new Date(prop.signedAt) : new Date();
-                        const deadlineDate = new Date(signatureDate);
-                        deadlineDate.setDate(signatureDate.getDate() + 45);
-
-                        const newProj: Project = {
-                            id: `PROJ-${prop.id}`, 
-                            title: `${prop.title} (Ref: ${prop.id})`,
-                            clientName: prop.companyName,
-                            status: 'Kitting', 
-                            progress: 20,      
-                            startDate: signatureDate.toISOString(), 
-                            deadline: deadlineDate.toISOString(),    
-                            manager: 'Automático (Provisionamento SLA)',
-                            description: `Projeto gerado automaticamente. Referência Comercial: ${prop.id}. Aceite Digital em: ${signatureDate.toLocaleDateString()}. Prazo de implantação: 45 dias.`,
-                            products: prop.items?.map(item => item.name) || [],
-                            tasks: scopeItems.map((s, idx) => ({ 
-                                id: `t-${idx}-${Date.now()}`, 
-                                title: s, 
-                                status: 'Pending' 
-                            })),
-                            organizationId: prop.organizationId || userOrgId,
-                            archived: false,
-                            unit: prop.unit
-                        };
-                        
-                        const payload = mapToDb(newProj, 'projects');
-                        const { error: insertError } = await sb.from('projects').insert(payload);
-                        
-                        if (!insertError) {
-                            fetchedProjects.push(newProj);
-                        }
-                    }
-                }
-            }
+            const fetchedVisits = getData(11);
 
             setLeads(fetchedLeads);
             setInvoices(fetchedInvoices);
@@ -390,10 +398,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setProjects(fetchedProjects);
             setProducts(fetchedProducts);
             setProposals(fetchedProposals);
+            setTechnicalVisits(fetchedVisits);
             setLogs(getData(7));
             setProspectingHistory(getData(8));
             setCompetitors(getData(9));
-            setMarketTrends(getData(10));
+            setMarketTrendsState(getData(10));
             setClients(myClients);
             setLastSyncTime(new Date());
         } catch (e: any) { 
@@ -477,9 +486,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateLeadStatus = async (user: User | null, leadId: string, status: LeadStatus) => {
         const sb = getSupabase();
         if (sb) {
-            const { error } = await sb.from('leads').update({ status }).eq('id', leadId);
+            const { error } = await sb.from('leads').update({ status, last_contact: new Date().toISOString() }).eq('id', leadId);
             if (error) throw error;
-            setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status } : l));
+            setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status, lastContact: new Date().toISOString() } : l));
         }
     };
 
@@ -538,10 +547,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
+    const toggleTheme = () => {
+        const newTheme = theme === 'light' ? 'dark' : 'light';
+        setTheme(newTheme);
+        localStorage.setItem('soft_theme', newTheme);
+        document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    };
+
     const addCompetitor = async (user: User | null, competitor: Competitor) => {
         const sb = getSupabase();
         if (sb) {
-            const { error } = await sb.from('competitors').insert(competitor);
+            const payload = mapToDb(competitor, 'competitors');
+            const { error } = await sb.from('competitors').insert(payload);
             if (error) throw error;
             setCompetitors(prev => [...prev, competitor]);
         }
@@ -550,7 +567,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateCompetitor = async (user: User | null, competitor: Competitor) => {
         const sb = getSupabase();
         if (sb) {
-            const { error } = await sb.from('competitors').upsert(competitor);
+            const payload = mapToDb(competitor, 'competitors');
+            const { error } = await sb.from('competitors').upsert(payload);
             if (error) throw error;
             setCompetitors(prev => prev.map(c => c.id === competitor.id ? competitor : c));
         }
@@ -565,11 +583,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const toggleTheme = () => {
-        const newTheme = theme === 'light' ? 'dark' : 'light';
-        setTheme(newTheme);
-        localStorage.setItem('soft_theme', newTheme);
-        document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    const setMarketTrends = (trends: MarketTrend[]) => {
+        setMarketTrendsState(trends);
+    };
+
+    const addProspectingHistory = async (item: ProspectingHistoryItem) => {
+        const sb = getSupabase();
+        if (sb) {
+            const { error } = await sb.from('prospecting_history').insert({
+                ...item,
+                organization_id: item.organizationId
+            });
+            if (error) throw error;
+            setProspectingHistory(prev => [item, ...prev]);
+        }
     };
 
     return (
@@ -577,6 +604,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             leads, clients, tickets, invoices, activities, products, projects, workflows, webhooks, customFields,
             campaigns: [], marketingContents: [], notifications, toasts, competitors, marketTrends, prospectingHistory,
             disqualifiedProspects, proposals, allOrganizations: [], logs, inboxConversations,
+            technicalVisits,
             isSyncing, lastSyncTime, theme,
             refreshData, toggleTheme, 
             addLead, updateLead, updateLeadStatus, addClient, updateClient, 
@@ -588,8 +616,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             addSystemNotification, markNotificationRead, 
             addToast, removeToast, 
             addCompetitor, updateCompetitor, 
-            deleteCompetitor, setMarketTrends: () => {}, addProspectingHistory: async () => {}, clearProspectingHistory: () => {}, 
-            addProposal, updateProposal, removeProposal: async () => {}, addInboxInteraction: () => {}
+            deleteCompetitor, setMarketTrends, addProspectingHistory, clearProspectingHistory: () => setProspectingHistory([]), 
+            addProposal, updateProposal, removeProposal: async () => {}, addInboxInteraction: () => {},
+            addTechnicalVisit, updateTechnicalVisit
         }}>
             {children}
         </DataContext.Provider>

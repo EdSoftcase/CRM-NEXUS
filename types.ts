@@ -11,6 +11,27 @@ export enum LeadStatus {
   CANCELLED = 'Cancelado'
 }
 
+export enum VisitStatus {
+  SCHEDULED = 'Agendada',
+  COMPLETED = 'Realizada',
+  CONVERTED = 'Proposta Gerada',
+  CANCELLED = 'Cancelada'
+}
+
+export interface TechnicalVisit {
+    id: string;
+    targetId: string; // ID do Lead ou Cliente
+    targetName: string;
+    targetType: 'lead' | 'client';
+    scheduledDate: string;
+    technicianName: string;
+    status: VisitStatus;
+    report: string; // Laudo técnico
+    infrastructureNotes: string; // Notas sobre energia/rede
+    suggestedItems: string[]; // Produtos identificados como necessários
+    organizationId?: string;
+}
+
 export enum TicketPriority {
   LOW = 'Baixa',
   MEDIUM = 'Média',

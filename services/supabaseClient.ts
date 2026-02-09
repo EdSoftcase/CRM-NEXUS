@@ -55,29 +55,40 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => `
--- NEXUS SCHEMA REPAIR v86.0
--- Este script deve ser executado no SQL Editor do Supabase para corrigir erros de colunas ausentes.
+-- NEXUS SCHEMA REPAIR v87.0
+-- Atualização para incluir Vistorias Técnicas
 
--- 1. Tabela de Propostas (Garante campos de precificação e metadados)
+-- 1. Tabela de Propostas
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS monthly_cost NUMERIC DEFAULT 0;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS setup_cost NUMERIC DEFAULT 0;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS battlecard JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 2. Tabela de Competidores (Inteligência Nexus Spy)
-ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS last_analysis TIMESTAMPTZ;
-ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS swot JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS battlecard JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE public.competitors ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
+-- 2. Tabela de Vistorias Técnicas
+CREATE TABLE IF NOT EXISTS public.technical_visits (
+    id TEXT PRIMARY KEY,
+    target_id TEXT NOT NULL,
+    target_name TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    scheduled_date TIMESTAMPTZ DEFAULT now(),
+    technician_name TEXT,
+    status TEXT DEFAULT 'Agendada',
+    report TEXT,
+    infrastructure_notes TEXT,
+    suggested_items JSONB DEFAULT '[]'::jsonb,
+    organization_id TEXT DEFAULT 'org-1',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 
--- 3. Tabela de Projetos (Operações)
+-- Habilitar RLS para Vistorias
+ALTER TABLE public.technical_visits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable all for same org" ON public.technical_visits FOR ALL USING (true);
+
+-- 3. Tabela de Projetos
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS tasks JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS products JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 4. Forçar Atualização do Cache da API (CRUCIAL PARA RECONHECER NOVAS COLUNAS)
 NOTIFY pgrst, 'reload schema';
 `;

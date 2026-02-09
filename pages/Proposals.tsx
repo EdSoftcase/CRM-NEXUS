@@ -2,11 +2,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Proposal, Lead, Client, ProposalItem, Product } from '../types';
+import { Proposal, Lead, Client, ProposalItem, Product, Project } from '../types';
 import { 
     Plus, Search, FileText, Edit2, Trash2, X, Save, 
     ArrowLeft, Send, Eye, Loader2, CheckCircle, 
-    Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, AlertTriangle, Lock, Unlock
+    Package, DollarSign, RefreshCw, User, Building2, ChevronDown, Target, AlertTriangle, Lock, Unlock, Sparkles, Zap
 } from 'lucide-react';
 import { ProposalDocument } from '../components/ProposalDocument';
 import { SectionTitle, Badge } from '../components/Widgets';
@@ -18,7 +18,7 @@ export const Proposals: React.FC = () => {
     const { 
         proposals, leads, clients, products, 
         addProposal, updateProposal, removeProposal, 
-        addSystemNotification
+        addProject, addSystemNotification 
     } = useData();
     const { currentUser } = useAuth();
     
@@ -42,6 +42,38 @@ export const Proposals: React.FC = () => {
         status: 'Draft' as any,
         createdDate: new Date().toISOString()
     });
+
+    useEffect(() => {
+        const prefill = localStorage.getItem('nexus_pending_proposal_conversion');
+        if (prefill) {
+            try {
+                const data = JSON.parse(prefill);
+                const isLead = data.targetType === 'lead';
+                
+                const suggestedItems: ProposalItem[] = (data.items || []).map((name: string) => {
+                    const prod = products.find(p => p.name === name);
+                    return prod ? { 
+                        id: prod.id, name: prod.name, price: prod.price, quantity: 1, discount: 0, category: prod.category 
+                    } : null;
+                }).filter(Boolean);
+
+                setFormData(prev => ({
+                    ...prev,
+                    leadId: isLead ? data.targetId : '',
+                    clientId: !isLead ? data.targetId : '',
+                    companyName: data.targetName,
+                    title: data.title,
+                    scope: data.scope || [],
+                    items: suggestedItems,
+                    status: 'Draft'
+                }));
+                setTargetSearch(data.targetName);
+                setView('create');
+                localStorage.removeItem('nexus_pending_proposal_conversion');
+                addSystemNotification("Comercial", "Dados da vistoria importados com sucesso.", "success");
+            } catch(e) { console.error("Prefill Error", e); }
+        }
+    }, [products, addSystemNotification]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -106,36 +138,61 @@ export const Proposals: React.FC = () => {
         setIsTargetDropdownOpen(false);
     };
 
-    const handleSave = async (shouldSend: boolean = false) => {
+    const handleSave = async (isExpressActivation: boolean = false) => {
         if (!formData.title.trim() || !formData.companyName.trim()) {
             addSystemNotification("Campos Obrigatórios", "Defina um título e selecione um cliente.", "warning");
             return;
         }
 
         setIsSaving(true);
+        // No modo Express, a proposta já nasce como 'Accepted' (Assinada)
+        const proposalStatus = isExpressActivation ? 'Accepted' : formData.status;
+
         const proposalData: Proposal = {
             ...formData,
             id: editingId || `PC-${Date.now()}`,
             price: Number(finalSetupInvestment), 
             monthlyCost: Number(finalMonthlyRecurrence),
             setupCost: Number(formData.setupCost),
-            status: shouldSend ? 'Sent' : formData.status,
-            organizationId: currentUser?.organizationId || 'org-1'
+            status: proposalStatus,
+            organizationId: currentUser?.organizationId || 'org-1',
+            signedAt: isExpressActivation ? new Date().toISOString() : undefined,
+            signedByIp: isExpressActivation ? 'Express Activation' : undefined
         } as any;
 
         try {
-            if (editingId) {
-                await updateProposal(currentUser, proposalData);
+            if (editingId) await updateProposal(currentUser, proposalData);
+            else await addProposal(currentUser, proposalData);
+            
+            // --- GATILHO DE AUTOMAÇÃO EXPRESSA (HOMOLOGAÇÃO) ---
+            if (isExpressActivation) {
+                const scopeItems = formData.scope.length > 0 ? formData.scope : ["Instalação Padrão", "Configuração LPR"];
+                const newProject: Project = {
+                    id: `PROJ-EXP-${Date.now()}`,
+                    title: `${formData.title} (Ativação Expressa)`,
+                    clientName: formData.companyName,
+                    status: 'Kitting',
+                    progress: 20,
+                    startDate: new Date().toISOString(),
+                    deadline: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
+                    manager: currentUser.name,
+                    description: `Projeto gerado via fluxo expresso. Baseado na proposta ${proposalData.id}.`,
+                    products: formData.items.map(i => i.name),
+                    tasks: scopeItems.map((s, idx) => ({ id: `t-${idx}-${Date.now()}`, title: s, status: 'Pending' })),
+                    organizationId: currentUser.organizationId,
+                    archived: false
+                };
+                await addProject(currentUser, newProject);
+                addSystemNotification("Homologação", "Proposta Aceita e Projeto criado em Produção!", "success");
             } else {
-                await addProposal(currentUser, proposalData);
+                addSystemNotification("Sucesso", "Proposta salva como rascunho.", "success");
             }
             
-            addSystemNotification("Sucesso", shouldSend ? "Proposta enviada!" : "Proposta salva.", "success");
             setView('list');
             setEditingId(null);
         } catch (e) { 
             console.error("Save Error:", e);
-            addSystemNotification("Erro", "Falha ao salvar no banco. Verifique as permissões de coluna.", "alert");
+            addSystemNotification("Erro", "Falha ao processar operação.", "alert");
         } finally { 
             setIsSaving(false); 
         }
@@ -241,7 +298,6 @@ export const Proposals: React.FC = () => {
                 </div>
             ) : (
                 <div className="flex h-screen overflow-hidden bg-slate-200 dark:bg-slate-950">
-                    {/* Painel lateral de edição */}
                     <div className="w-[450px] bg-white dark:bg-slate-900 border-r border-slate-300 dark:border-slate-800 flex flex-col shrink-0 shadow-2xl z-20 animate-slide-in-left">
                         <div className="p-6 border-b flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
                             <div className="flex items-center gap-4">
@@ -258,8 +314,9 @@ export const Proposals: React.FC = () => {
                                         <button onClick={() => handleSave(false)} disabled={isSaving} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 transition" title="Salvar Rascunho">
                                             {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
                                         </button>
-                                        <button onClick={() => handleSave(true)} disabled={isSaving} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg" title="Enviar Proposta Final">
-                                            <Send size={18}/>
+                                        <button onClick={() => handleSave(true)} disabled={isSaving} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:bg-indigo-700 flex items-center gap-2" title="Ativar Proposta e Criar Projeto">
+                                            {isSaving ? <Loader2 size={16} className="animate-spin"/> : <Zap size={16} fill="currentColor" className="text-amber-300"/>}
+                                            Ativar Agora
                                         </button>
                                     </>
                                 )}

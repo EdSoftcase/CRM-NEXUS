@@ -70,8 +70,11 @@ export const Client360: React.FC<Client360Props> = ({ client: propClient, ticket
                 const updatedClient: Client = { ...client, portalEmail: cleanEmail, portalPassword: result.password };
                 await updateClient(currentUser, updatedClient);
                 setProvisionedData({ email: cleanEmail, password: result.password });
+                addSystemNotification("Sucesso", "Acesso ao portal ativado.", "success");
+            } else {
+                addSystemNotification("Erro", result.error || "Falha no provisionamento.", "alert");
             }
-        } catch (e: any) { addSystemNotification("Erro", "Falha no provisionamento.", "alert"); } finally { setIsProvisioning(false); }
+        } catch (e: any) { addSystemNotification("Erro", "Falha crítica no provisionamento.", "alert"); } finally { setIsProvisioning(false); }
     };
 
     const toggleProduct = async (productName: string) => {
