@@ -32,6 +32,22 @@ export interface TechnicalVisit {
     organizationId?: string;
 }
 
+export interface TechnicalSpecs {
+    gabinetes?: string[]; // Alterado para array
+    servidorCaixa?: string[]; // Alterado para array
+    camera?: string;
+    nobreak?: string;
+    nobreakQty?: string;
+    faceId?: string;
+    ilha?: string;
+    cancela?: string;
+    cancelaQty?: string;
+    braco?: string;
+    bracoTamanho?: string;
+    modeloAutomacao?: string;
+    fotoCelula?: string;
+}
+
 export enum TicketPriority {
   LOW = 'Baixa',
   MEDIUM = 'Média',
@@ -153,6 +169,7 @@ export interface Proposal {
   consultantName?: string;
   consultantEmail?: string;
   consultantPhone?: string;
+  technicalSpecs?: TechnicalSpecs;
 }
 
 export interface Product {
@@ -350,6 +367,7 @@ export interface Project {
     installAddress?: string;
     statusUpdatedAt?: string;
     unit?: string;
+    technicalSpecs?: TechnicalSpecs;
 }
 
 export interface IssueNote {

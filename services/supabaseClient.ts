@@ -55,17 +55,17 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => `
--- NEXUS SCHEMA REPAIR v87.0
--- Atualização para incluir Vistorias Técnicas
+-- NEXUS SCHEMA REPAIR v89.0
+-- Ajuste de Idempotência e Technical Specs
 
 -- 1. Tabela de Propostas
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS technical_specs JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS monthly_cost NUMERIC DEFAULT 0;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS setup_cost NUMERIC DEFAULT 0;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
--- 2. Tabela de Vistorias Técnicas
+-- 2. Tabela de Vistorias Técnicas (Fix Idempotência de Política)
 CREATE TABLE IF NOT EXISTS public.technical_visits (
     id TEXT PRIMARY KEY,
     target_id TEXT NOT NULL,
@@ -81,14 +81,29 @@ CREATE TABLE IF NOT EXISTS public.technical_visits (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Habilitar RLS para Vistorias
+-- Garantir que RLS esteja ativo
 ALTER TABLE public.technical_visits ENABLE ROW LEVEL SECURITY;
+
+-- Excluir política se ela já existir para evitar erro 42710
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'technical_visits' 
+        AND policyname = 'Enable all for same org'
+    ) THEN
+        DROP POLICY "Enable all for same org" ON public.technical_visits;
+    END IF;
+END
+$$;
+
+-- Criar política do zero
 CREATE POLICY "Enable all for same org" ON public.technical_visits FOR ALL USING (true);
 
 -- 3. Tabela de Projetos
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS technical_specs JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS tasks JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS products JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS organization_id TEXT DEFAULT 'org-1';
 
 NOTIFY pgrst, 'reload schema';
 `;

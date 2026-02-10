@@ -59,12 +59,76 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
             <section className="mb-4">
                 <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">2. OBJETO</h3>
                 <p className="text-justify text-slate-600">
-                    Prestação de serviços e eventual locação/venda de hardware para automação de entrada e saída de veículos via reconhecimento de placas (LPR). No caso de locação, os equipamentos permanecem sob propriedade da SOFTCASE.
+                    Prestação de serviços e eventual locação/venda de hardware para automação de entrada e saída de veículos por meio de reconhecimento automático de placas (LPR).
                 </p>
             </section>
 
+            {/* NOVA SEÇÃO: ESPECIFICAÇÕES TÉCNICAS (KITTING) */}
+            {data.technicalSpecs && Object.values(data.technicalSpecs).some(v => !!v) && (
+                <section className="mb-4">
+                    <h3 className="font-black border-b border-slate-200 mb-2 uppercase text-[9px]">3. CONFIGURAÇÃO TÉCNICA E MATERIAL</h3>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        {data.technicalSpecs.gabinetes && data.technicalSpecs.gabinetes.length > 0 && (
+                            <div className="flex flex-col border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Gabinetes:</span>
+                                <span className="font-black">{data.technicalSpecs.gabinetes.join(' + ')}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.servidorCaixa && data.technicalSpecs.servidorCaixa.length > 0 && (
+                            <div className="flex flex-col border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Servidor / Caixa:</span>
+                                <span className="font-black">{data.technicalSpecs.servidorCaixa.join(' + ')}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.camera && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Câmera LPR:</span>
+                                <span className="font-black">{data.technicalSpecs.camera}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.nobreak && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Nobreak:</span>
+                                <span className="font-black">{data.technicalSpecs.nobreak} {data.technicalSpecs.nobreakQty ? `(Qtd: ${data.technicalSpecs.nobreakQty})` : ''}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.faceId && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Face ID:</span>
+                                <span className="font-black">{data.technicalSpecs.faceId}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.ilha && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Ilha:</span>
+                                <span className="font-black">{data.technicalSpecs.ilha}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.cancela && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Cancela / Braço:</span>
+                                <span className="font-black">{data.technicalSpecs.cancela} {data.technicalSpecs.cancelaQty ? `(Qtd: ${data.technicalSpecs.cancelaQty})` : ''} / {data.technicalSpecs.braco || 'N/A'} {data.technicalSpecs.bracoTamanho ? `(${data.technicalSpecs.bracoTamanho})` : ''}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.modeloAutomacao && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Modelo Automação:</span>
+                                <span className="font-black">{data.technicalSpecs.modeloAutomacao}</span>
+                            </div>
+                        )}
+                        {data.technicalSpecs.fotoCelula && (
+                            <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                                <span className="font-bold text-slate-500 uppercase text-[8px]">Foto Célula:</span>
+                                <span className="font-black">{data.technicalSpecs.fotoCelula}</span>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
             {/* 3. TABELA COMERCIAL */}
             <div className="mb-4">
+                <h3 className="font-black uppercase text-[9px] mb-1">4. TABELA COMERCIAL</h3>
                 <table className="w-full border-collapse border border-slate-300">
                     <thead className="bg-slate-100">
                         <tr>
@@ -103,18 +167,16 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
             {/* 4. CONDIÇÕES E SLA */}
             <div className="grid grid-cols-2 gap-6 mb-4">
                 <section>
-                    <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">3. CONDIÇÕES E SLA</h3>
+                    <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">5. CONDIÇÕES E SLA</h3>
                     <ul className="list-disc pl-3 text-slate-600 space-y-0.5">
                         <li><strong>Validade:</strong> 20 dias corridos.</li>
                         <li><strong>Entrega:</strong> Até 30-45 dias após aceite.</li>
                         <li><strong>Garantia:</strong> 12 meses (Permanente em Locação).</li>
                         <li><strong>Carência:</strong> 24 meses para contratos de locação.</li>
-                        <li><strong>Suporte N1 (Crítico):</strong> Visita até 36h.</li>
-                        <li><strong>Suporte N2 (Médio):</strong> Visita até 72h.</li>
                     </ul>
                 </section>
                 <section>
-                    <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">4. RESPONSABILIDADES</h3>
+                    <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">6. RESPONSABILIDADES</h3>
                     <div className="grid grid-cols-2 gap-2 text-[8px]">
                         <div className="bg-slate-50 p-1 rounded">
                             <p className="font-bold border-b mb-1">SOFTCASE:</p>
@@ -127,18 +189,6 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                     </div>
                 </section>
             </div>
-
-            {/* 5. REFORÇOS JURÍDICOS E CRONOGRAMA */}
-            <section className="mb-4">
-                <h3 className="font-black border-b border-slate-200 mb-1 uppercase text-[9px]">5. DISPOSIÇÕES GERAIS E LGPD</h3>
-                <p className="text-justify text-slate-600 text-[8px] leading-tight">
-                    5.1. <strong>Propriedade Intelectual:</strong> Todo código e metodologia permanecem como propriedade da Softcase. 
-                    5.2. <strong>LGPD:</strong> Ambas as partes declaram conformidade com a Lei 13.709/2018. 
-                    5.3. <strong>Inadimplemento:</strong> Multa de 2% + juros de 1% a.m. 
-                    5.4. <strong>Reajuste:</strong> Anual pelo IPCA. 
-                    5.5. <strong>Foro:</strong> Eleito o foro de São Paulo para dirimir litígios.
-                </p>
-            </section>
 
             {/* ASSINATURAS */}
             <div className="mt-auto pt-4 border-t border-slate-300">
@@ -156,11 +206,6 @@ export const ProposalDocument: React.FC<ProposalDocumentProps> = ({ data, id }) 
                         <p className="text-[7px] text-slate-400 uppercase">ACEITE DIGITAL</p>
                     </div>
                 </div>
-                {data.signedAt && (
-                   <p className="text-[7px] text-slate-400 mt-2 text-center">
-                       Documento assinado digitalmente em {new Date(data.signedAt).toLocaleString()} | IP: {data.signedByIp}
-                   </p>
-                )}
             </div>
 
             <div className="mt-4 text-center text-[6px] text-slate-300 uppercase tracking-[0.4em]">

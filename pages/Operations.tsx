@@ -2,13 +2,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Project, ProjectTask } from '../types';
+import { Project, ProjectTask, TechnicalSpecs } from '../types';
+// Fix: Added ClipboardCheck to lucide-react imports to resolve "Cannot find name 'ClipboardCheck'" error on line 282.
 import { 
     MonitorPlay, Minimize, Wrench, Clock, CheckCircle, X, Search, 
     History, Trello, Box, Activity, AlignLeft, GripVertical, 
     Monitor, Package, Building2, Layout, ChevronRight, AlertCircle, 
     ShoppingBag, List, LayoutGrid, Maximize2, 
-    CheckSquare
+    CheckSquare, Cpu, Monitor as MonitorIcon, ClipboardCheck, Zap, ShieldCheck,
+    User, Settings2
 } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 
@@ -32,7 +34,6 @@ export const Operations: React.FC = () => {
         setLocalProjects(globalProjects);
     }, [globalProjects]);
 
-    // Lógica de Persistência: Projetos concluídos há menos de 30 dias ainda aparecem no Board
     const isRecentlyCompleted = (proj: Project) => {
         if (proj.status !== 'Completed' || !proj.completedAt) return false;
         const completionDate = new Date(proj.completedAt);
@@ -65,15 +66,9 @@ export const Operations: React.FC = () => {
         return localProjects.filter(p => {
             const matchStatus = p.status === statusId;
             if (!matchStatus) return false;
-            
-            // Se estiver no board e for 'Completed', só mostra se for recente (SLA 30 dias)
-            if (statusId === 'Completed') {
-                return isRecentlyCompleted(p);
-            }
-            
-            // Para outros status, mostra se não estiver arquivado
+            if (statusId === 'Completed') return isRecentlyCompleted(p);
             return !p.archived;
-        });
+        }).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()); // Ordenação por data de início (ordem de chegada)
     };
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -111,7 +106,6 @@ export const Operations: React.FC = () => {
             progress: newProgress,
             statusUpdatedAt: new Date().toISOString(),
             completedAt: isFinished ? new Date().toISOString() : proj.completedAt,
-            // Importante: Não marcamos 'archived: true' imediatamente para persistir no board por 30 dias
             archived: false 
         };
 
@@ -158,36 +152,17 @@ export const Operations: React.FC = () => {
 
     return (
         <div className={tvMode ? "fixed inset-0 z-[9999] bg-slate-950 p-6 overflow-hidden flex flex-col transition-all duration-500" : "p-4 md:p-8 h-full flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors font-sans"}>
-            {/* Header com Controles de Visualização */}
             <div className={`flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-4 ${tvMode ? 'mb-8 border-b border-slate-800 pb-6' : 'mb-6'}`}>
                 <div>
                     <h1 className={`${tvMode ? 'text-4xl' : 'text-3xl'} font-black flex items-center gap-3 text-slate-900 dark:text-white uppercase tracking-tighter`}>
                         {tvMode ? (
-                            <><Monitor className="text-indigo-400 animate-pulse" size={40}/> Dashboard de Operações</>
+                            <><MonitorPlay className="text-indigo-400 animate-pulse" size={40}/> Dashboard de Operações</>
                         ) : (
                             <><Wrench className="text-indigo-600 dark:text-indigo-400"/> Esteira de Produção</>
                         )}
                     </h1>
                     <div className="flex items-center gap-4 mt-2">
                         <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.3em]">Status de Implantação e Logística</p>
-                        {!tvMode && (
-                             <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-300 dark:border-slate-700">
-                                <button 
-                                    onClick={() => setDisplayDensity('standard')}
-                                    className={`p-1 rounded-md transition-all ${displayDensity === 'standard' ? 'bg-white dark:bg-slate-600 text-indigo-600 shadow-sm' : 'text-slate-500'}`}
-                                    title="Visualização Padrão"
-                                >
-                                    <LayoutGrid size={14}/>
-                                </button>
-                                <button 
-                                    onClick={() => setDisplayDensity('compact')}
-                                    className={`p-1 rounded-md transition-all ${displayDensity === 'compact' ? 'bg-white dark:bg-slate-600 text-indigo-600 shadow-sm' : 'text-slate-500'}`}
-                                    title="Visualização Reduzida"
-                                >
-                                    <List size={14}/>
-                                </button>
-                             </div>
-                        )}
                     </div>
                 </div>
 
@@ -231,76 +206,30 @@ export const Operations: React.FC = () => {
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, proj.id)}
                                                 onClick={() => setSelectedProject(proj)} 
-                                                className={`
-                                                    bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-xl transition-all group relative overflow-hidden active:scale-95 active:cursor-grabbing animate-fade-in
-                                                    ${displayDensity === 'compact' ? 'p-3 rounded-2xl' : 'p-5 rounded-[2rem]'}
-                                                `}
+                                                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-xl transition-all group relative overflow-hidden active:scale-95 active:cursor-grabbing p-5 rounded-[2rem]"
                                             >
-                                                {/* Progress Indicator */}
                                                 <div className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000" style={{width: `${proj.progress}%`}}></div>
-                                                
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="min-w-0 flex-1">
-                                                        {displayDensity === 'standard' && (
-                                                            <div className="flex items-center gap-2 mb-2">
-                                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white flex items-center gap-1 ${sla.color}`}>
-                                                                    {sla.icon} {sla.label}
-                                                                </span>
-                                                                {proj.status === 'Completed' && (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-indigo-100 text-indigo-600 uppercase">
-                                                                        Persistente 30d
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        <h3 className={`font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-tight truncate ${displayDensity === 'compact' ? 'text-xs' : 'text-[15px] mb-1'}`} title={proj.title}>
-                                                            {proj.title}
-                                                        </h3>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white flex items-center gap-1 ${sla.color}`}>{sla.icon} {sla.label}</span>
+                                                        </div>
+                                                        <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-[15px] mb-1 truncate">{proj.title}</h3>
                                                         <div className="flex items-center gap-1.5 text-slate-400">
-                                                            <Building2 size={displayDensity === 'compact' ? 10 : 12} className="shrink-0"/>
-                                                            <p className={`font-black uppercase tracking-widest truncate ${displayDensity === 'compact' ? 'text-[8px]' : 'text-[9px]'}`}>
-                                                                {proj.clientName || "UNIDADE NÃO IDENTIFICADA"}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <GripVertical size={14} className="text-slate-300 shrink-0 ml-2 group-hover:text-indigo-400 transition-colors"/>
-                                                </div>
-                                                
-                                                {/* ÁREA DE ITENS CONTRATADOS - VERSÃO REDUZIDA FOCO AQUI */}
-                                                <div className={`mt-3 ${displayDensity === 'compact' ? 'space-y-1' : 'space-y-4'}`}>
-                                                    <div className={`${displayDensity === 'compact' ? 'bg-transparent p-0' : 'bg-indigo-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-indigo-100 dark:border-slate-700/50 shadow-inner'}`}>
-                                                        {displayDensity === 'standard' && (
-                                                            <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                                                <ShoppingBag size={12}/> Itens Contratados
-                                                            </p>
-                                                        )}
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {items.length > 0 ? (
-                                                                items.slice(0, displayDensity === 'compact' ? 2 : 5).map((p, i) => (
-                                                                    <span key={i} className={`font-bold uppercase rounded-md px-1.5 py-0.5 border ${displayDensity === 'compact' ? 'text-[7px] bg-slate-50 dark:bg-slate-700 text-slate-500 border-slate-200' : 'text-[9px] bg-white dark:bg-slate-800 text-indigo-600 border-indigo-100'}`}>
-                                                                        {p}
-                                                                    </span>
-                                                                ))
-                                                            ) : (
-                                                                <p className="text-[8px] text-slate-400 italic">Ver proposta vinculada.</p>
-                                                            )}
-                                                            {displayDensity === 'compact' && items.length > 2 && (
-                                                                <span className="text-[7px] font-black text-slate-400">+{items.length - 2}</span>
-                                                            )}
+                                                            <Building2 size={12} className="shrink-0"/>
+                                                            <p className="font-black uppercase tracking-widest truncate text-[9px]">{proj.clientName}</p>
                                                         </div>
                                                     </div>
                                                 </div>
-
-                                                {displayDensity === 'standard' && (
-                                                    <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50 dark:border-slate-700/50">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                                                                <Clock size={11}/> {new Date(proj.deadline).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
-                                                            </span>
-                                                        </div>
-                                                        <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{proj.progress}%</span>
+                                                <div className="mt-4 flex justify-between items-center">
+                                                    <div className="flex -space-x-2">
+                                                        {items.slice(0, 3).map((it, idx) => (
+                                                            <div key={idx} className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-900 flex items-center justify-center border-2 border-white dark:border-slate-800 text-[8px] font-black" title={it}>{it.charAt(0)}</div>
+                                                        ))}
+                                                        {items.length > 3 && <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center border-2 border-white dark:border-slate-800 text-[8px] font-black">+{items.length-3}</div>}
                                                     </div>
-                                                )}
+                                                    <span className="text-[11px] font-black text-indigo-600 font-mono">{proj.progress}%</span>
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -314,27 +243,21 @@ export const Operations: React.FC = () => {
                     <div className="p-5 border-b bg-slate-50 dark:bg-slate-900/50 flex flex-wrap items-center gap-4">
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-4 top-3 text-slate-400" size={18}/>
-                            <input 
-                                type="text" 
-                                placeholder="Filtrar histórico..." 
-                                className="w-full pl-12 pr-4 py-3 rounded-2xl border-none bg-white dark:bg-slate-800 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                value={historySearch}
-                                onChange={e => setHistorySearch(e.target.value)}
-                            />
+                            <input type="text" placeholder="Filtrar histórico..." className="w-full pl-12 pr-4 py-3 rounded-2xl border-none bg-white dark:bg-slate-800 text-sm font-bold outline-none" value={historySearch} onChange={e => setHistorySearch(e.target.value)} />
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 uppercase text-[10px] font-black sticky top-0 shadow-sm z-10">
+                            <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 uppercase text-[10px] font-black sticky top-0 shadow-sm">
                                 <tr><th className="p-6">Unidade</th><th className="p-6">Empresa</th><th className="p-6 text-center">Conclusão</th><th className="p-6 text-right">Ações</th></tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                 {historyProjects.map(proj => (
-                                    <tr key={proj.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                                        <td className="p-6 font-black text-slate-900 dark:text-white uppercase tracking-tighter text-base">{proj.title}</td>
+                                    <tr key={proj.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer" onClick={() => setSelectedProject(proj)}>
+                                        <td className="p-6 font-black text-slate-900 dark:text-white uppercase tracking-tighter">{proj.title}</td>
                                         <td className="p-6 text-xs font-bold text-slate-500 uppercase">{proj.clientName}</td>
-                                        <td className="p-6 text-center text-slate-500 font-bold">{proj.completedAt ? new Date(proj.completedAt).toLocaleDateString('pt-BR') : '-'}</td>
-                                        <td className="p-6 text-right"><button onClick={() => setSelectedProject(proj)} className="bg-slate-100 dark:bg-slate-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition">Detalhes</button></td>
+                                        <td className="p-6 text-center font-bold">{proj.completedAt ? new Date(proj.completedAt).toLocaleDateString('pt-BR') : '-'}</td>
+                                        <td className="p-6 text-right"><button className="bg-slate-100 dark:bg-slate-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Detalhes</button></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -343,90 +266,146 @@ export const Operations: React.FC = () => {
                 </div>
             )}
 
-            {/* Modal de Detalhes do Projeto */}
             {selectedProject && (
                 <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-[3rem] w-full max-w-5xl h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-scale-in border border-white/10">
-                        <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                    <div className="bg-white dark:bg-slate-800 rounded-[3rem] w-full max-w-6xl h-[94vh] overflow-hidden shadow-2xl flex flex-col border">
+                        <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 shrink-0">
                             <div>
-                                <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none mb-2">{selectedProject.title}</h2>
-                                <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Building2 size={12}/> {selectedProject.clientName || "Unidade não informada"}
-                                </p>
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1">{selectedProject.title}</h2>
+                                <p className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2"><Building2 size={12}/> {selectedProject.clientName}</p>
                             </div>
-                            <button onClick={() => setSelectedProject(null)} className="p-3 hover:bg-red-50 hover:text-red-500 rounded-2xl text-slate-400 transition-all"><X size={24}/></button>
+                            <button onClick={() => setSelectedProject(null)} className="p-3 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all rounded-2xl"><X size={24}/></button>
                         </div>
                         
-                        <div className="p-8 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-2 gap-10 custom-scrollbar">
-                             <div className="space-y-8">
+                        <div className="p-8 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-3 gap-10 custom-scrollbar">
+                             {/* Coluna 1: Relatório e Checklist de Kitting */}
+                             <div className="lg:col-span-1 space-y-8">
                                 <div>
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><AlignLeft size={14}/> Descritivo Técnico</h4>
-                                    <div className="bg-indigo-50/30 dark:bg-indigo-900/10 p-6 rounded-3xl border border-indigo-100/50 dark:border-indigo-800/50 space-y-4 shadow-inner">
-                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-relaxed italic">{selectedProject.description}</p>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><ClipboardCheck size={14}/> Checklist Técnico (Kitting)</h4>
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border space-y-3 shadow-inner">
+                                        {selectedProject.technicalSpecs ? (
+                                            <div className="grid grid-cols-1 gap-4 text-xs">
+                                                {/* Gabinetes - Suporte a múltiplos itens */}
+                                                {selectedProject.technicalSpecs.gabinetes && selectedProject.technicalSpecs.gabinetes.length > 0 && (
+                                                    <div className="border-b pb-3">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Box size={12}/> Gabinete(s)</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {selectedProject.technicalSpecs.gabinetes.map((g, idx) => (
+                                                                <span key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-[10px] font-black">{g}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {/* Servidor/Caixa - Suporte a múltiplos itens */}
+                                                {selectedProject.technicalSpecs.servidorCaixa && selectedProject.technicalSpecs.servidorCaixa.length > 0 && (
+                                                    <div className="border-b pb-3">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Cpu size={12}/> Servidor / Caixa</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {selectedProject.technicalSpecs.servidorCaixa.map((s, idx) => (
+                                                                <span key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-[10px] font-black">{s}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.camera && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><MonitorIcon size={12}/> Câmera</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.camera}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.nobreak && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Zap size={12}/> Nobreak</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.nobreak} ({selectedProject.technicalSpecs.nobreakQty || '1'})</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.faceId && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><User size={12}/> Face ID</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.faceId}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.ilha && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Layout size={12}/> Ilha</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.ilha}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.cancela && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Minimize size={12}/> Cancela</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.cancela} ({selectedProject.technicalSpecs.cancelaQty || '1'})</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.braco && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><ShieldCheck size={12}/> Braço</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.braco} {selectedProject.technicalSpecs.bracoTamanho ? `(${selectedProject.technicalSpecs.bracoTamanho})` : ''}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.modeloAutomacao && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Settings2 size={12}/> Automação</span>
+                                                        <span className="font-black text-indigo-600 uppercase">{selectedProject.technicalSpecs.modeloAutomacao}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.fotoCelula && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase">Foto Célula</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.fotoCelula}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-slate-400 italic text-xs py-10">Sem especificações técnicas detalhadas.</p>
+                                        )}
                                     </div>
                                 </div>
-
                                 <div>
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Tarefas de Implantação</h4>
-                                    <div className="space-y-3">
-                                        {safeArray(selectedProject.tasks).length > 0 ? safeArray(selectedProject.tasks).map(t => (
-                                            <div 
-                                                key={t.id} 
-                                                onClick={() => handleToggleTask(selectedProject, t.id)}
-                                                className={`flex items-center gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-all ${t.status === 'Done' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/50 opacity-60' : 'bg-white dark:bg-slate-700 border-slate-100 dark:border-slate-600 hover:border-indigo-300 shadow-sm'}`}
-                                            >
-                                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.status === 'Done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white dark:bg-slate-800 border-slate-300'}`}>
-                                                    {t.status === 'Done' && <CheckCircle size={14} fill="currentColor"/>}
-                                                </div>
-                                                <span className={`text-xs font-bold ${t.status === 'Done' ? 'line-through text-slate-500' : 'text-slate-800 dark:text-white'}`}>{t.title}</span>
-                                            </div>
-                                        )) : <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border text-center">Nenhum checklist definido.</p>}
-                                    </div>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><AlignLeft size={14}/> Notas do Consultor</h4>
+                                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300 italic leading-relaxed bg-slate-50 dark:bg-slate-900/30 p-6 rounded-3xl border">{selectedProject.description}</p>
                                 </div>
                              </div>
 
-                             <div className="flex flex-col gap-8">
+                             {/* Coluna 2: Tarefas Operacionais */}
+                             <div className="lg:col-span-1">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Tarefas de Implantação</h4>
+                                <div className="space-y-3">
+                                    {safeArray(selectedProject.tasks).map(t => (
+                                        <div key={t.id} onClick={() => handleToggleTask(selectedProject, t.id)} className={`flex items-center gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-all ${t.status === 'Done' ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 opacity-60' : 'bg-white dark:bg-slate-900 hover:border-indigo-300'}`}>
+                                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.status === 'Done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300'}`}>{t.status === 'Done' && <CheckCircle size={14} fill="currentColor"/>}</div>
+                                            <span className={`text-xs font-bold ${t.status === 'Done' ? 'line-through text-slate-500' : 'text-slate-800 dark:text-white'}`}>{t.title}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                             </div>
+
+                             {/* Coluna 3: Estágios e Inventário */}
+                             <div className="lg:col-span-1 space-y-8">
                                 <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
                                     <div className="absolute right-[-20px] top-[-20px] text-white/5"><Activity size={150}/></div>
-                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase mb-6 tracking-widest relative z-10">Alterar Estágio Manual</h4>
-                                    
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase mb-6 tracking-widest relative z-10">Mover Estágio da Esteira</h4>
                                     <div className="grid grid-cols-2 gap-3 relative z-10">
                                         {columns.map(c => (
-                                            <button 
-                                                key={c.id} 
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(selectedProject.id, c.id); }} 
-                                                className={`p-4 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all flex flex-col items-center gap-2 ${selectedProject.status === c.id ? 'bg-white text-slate-900 border-white shadow-xl scale-[1.02]' : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-indigo-500 hover:text-indigo-400'}`}
-                                            >
-                                                <span>{c.label.split(' ')[1]}</span>
-                                                <span className="text-[8px] opacity-60">{c.progress}%</span>
+                                            <button key={c.id} onClick={() => handleUpdateStatus(selectedProject.id, c.id)} className={`p-4 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedProject.status === c.id ? 'bg-white text-slate-900 border-white shadow-xl scale-[1.05]' : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-indigo-500'}`}>
+                                                {c.label.split(' ')[1]}
                                             </button>
                                         ))}
                                     </div>
-
                                     <div className="mt-8 pt-8 border-t border-white/10 relative z-10">
-                                        <div className="flex justify-between items-end mb-3">
-                                            <span className="text-[10px] font-black text-indigo-300 uppercase">Evolução do Projeto</span>
-                                            <span className="text-2xl font-black text-white font-mono">{selectedProject.progress}%</span>
-                                        </div>
-                                        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden shadow-inner">
-                                            <div className="h-full bg-gradient-to-r from-indigo-500 to-blue-400 transition-all duration-1000" style={{width: `${selectedProject.progress}%`}}></div>
-                                        </div>
+                                        <div className="flex justify-between mb-3"><span className="text-[10px] font-black text-indigo-300 uppercase">Evolução</span><span className="text-xl font-black text-white font-mono">{selectedProject.progress}%</span></div>
+                                        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 to-blue-400 transition-all duration-1000" style={{width: `${selectedProject.progress}%`}}></div></div>
                                     </div>
                                 </div>
-
-                                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><ShoppingBag size={14}/> Inventário do Projeto</h4>
-                                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                                        {safeArray(selectedProject.products).length > 0 ? (
-                                            safeArray(selectedProject.products).map((p, i) => (
-                                                <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
-                                                    <div className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center text-indigo-500 shadow-sm"><Package size={16}/></div>
-                                                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase">{p}</span>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-6 text-slate-400 italic text-xs">Nenhum equipamento listado.</div>
-                                        )}
+                                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border shadow-sm">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><ShoppingBag size={14}/> Catálogo de Equipamentos</h4>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                        {safeArray(selectedProject.products).map((p, i) => (
+                                            <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border">
+                                                <div className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center text-indigo-500"><Package size={16}/></div>
+                                                <span className="text-[11px] font-bold uppercase">{p}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                              </div>

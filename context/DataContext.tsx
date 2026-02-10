@@ -118,6 +118,7 @@ const mapToApp = (data: any[] | null | undefined): any[] => {
         if (newItem.technician_name) newItem.technicianName = newItem.technician_name;
         if (newItem.infrastructure_notes) newItem.infrastructureNotes = newItem.infrastructure_notes;
         if (newItem.suggested_items) newItem.suggestedItems = newItem.suggested_items;
+        if (newItem.technical_specs) newItem.technicalSpecs = typeof newItem.technical_specs === 'string' ? JSON.parse(newItem.technical_specs) : newItem.technical_specs;
 
         const parseJson = (val: any) => {
             if (!val) return [];
@@ -152,8 +153,8 @@ const mapToDb = (data: any, table: string) => {
         payload.status = p.status || 'Novo';
         payload.source = p.source || 'Manual';
         payload.description = p.description || '';
-        payload.last_contact = p.lastContact || new Date().toISOString();
-        payload.created_at = p.createdAt || new Date().toISOString();
+        payload.last_contact = p.last_contact || new Date().toISOString();
+        payload.created_at = p.created_at || new Date().toISOString();
         payload.address = p.address || '';
         payload.cep = p.cep || '';
     }
@@ -194,6 +195,7 @@ const mapToDb = (data: any, table: string) => {
         payload.scope = JSON.stringify(p.scope || []);
         payload.created_date = p.createdDate || new Date().toISOString();
         payload.valid_until = p.validUntil || new Date(new Date(p.createdDate || Date.now()).getTime() + 20 * 24 * 60 * 60 * 1000).toISOString();
+        payload.technical_specs = p.technicalSpecs ? JSON.stringify(p.technicalSpecs) : null;
         if (p.signature) payload.signature = p.signature;
         if (p.signedAt) payload.signed_at = p.signedAt;
         if (p.signedByIp) payload.signed_by_ip = p.signedByIp;
@@ -212,6 +214,7 @@ const mapToDb = (data: any, table: string) => {
         payload.products = JSON.stringify(p.products || []);
         payload.scope = JSON.stringify(p.scope || []);
         payload.archived = !!p.archived;
+        payload.technical_specs = p.technicalSpecs ? JSON.stringify(p.technicalSpecs) : null;
         if (p.completedAt) payload.completed_at = p.completedAt;
         if (p.unit) payload.unit = p.unit;
     }
