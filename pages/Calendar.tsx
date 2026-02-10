@@ -34,27 +34,15 @@ export const Calendar: React.FC = () => {
     // Modals
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isDayViewOpen, setIsDayViewOpen] = useState(false);
-    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
     const [selectedDateForNew, setSelectedDateForNew] = useState<Date>(new Date());
     const [selectedEvent, setSelectedEvent] = useState<Activity | null>(null);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-    // Form
-    const [createMeet, setCreateMeet] = useState(false);
-    const [newActivityForm, setNewActivityForm] = useState({
-        title: '',
-        type: 'Call' as 'Call' | 'Meeting' | 'Email' | 'Task',
-        time: '09:00',
-        relatedTo: ''
-    });
 
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDay = new Date(year, month, 1).getDay();
 
     const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
     const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
@@ -86,13 +74,9 @@ export const Calendar: React.FC = () => {
         setDraggedEventId(id);
         setDraggedEventType(type);
         e.dataTransfer.effectAllowed = 'move';
-        const el = e.target as HTMLElement;
-        el.style.opacity = '0.5';
     };
 
     const handleDragEnd = (e: React.DragEvent) => {
-        const el = e.target as HTMLElement;
-        el.style.opacity = '1';
         setDraggedEventId(null);
         setDraggedEventType(null);
     }
@@ -115,7 +99,6 @@ export const Calendar: React.FC = () => {
                 updateActivity(currentUser, { ...event, dueDate: newDate.toISOString() });
             }
         } else if (draggedEventType === 'project') {
-            // INTERCEPÇÃO PARA INSTALAÇÕES
             setPendingReschedule({
                 projectId: draggedEventId,
                 newDate: targetDate,
@@ -150,48 +133,11 @@ export const Calendar: React.FC = () => {
         }
     };
 
-    const handleOpenAdd = (date: Date) => {
-        setSelectedDateForNew(date);
-        setIsAddModalOpen(true);
-        const now = new Date();
-        const nextHour = new Date(now.setHours(now.getHours() + 1, 0, 0, 0));
-        setNewActivityForm(prev => ({ 
-            ...prev, 
-            time: nextHour.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
-        }));
-    };
-
-    const handleCreateActivity = (e: React.FormEvent) => {
-        e.preventDefault();
-        const [hours, minutes] = newActivityForm.time.split(':');
-        const dueDateTime = new Date(selectedDateForNew);
-        dueDateTime.setHours(parseInt(hours), parseInt(minutes));
-
-        addActivity(currentUser, {
-            id: `ACT-${Date.now()}`,
-            title: newActivityForm.title,
-            type: newActivityForm.type,
-            dueDate: dueDateTime.toISOString(),
-            completed: false,
-            relatedTo: newActivityForm.relatedTo || 'Geral',
-            assignee: currentUser.id
-        });
-
-        if (createMeet) {
-            const startTime = dueDateTime.toISOString().replace(/-|:|\.\d\d\d/g, "");
-            const endDate = new Date(dueDateTime.getTime() + 60 * 60 * 1000);
-            const endTime = endDate.toISOString().replace(/-|:|\.\d\d\d/g, "");
-            const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(newActivityForm.title)}&dates=${startTime}/${endTime}&location=Google+Meet`;
-            window.open(url, '_blank');
-        }
-        setIsAddModalOpen(false);
-    };
-
     const getEventStyle = (type: string, completed: boolean) => {
         if (completed) return 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 line-through grayscale';
         switch(type) {
             case 'Call': return 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:border-blue-800';
-            case 'Meeting': return 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-200 dark:border-purple-800';
+            case 'Meeting': return 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-200 dark:border-blue-800';
             case 'Email': return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200 dark:bg-yellow-900/50 dark:text-yellow-200 dark:border-yellow-800';
             case 'Installation': return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700 dark:bg-indigo-500/80 dark:border-indigo-400 shadow-md';
             default: return 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200 dark:bg-emerald-900/50';
@@ -208,36 +154,66 @@ export const Calendar: React.FC = () => {
         }
     };
 
-    const filteredEvents = useMemo(() => {
-        return allEvents.filter(a => {
-            const d = new Date(a.dueDate);
-            return d.getMonth() === month && d.getFullYear() === year && filters[a.type as keyof typeof filters];
-        });
-    }, [allEvents, month, year, filters]);
+    // Lógica da grade de 42 dias (6 semanas)
+    const calendarDays = useMemo(() => {
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        const days = [];
+        
+        // Dias do mês anterior para completar a primeira semana
+        const prevMonthLastDay = new Date(year, month, 0).getDate();
+        for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+            days.push({
+                date: new Date(year, month - 1, prevMonthLastDay - i),
+                currentMonth: false
+            });
+        }
+        
+        // Dias do mês atual
+        for (let i = 1; i <= daysInMonth; i++) {
+            days.push({
+                date: new Date(year, month, i),
+                currentMonth: true
+            });
+        }
+        
+        // Dias do próximo mês para completar 42 células
+        const remainingCells = 42 - days.length;
+        for (let i = 1; i <= remainingCells; i++) {
+            days.push({
+                date: new Date(year, month + 1, i),
+                currentMonth: false
+            });
+        }
+        
+        return days;
+    }, [year, month]);
 
     const renderCalendarDays = () => {
-        const days = [];
-        for (let i = 0; i < firstDay; i++) {
-            days.push(<div key={`empty-${i}`} className="bg-slate-50/50 dark:bg-slate-800/30 border-r border-b border-slate-100 dark:border-slate-800 min-h-[120px]"></div>);
-        }
-        for (let d = 1; d <= daysInMonth; d++) {
-            const date = new Date(year, month, d);
+        return calendarDays.map((dayObj, index) => {
+            const { date, currentMonth } = dayObj;
             const isToday = new Date().toDateString() === date.toDateString();
-            const dayEvents = filteredEvents
-                .filter(a => new Date(a.dueDate).getDate() === d)
-                .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
             
-            days.push(
+            const dayEvents = allEvents.filter(a => {
+                const eventDate = new Date(a.dueDate);
+                return eventDate.toDateString() === date.toDateString() && filters[a.type as keyof typeof filters];
+            }).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+            
+            return (
                 <div 
-                    key={d} 
-                    className="border-r border-b border-slate-200 dark:border-slate-700 min-h-[120px] p-2 transition relative group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex flex-col"
+                    key={index} 
+                    className={`border-r border-b border-slate-200 dark:border-slate-700 min-h-[120px] p-2 transition relative group cursor-pointer flex flex-col
+                        ${currentMonth ? 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/20 opacity-40 hover:opacity-100 transition-opacity'}
+                    `}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, date)}
                     onClick={() => { setSelectedDateForNew(date); setIsDayViewOpen(true); }}
                 >
                     <div className="flex justify-between items-start mb-2">
-                        <span className={`text-sm font-black w-7 h-7 flex items-center justify-center rounded-xl ${isToday ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-700 dark:text-slate-300'}`}>{d}</span>
-                        <div onClick={(e) => { e.stopPropagation(); handleOpenAdd(date); }} className="opacity-0 group-hover:opacity-100 transition p-1 hover:bg-indigo-100 rounded text-indigo-600"><Plus size={14}/></div>
+                        <span className={`text-sm font-black w-7 h-7 flex items-center justify-center rounded-xl ${isToday ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-700 dark:text-slate-300'}`}>
+                            {date.getDate()}
+                        </span>
                     </div>
                     <div className="flex flex-col gap-1 flex-1">
                         {dayEvents.slice(0, 4).map(act => (
@@ -246,7 +222,11 @@ export const Calendar: React.FC = () => {
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, act.id, act.eventType)}
                                 onDragEnd={handleDragEnd}
-                                onClick={(e) => { e.stopPropagation(); act.eventType === 'project' ? setSelectedProject(act.originalProject) : setSelectedEvent(act as any); }}
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if(act.eventType === 'project') setSelectedProject(act.originalProject);
+                                    else setSelectedEvent(act as any); 
+                                }}
                                 className={`text-[9px] px-2 py-1.5 rounded-lg border truncate flex items-center gap-2 cursor-grab active:cursor-grabbing transition transform hover:scale-[1.03] ${getEventStyle(act.type, act.completed)}`}
                             >
                                 <span className="shrink-0">{getTypeIcon(act.type)}</span>
@@ -257,8 +237,7 @@ export const Calendar: React.FC = () => {
                     </div>
                 </div>
             );
-        }
-        return days;
+        });
     };
 
     return (
@@ -293,7 +272,6 @@ export const Calendar: React.FC = () => {
                     <button onClick={() => setIsFocusMode(!isFocusMode)} className="p-3 bg-white dark:bg-slate-800 border rounded-2xl text-slate-400 hover:text-indigo-600 transition shadow-sm">
                         {isFocusMode ? <Minimize size={20}/> : <Maximize size={20}/>}
                     </button>
-                    <button onClick={() => handleOpenAdd(new Date())} className="bg-slate-900 text-white px-8 py-3 rounded-2xl hover:scale-[1.02] transition shadow-2xl font-black uppercase text-[10px] tracking-widest">Novo Evento</button>
                 </div>
             </div>
 
@@ -304,7 +282,7 @@ export const Calendar: React.FC = () => {
                 <div className="grid grid-cols-7 flex-1 overflow-y-auto custom-scrollbar">{renderCalendarDays()}</div>
             </div>
 
-            {/* MODAL DE CONFIRMAÇÃO DE REAGENDAMENTO (Nova Funcionalidade) */}
+            {/* MODAL DE CONFIRMAÇÃO DE REAGENDAMENTO */}
             {pendingReschedule && (
                 <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[11000] flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-scale-in border border-amber-200">
@@ -357,13 +335,16 @@ export const Calendar: React.FC = () => {
                             <button onClick={() => setIsDayViewOpen(false)} className="p-3 hover:bg-red-50 rounded-2xl text-slate-400 transition"><X size={24}/></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                            {allEvents.filter(a => new Date(a.dueDate).getDate() === selectedDateForNew.getDate() && new Date(a.dueDate).getMonth() === selectedDateForNew.getMonth()).map(act => (
-                                <div key={act.id} onClick={() => { setIsDayViewOpen(false); act.eventType === 'project' ? setSelectedProject(act.originalProject) : setSelectedEvent(act as any); }} className={`p-5 rounded-[1.5rem] border cursor-pointer hover:shadow-xl transition-all flex flex-col gap-2 ${getEventStyle(act.type, act.completed)}`}>
+                            {allEvents.filter(a => new Date(a.dueDate).toDateString() === selectedDateForNew.toDateString()).map(act => (
+                                <div key={act.id} onClick={() => { setIsDayViewOpen(false); if(act.eventType === 'project') setSelectedProject(act.originalProject); else setSelectedEvent(act as any); }} className={`p-5 rounded-[1.5rem] border cursor-pointer hover:shadow-xl transition-all flex flex-col gap-2 ${getEventStyle(act.type, act.completed)}`}>
                                     <div className="flex justify-between items-center"><span className="text-[8px] font-black uppercase opacity-60 tracking-widest">{act.type}</span><Clock size={12}/></div>
                                     <h4 className="font-black text-sm uppercase tracking-tight leading-none">{act.title}</h4>
                                     <p className="text-[10px] font-bold opacity-60 uppercase">{act.relatedTo}</p>
                                 </div>
                             ))}
+                            {allEvents.filter(a => new Date(a.dueDate).toDateString() === selectedDateForNew.toDateString()).length === 0 && (
+                                <div className="text-center py-20 text-slate-400 italic text-sm">Sem compromissos para este dia.</div>
+                            )}
                         </div>
                     </div>
                 </div>
