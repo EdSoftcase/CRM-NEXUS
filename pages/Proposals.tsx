@@ -149,6 +149,7 @@ export const Proposals: React.FC = () => {
 
         setIsSaving(true);
         const proposalStatus = isExpressActivation ? 'Accepted' : formData.status;
+        const now = new Date().toISOString();
 
         const proposalData: Proposal = {
             ...formData,
@@ -158,8 +159,8 @@ export const Proposals: React.FC = () => {
             setupCost: Number(formData.setupCost),
             status: proposalStatus,
             organizationId: currentUser?.organizationId || 'org-1',
-            signedAt: isExpressActivation ? new Date().toISOString() : undefined,
-            signedByIp: isExpressActivation ? 'Express Activation' : undefined,
+            signedAt: isExpressActivation ? now : formData.signedAt,
+            signedByIp: isExpressActivation ? 'Express Activation' : formData.signedByIp,
             technicalSpecs: formData.technicalSpecs
         } as any;
 
@@ -175,8 +176,9 @@ export const Proposals: React.FC = () => {
                     clientName: formData.companyName,
                     status: 'Kitting',
                     progress: 20,
-                    startDate: new Date().toISOString(),
+                    startDate: now,
                     deadline: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
+                    signedAt: now, // Registra a data de assinatura no projeto
                     manager: currentUser.name,
                     description: `Projeto gerado via fluxo expresso. Baseado na proposta ${proposalData.id}.`,
                     products: formData.items.map(i => i.name),

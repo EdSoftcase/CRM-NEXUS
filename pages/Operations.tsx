@@ -3,14 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Project, ProjectTask, TechnicalSpecs } from '../types';
-// Fix: Added ClipboardCheck to lucide-react imports to resolve "Cannot find name 'ClipboardCheck'" error on line 282.
 import { 
     MonitorPlay, Minimize, Wrench, Clock, CheckCircle, X, Search, 
     History, Trello, Box, Activity, AlignLeft, GripVertical, 
     Monitor, Package, Building2, Layout, ChevronRight, AlertCircle, 
     ShoppingBag, List, LayoutGrid, Maximize2, 
     CheckSquare, Cpu, Monitor as MonitorIcon, ClipboardCheck, Zap, ShieldCheck,
-    User, Settings2
+    User, Settings2, Calendar, Filter
 } from 'lucide-react';
 import { Badge } from '../components/Widgets';
 
@@ -20,10 +19,13 @@ export const Operations: React.FC = () => {
     
     const [tvMode, setTvMode] = useState(false);
     const [viewMode, setViewMode] = useState<'board' | 'history'>('board');
-    const [displayDensity, setDisplayDensity] = useState<'standard' | 'compact'>('standard');
+    
+    // Filtros
+    const [boardSearch, setBoardSearch] = useState('');
+    const [boardManagerFilter, setBoardManagerFilter] = useState('All');
     
     const [historySearch, setHistorySearch] = useState('');
-    const [managerFilter, setManagerFilter] = useState('All');
+    const [historyManagerFilter, setHistoryManagerFilter] = useState('All');
 
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
@@ -33,6 +35,11 @@ export const Operations: React.FC = () => {
     useEffect(() => {
         setLocalProjects(globalProjects);
     }, [globalProjects]);
+
+    const managers = useMemo(() => {
+        const set = new Set(localProjects.map(p => p.manager).filter(Boolean));
+        return Array.from(set).sort();
+    }, [localProjects]);
 
     const isRecentlyCompleted = (proj: Project) => {
         if (proj.status !== 'Completed' || !proj.completedAt) return false;
@@ -49,10 +56,10 @@ export const Operations: React.FC = () => {
             const matchesSearch = (p.title || '').toLowerCase().includes(historySearch.toLowerCase()) || 
                                  (p.clientName || '').toLowerCase().includes(historySearch.toLowerCase()) ||
                                  (p.unit || '').toLowerCase().includes(historySearch.toLowerCase());
-            const matchesManager = managerFilter === 'All' || p.manager === managerFilter;
+            const matchesManager = historyManagerFilter === 'All' || p.manager === historyManagerFilter;
             return isArchived && matchesSearch && matchesManager;
         }).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
-    }, [localProjects, historySearch, managerFilter]);
+    }, [localProjects, historySearch, historyManagerFilter]);
 
     const columns = [
         { id: 'Kitting', label: '1. Separação (Kitting)', color: 'border-orange-500', progress: 20 },
@@ -66,9 +73,16 @@ export const Operations: React.FC = () => {
         return localProjects.filter(p => {
             const matchStatus = p.status === statusId;
             if (!matchStatus) return false;
-            if (statusId === 'Completed') return isRecentlyCompleted(p);
-            return !p.archived;
-        }).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()); // Ordenação por data de início (ordem de chegada)
+            
+            if (statusId === 'Completed' && !isRecentlyCompleted(p)) return false;
+            if (statusId !== 'Completed' && p.archived) return false;
+
+            const matchesSearch = (p.title || '').toLowerCase().includes(boardSearch.toLowerCase()) || 
+                                 (p.clientName || '').toLowerCase().includes(boardSearch.toLowerCase());
+            const matchesManager = boardManagerFilter === 'All' || p.manager === boardManagerFilter;
+
+            return matchesSearch && matchesManager;
+        }).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
     };
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -179,6 +193,41 @@ export const Operations: React.FC = () => {
                 </div>
             </div>
 
+            {/* Barra de Filtros da Esteira */}
+            {viewMode === 'board' && !tvMode && (
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-wrap items-center gap-4 mb-6">
+                    <div className="relative flex-1 min-w-[240px]">
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={18}/>
+                        <input 
+                            type="text" 
+                            placeholder="Filtrar por nome ou cliente..." 
+                            className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                            value={boardSearch}
+                            onChange={e => setBoardSearch(e.target.value)}
+                        />
+                    </div>
+                    <div className="flex items-center gap-2 px-3 border-l border-slate-100 dark:border-slate-700">
+                        <User size={16} className="text-slate-400"/>
+                        <select 
+                            className="bg-transparent border-none text-xs font-black uppercase outline-none cursor-pointer text-slate-700 dark:text-slate-200"
+                            value={boardManagerFilter}
+                            onChange={e => setBoardManagerFilter(e.target.value)}
+                        >
+                            <option value="All">Todos Consultores</option>
+                            {managers.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                    </div>
+                    {(boardSearch || boardManagerFilter !== 'All') && (
+                        <button 
+                            onClick={() => { setBoardSearch(''); setBoardManagerFilter('All'); }}
+                            className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                            Limpar Filtros
+                        </button>
+                    )}
+                </div>
+            )}
+
             {viewMode === 'board' ? (
                 <div className="flex-1 min-h-0 overflow-x-auto custom-scrollbar">
                     <div className="flex h-full gap-4 min-w-max pb-4">
@@ -219,6 +268,12 @@ export const Operations: React.FC = () => {
                                                             <Building2 size={12} className="shrink-0"/>
                                                             <p className="font-black uppercase tracking-widest truncate text-[9px]">{proj.clientName}</p>
                                                         </div>
+                                                        {proj.signedAt && (
+                                                            <div className="flex items-center gap-1.5 mt-2 text-indigo-500 dark:text-indigo-400">
+                                                                <Calendar size={11} className="shrink-0"/>
+                                                                <p className="font-bold uppercase tracking-tight text-[9px]">Aceite: {new Date(proj.signedAt).toLocaleDateString('pt-BR')}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="mt-4 flex justify-between items-center">
@@ -244,6 +299,17 @@ export const Operations: React.FC = () => {
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-4 top-3 text-slate-400" size={18}/>
                             <input type="text" placeholder="Filtrar histórico..." className="w-full pl-12 pr-4 py-3 rounded-2xl border-none bg-white dark:bg-slate-800 text-sm font-bold outline-none" value={historySearch} onChange={e => setHistorySearch(e.target.value)} />
+                        </div>
+                        <div className="flex items-center gap-2 px-3 border-l border-slate-200 dark:border-slate-700">
+                            <User size={16} className="text-slate-400"/>
+                            <select 
+                                className="bg-transparent border-none text-xs font-black uppercase outline-none cursor-pointer text-slate-700 dark:text-slate-200"
+                                value={historyManagerFilter}
+                                onChange={e => setHistoryManagerFilter(e.target.value)}
+                            >
+                                <option value="All">Todos Consultores</option>
+                                {managers.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -286,7 +352,7 @@ export const Operations: React.FC = () => {
                                         {selectedProject.technicalSpecs ? (
                                             <div className="grid grid-cols-1 gap-4 text-xs">
                                                 {/* Gabinetes - Suporte a múltiplos itens */}
-                                                {selectedProject.technicalSpecs.gabinetes && selectedProject.technicalSpecs.gabinetes.length > 0 && (
+                                                {Array.isArray(selectedProject.technicalSpecs.gabinetes) && selectedProject.technicalSpecs.gabinetes.length > 0 && (
                                                     <div className="border-b pb-3">
                                                         <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Box size={12}/> Gabinete(s)</span>
                                                         <div className="flex flex-wrap gap-1">
@@ -297,7 +363,7 @@ export const Operations: React.FC = () => {
                                                     </div>
                                                 )}
                                                 {/* Servidor/Caixa - Suporte a múltiplos itens */}
-                                                {selectedProject.technicalSpecs.servidorCaixa && selectedProject.technicalSpecs.servidorCaixa.length > 0 && (
+                                                {Array.isArray(selectedProject.technicalSpecs.servidorCaixa) && selectedProject.technicalSpecs.servidorCaixa.length > 0 && (
                                                     <div className="border-b pb-3">
                                                         <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Cpu size={12}/> Servidor / Caixa</span>
                                                         <div className="flex flex-wrap gap-1">
@@ -402,7 +468,7 @@ export const Operations: React.FC = () => {
                                     <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                                         {safeArray(selectedProject.products).map((p, i) => (
                                             <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border">
-                                                <div className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center text-indigo-500"><Package size={16}/></div>
+                                                <div className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center text-indigo-50"><Package size={16}/></div>
                                                 <span className="text-[11px] font-bold uppercase">{p}</span>
                                             </div>
                                         ))}

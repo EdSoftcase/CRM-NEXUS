@@ -55,55 +55,67 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
 };
 
 export const getSupabaseSchema = () => `
--- NEXUS SCHEMA REPAIR v89.0
--- Ajuste de Idempotência e Technical Specs
+-- NEXUS SCHEMA REPAIR v92.0
+-- Garantia de Tabelas de Sistema (Audit, Webhooks, Fields)
 
--- 1. Tabela de Propostas
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS technical_specs JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS monthly_cost NUMERIC DEFAULT 0;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS setup_cost NUMERIC DEFAULT 0;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS scope JSONB DEFAULT '[]'::jsonb;
-
--- 2. Tabela de Vistorias Técnicas (Fix Idempotência de Política)
-CREATE TABLE IF NOT EXISTS public.technical_visits (
+-- 1. Auditoria
+CREATE TABLE IF NOT EXISTS public.audit_logs (
     id TEXT PRIMARY KEY,
-    target_id TEXT NOT NULL,
-    target_name TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    scheduled_date TIMESTAMPTZ DEFAULT now(),
-    technician_name TEXT,
-    status TEXT DEFAULT 'Agendada',
-    report TEXT,
-    infrastructure_notes TEXT,
-    suggested_items JSONB DEFAULT '[]'::jsonb,
-    organization_id TEXT DEFAULT 'org-1',
-    created_at TIMESTAMPTZ DEFAULT now()
+    timestamp TIMESTAMPTZ DEFAULT now(),
+    user_id TEXT,
+    user_name TEXT,
+    action TEXT,
+    details TEXT,
+    module TEXT,
+    organization_id TEXT DEFAULT 'org-1'
 );
 
--- Garantir que RLS esteja ativo
-ALTER TABLE public.technical_visits ENABLE ROW LEVEL SECURITY;
+-- 2. Webhooks
+CREATE TABLE IF NOT EXISTS public.webhooks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    active BOOLEAN DEFAULT true,
+    trigger_event TEXT,
+    method TEXT DEFAULT 'POST',
+    headers JSONB DEFAULT '{}'::jsonb,
+    organization_id TEXT DEFAULT 'org-1'
+);
 
--- Excluir política se ela já existir para evitar erro 42710
+-- 3. Campos Customizados
+CREATE TABLE IF NOT EXISTS public.custom_fields (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    key TEXT NOT NULL,
+    type TEXT NOT NULL,
+    module TEXT NOT NULL,
+    options JSONB DEFAULT '[]'::jsonb,
+    required BOOLEAN DEFAULT false,
+    organization_id TEXT DEFAULT 'org-1'
+);
+
+-- 4. Propostas e Vistorias
+ALTER TABLE public.proposals ADD COLUMN IF NOT EXISTS technical_specs JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.technical_visits ADD COLUMN IF NOT EXISTS suggested_items JSONB DEFAULT '[]'::jsonb;
+
+-- Segurança
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.webhooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_fields ENABLE ROW LEVEL SECURITY;
+
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_policies 
-        WHERE tablename = 'technical_visits' 
-        AND policyname = 'Enable all for same org'
-    ) THEN
-        DROP POLICY "Enable all for same org" ON public.technical_visits;
-    END IF;
+    -- Drop and Recreate policies to avoid conflicts
+    DROP POLICY IF EXISTS "Enable all" ON public.audit_logs;
+    CREATE POLICY "Enable all" ON public.audit_logs FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Enable all" ON public.webhooks;
+    CREATE POLICY "Enable all" ON public.webhooks FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Enable all" ON public.custom_fields;
+    CREATE POLICY "Enable all" ON public.custom_fields FOR ALL USING (true);
 END
 $$;
-
--- Criar política do zero
-CREATE POLICY "Enable all for same org" ON public.technical_visits FOR ALL USING (true);
-
--- 3. Tabela de Projetos
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS technical_specs JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS tasks JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS products JSONB DEFAULT '[]'::jsonb;
 
 NOTIFY pgrst, 'reload schema';
 `;

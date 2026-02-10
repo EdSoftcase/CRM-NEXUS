@@ -33,8 +33,8 @@ export interface TechnicalVisit {
 }
 
 export interface TechnicalSpecs {
-    gabinetes?: string[]; // Alterado para array
-    servidorCaixa?: string[]; // Alterado para array
+    gabinetes?: string[];
+    servidorCaixa?: string[];
     camera?: string;
     nobreak?: string;
     nobreakQty?: string;
@@ -356,6 +356,7 @@ export interface Project {
     progress: number;
     startDate: string;
     deadline: string;
+    signedAt?: string; // Data de assinatura da proposta
     archived?: boolean;
     completedAt?: string;
     products?: string[];

@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, Clock, CheckCircle, Plus, Phone, Mail, Users, X, Video, MapPin, AlignLeft, Trash2, Maximize, Minimize, Filter, MoreHorizontal, CalendarDays, List, RefreshCw, Download, CalendarCheck, Wrench, Box, AlertTriangle, MessageCircle, ShieldCheck, Loader2 } from 'lucide-react';
-import { Activity, Project } from '../types';
-import { Badge } from '../components/Widgets';
+import { ChevronLeft, ChevronRight, Calendar as CalIcon, Clock, CheckCircle, Plus, Phone, Mail, Users, X, Video, MapPin, AlignLeft, Trash2, Maximize, Minimize, Filter, MoreHorizontal, CalendarDays, List, RefreshCw, Download, CalendarCheck, Wrench, Box, AlertTriangle, MessageCircle, ShieldCheck, Loader2, ClipboardCheck, CheckSquare, Activity, ShoppingBag, Package, Settings2, Monitor as MonitorIcon, User, Building2, Cpu, Zap, Layout } from 'lucide-react';
+import { Activity as ActivityType, Project } from '../types';
+import { Badge, SectionTitle } from '../components/Widgets';
 
 export const Calendar: React.FC = () => {
     const { activities, toggleActivity, addActivity, updateActivity, projects, updateProject, addSystemNotification } = useData();
@@ -32,10 +32,9 @@ export const Calendar: React.FC = () => {
     });
 
     // Modals
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isDayViewOpen, setIsDayViewOpen] = useState(false);
     const [selectedDateForNew, setSelectedDateForNew] = useState<Date>(new Date());
-    const [selectedEvent, setSelectedEvent] = useState<Activity | null>(null);
+    const [selectedEvent, setSelectedEvent] = useState<ActivityType | null>(null);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -51,6 +50,15 @@ export const Calendar: React.FC = () => {
     const toggleFilter = (type: keyof typeof filters) => {
         setFilters(prev => ({ ...prev, [type]: !prev[type] }));
     };
+
+    // Lógica das colunas de produção (igual ao Operations.tsx para consistência no modal)
+    const columns = [
+        { id: 'Kitting', label: '1. Separação (Kitting)', color: 'border-orange-500', progress: 20 },
+        { id: 'Assembly', label: '2. Montagem / Bancada', color: 'border-purple-500', progress: 40 },
+        { id: 'Execution', label: '3. Instalação / Campo', color: 'border-yellow-500', progress: 60 },
+        { id: 'Training', label: '4. Treinamento / Go-Live', color: 'border-blue-500', progress: 80 },
+        { id: 'Completed', label: '5. Concluída / Testada', color: 'border-green-500', progress: 100 },
+    ];
 
     const allEvents = useMemo(() => {
         const events = activities.map(a => ({ ...a, eventType: 'activity' as const }));
@@ -133,13 +141,43 @@ export const Calendar: React.FC = () => {
         }
     };
 
+    const handleUpdateStatus = async (id: string, newStatus: string) => {
+        const proj = projects.find(p => p.id === id);
+        if (!proj) return;
+
+        const statusConfig = columns.find(c => c.id === newStatus);
+        const newProgress = statusConfig ? statusConfig.progress : proj.progress;
+        const isFinished = newStatus === 'Completed';
+
+        const updatedProjectData: Project = { 
+            ...proj, 
+            status: newStatus, 
+            progress: newProgress,
+            statusUpdatedAt: new Date().toISOString(),
+            completedAt: isFinished ? new Date().toISOString() : proj.completedAt,
+            archived: false 
+        };
+
+        if (selectedProject?.id === id) setSelectedProject(updatedProjectData);
+        await updateProject(currentUser, updatedProjectData);
+        addSystemNotification("Produção Atualizada", `${proj.title} movido para ${newStatus}.`, "success");
+    };
+
+    const handleToggleTask = async (project: Project, taskId: string) => {
+        const updatedTasks = project.tasks.map(t => t.id === taskId ? { ...t, status: t.status === 'Done' ? 'Pending' : 'Done' as any } : t);
+        const updatedProject = { ...project, tasks: updatedTasks };
+        
+        if(selectedProject?.id === project.id) setSelectedProject(updatedProject);
+        await updateProject(currentUser, updatedProject);
+    };
+
     const getEventStyle = (type: string, completed: boolean) => {
         if (completed) return 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 line-through grayscale';
         switch(type) {
             case 'Call': return 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:border-blue-800';
             case 'Meeting': return 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-200 dark:border-blue-800';
             case 'Email': return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200 dark:bg-yellow-900/50 dark:text-yellow-200 dark:border-yellow-800';
-            case 'Installation': return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700 dark:bg-indigo-500/80 dark:border-indigo-400 shadow-md';
+            case 'Installation': return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700 dark:bg-indigo-50/80 dark:border-indigo-400 shadow-md';
             default: return 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200 dark:bg-emerald-900/50';
         }
     };
@@ -154,41 +192,32 @@ export const Calendar: React.FC = () => {
         }
     };
 
-    // Lógica da grade de 42 dias (6 semanas)
     const calendarDays = useMemo(() => {
         const firstDayOfMonth = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        
         const days = [];
-        
-        // Dias do mês anterior para completar a primeira semana
         const prevMonthLastDay = new Date(year, month, 0).getDate();
         for (let i = firstDayOfMonth - 1; i >= 0; i--) {
-            days.push({
-                date: new Date(year, month - 1, prevMonthLastDay - i),
-                currentMonth: false
-            });
+            days.push({ date: new Date(year, month - 1, prevMonthLastDay - i), currentMonth: false });
         }
-        
-        // Dias do mês atual
         for (let i = 1; i <= daysInMonth; i++) {
-            days.push({
-                date: new Date(year, month, i),
-                currentMonth: true
-            });
+            days.push({ date: new Date(year, month, i), currentMonth: true });
         }
-        
-        // Dias do próximo mês para completar 42 células
         const remainingCells = 42 - days.length;
         for (let i = 1; i <= remainingCells; i++) {
-            days.push({
-                date: new Date(year, month + 1, i),
-                currentMonth: false
-            });
+            days.push({ date: new Date(year, month + 1, i), currentMonth: false });
         }
-        
         return days;
     }, [year, month]);
+
+    const safeArray = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try { return JSON.parse(val); } catch(e) { return []; }
+        }
+        return [];
+    };
 
     const renderCalendarDays = () => {
         return calendarDays.map((dayObj, index) => {
@@ -203,20 +232,20 @@ export const Calendar: React.FC = () => {
             return (
                 <div 
                     key={index} 
-                    className={`border-r border-b border-slate-200 dark:border-slate-700 min-h-[120px] p-2 transition relative group cursor-pointer flex flex-col
+                    className={`border-r border-b border-slate-200 dark:border-slate-700 min-h-[120px] max-h-[120px] p-2 transition relative group cursor-pointer flex flex-col overflow-hidden
                         ${currentMonth ? 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/20 opacity-40 hover:opacity-100 transition-opacity'}
                     `}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, date)}
                     onClick={() => { setSelectedDateForNew(date); setIsDayViewOpen(true); }}
                 >
-                    <div className="flex justify-between items-start mb-2">
-                        <span className={`text-sm font-black w-7 h-7 flex items-center justify-center rounded-xl ${isToday ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-700 dark:text-slate-300'}`}>
+                    <div className="flex justify-between items-start mb-1">
+                        <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${isToday ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500'}`}>
                             {date.getDate()}
                         </span>
                     </div>
-                    <div className="flex flex-col gap-1 flex-1">
-                        {dayEvents.slice(0, 4).map(act => (
+                    <div className="flex flex-col gap-0.5 flex-1 min-h-0 overflow-hidden">
+                        {dayEvents.slice(0, 3).map(act => (
                             <div 
                                 key={act.id} 
                                 draggable
@@ -227,13 +256,13 @@ export const Calendar: React.FC = () => {
                                     if(act.eventType === 'project') setSelectedProject(act.originalProject);
                                     else setSelectedEvent(act as any); 
                                 }}
-                                className={`text-[9px] px-2 py-1.5 rounded-lg border truncate flex items-center gap-2 cursor-grab active:cursor-grabbing transition transform hover:scale-[1.03] ${getEventStyle(act.type, act.completed)}`}
+                                className={`text-[8px] px-1.5 py-1 rounded-md border truncate flex items-center gap-1.5 cursor-grab active:cursor-grabbing transition transform hover:scale-[1.02] ${getEventStyle(act.type, act.completed)}`}
                             >
                                 <span className="shrink-0">{getTypeIcon(act.type)}</span>
-                                <span className="truncate font-black uppercase flex-1">{act.title}</span>
+                                <span className="truncate font-black uppercase flex-1 leading-none">{act.title}</span>
                             </div>
                         ))}
-                        {dayEvents.length > 4 && <div className="text-[9px] text-slate-400 text-center font-black uppercase">+ {dayEvents.length - 4} items</div>}
+                        {dayEvents.length > 3 && <div className="text-[7px] text-slate-400 text-center font-black uppercase mt-0.5">+ {dayEvents.length - 3} mais</div>}
                     </div>
                 </div>
             );
@@ -270,7 +299,7 @@ export const Calendar: React.FC = () => {
                         ))}
                     </div>
                     <button onClick={() => setIsFocusMode(!isFocusMode)} className="p-3 bg-white dark:bg-slate-800 border rounded-2xl text-slate-400 hover:text-indigo-600 transition shadow-sm">
-                        {isFocusMode ? <Minimize size={20}/> : <Maximize size={20}/>}
+                        {isFocusMode ? <Maximize size={20}/> : <Maximize size={20}/>}
                     </button>
                 </div>
             </div>
@@ -345,6 +374,143 @@ export const Calendar: React.FC = () => {
                             {allEvents.filter(a => new Date(a.dueDate).toDateString() === selectedDateForNew.toDateString()).length === 0 && (
                                 <div className="text-center py-20 text-slate-400 italic text-sm">Sem compromissos para este dia.</div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DETALHADO DO PROJETO (UNIFICADO COM OPERATIONS) */}
+            {selectedProject && (
+                <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-[3rem] w-full max-w-6xl h-[94vh] overflow-hidden shadow-2xl flex flex-col border">
+                        <div className="p-8 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 shrink-0">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1">{selectedProject.title}</h2>
+                                <p className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2"><Building2 size={12}/> {selectedProject.clientName}</p>
+                            </div>
+                            <button onClick={() => setSelectedProject(null)} className="p-3 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all rounded-2xl"><X size={24}/></button>
+                        </div>
+                        
+                        <div className="p-8 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-3 gap-10 custom-scrollbar">
+                             <div className="lg:col-span-1 space-y-8">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><ClipboardCheck size={14}/> Checklist Técnico (Kitting)</h4>
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border space-y-3 shadow-inner">
+                                        {selectedProject.technicalSpecs ? (
+                                            <div className="grid grid-cols-1 gap-4 text-xs">
+                                                {/* Gabinetes - Suporte a múltiplos itens */}
+                                                {Array.isArray(selectedProject.technicalSpecs.gabinetes) && selectedProject.technicalSpecs.gabinetes.length > 0 && (
+                                                    <div className="border-b pb-3">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Box size={12}/> Gabinete(s)</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {selectedProject.technicalSpecs.gabinetes.map((g, idx) => (
+                                                                <span key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-[10px] font-black">{g}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {/* Servidor/Caixa - Suporte a múltiplos itens */}
+                                                {Array.isArray(selectedProject.technicalSpecs.servidorCaixa) && selectedProject.technicalSpecs.servidorCaixa.length > 0 && (
+                                                    <div className="border-b pb-3">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2 mb-2"><Cpu size={12}/> Servidor / Caixa</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {selectedProject.technicalSpecs.servidorCaixa.map((s, idx) => (
+                                                                <span key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-[10px] font-black">{s}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.camera && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><MonitorIcon size={12}/> Câmera</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.camera}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.nobreak && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Zap size={12}/> Nobreak</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.nobreak} ({selectedProject.technicalSpecs.nobreakQty || '1'})</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.faceId && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><User size={12}/> Face ID</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.faceId}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.ilha && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Layout size={12}/> Ilha</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.ilha}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.cancela && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Minimize size={12}/> Cancela</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.cancela} ({selectedProject.technicalSpecs.cancelaQty || '1'})</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.braco && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><ShieldCheck size={12}/> Braço</span>
+                                                        <span className="font-black text-slate-700 dark:text-white">{selectedProject.technicalSpecs.braco} {selectedProject.technicalSpecs.bracoTamanho ? `(${selectedProject.technicalSpecs.bracoTamanho})` : ''}</span>
+                                                    </div>
+                                                )}
+                                                {selectedProject.technicalSpecs.modeloAutomacao && (
+                                                    <div className="flex justify-between border-b pb-2">
+                                                        <span className="text-slate-400 font-bold uppercase flex items-center gap-2"><Settings2 size={12}/> Automação</span>
+                                                        <span className="font-black text-indigo-600 uppercase">{selectedProject.technicalSpecs.modeloAutomacao}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-slate-400 italic text-xs py-10">Sem especificações técnicas detalhadas.</p>
+                                        )}
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div className="lg:col-span-1">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckSquare size={14}/> Tarefas de Implantação</h4>
+                                <div className="space-y-3">
+                                    {safeArray(selectedProject.tasks).map(t => (
+                                        <div key={t.id} onClick={() => handleToggleTask(selectedProject, t.id)} className={`flex items-center gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-all ${t.status === 'Done' ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 opacity-60' : 'bg-white dark:bg-slate-900 hover:border-indigo-300'}`}>
+                                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.status === 'Done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300'}`}>{t.status === 'Done' && <CheckCircle size={14} fill="currentColor"/>}</div>
+                                            <span className={`text-xs font-bold ${t.status === 'Done' ? 'line-through text-slate-500' : 'text-slate-800 dark:text-white'}`}>{t.title}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                             </div>
+
+                             <div className="lg:col-span-1 space-y-8">
+                                <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
+                                    {/* Fix: Replace undefined 'ActivityIcon' with 'Activity' component from lucide-react */}
+                                    <div className="absolute right-[-20px] top-[-20px] text-white/5"><Activity size={150}/></div>
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase mb-6 tracking-widest relative z-10">Mover Estágio da Esteira</h4>
+                                    <div className="grid grid-cols-2 gap-3 relative z-10">
+                                        {columns.map(c => (
+                                            <button key={c.id} onClick={() => handleUpdateStatus(selectedProject.id, c.id)} className={`p-4 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedProject.status === c.id ? 'bg-white text-slate-900 border-white shadow-xl scale-[1.05]' : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-indigo-500'}`}>
+                                                {c.label.split(' ')[1]}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="mt-8 pt-8 border-t border-white/10 relative z-10">
+                                        <div className="flex justify-between mb-3"><span className="text-[10px] font-black text-indigo-300 uppercase">Evolução</span><span className="text-xl font-black text-white font-mono">{selectedProject.progress}%</span></div>
+                                        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 to-blue-400 transition-all duration-1000" style={{width: `${selectedProject.progress}%`}}></div></div>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border shadow-sm">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 tracking-widest flex items-center gap-2"><ShoppingBag size={14}/> Catálogo de Equipamentos</h4>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                        {safeArray(selectedProject.products).map((p, i) => (
+                                            <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border">
+                                                <div className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center text-indigo-50"><Package size={16}/></div>
+                                                <span className="text-[11px] font-bold uppercase">{p}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                             </div>
                         </div>
                     </div>
                 </div>

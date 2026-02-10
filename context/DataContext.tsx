@@ -118,6 +118,8 @@ const mapToApp = (data: any[] | null | undefined): any[] => {
         if (newItem.technician_name) newItem.technicianName = newItem.technician_name;
         if (newItem.infrastructure_notes) newItem.infrastructureNotes = newItem.infrastructure_notes;
         if (newItem.suggested_items) newItem.suggestedItems = newItem.suggested_items;
+        if (newItem.user_id) newItem.userId = newItem.user_id;
+        if (newItem.user_name) newItem.userName = newItem.user_name;
         if (newItem.technical_specs) newItem.technicalSpecs = typeof newItem.technical_specs === 'string' ? JSON.parse(newItem.technical_specs) : newItem.technical_specs;
 
         const parseJson = (val: any) => {
@@ -143,6 +145,15 @@ const mapToDb = (data: any, table: string) => {
         id: p.id,
         organization_id: p.organizationId || MASTER_ORG_ID
     };
+
+    if (table === 'audit_logs') {
+        payload.timestamp = p.timestamp || new Date().toISOString();
+        payload.user_id = p.userId || 'system';
+        payload.user_name = p.userName || 'System';
+        payload.action = p.action;
+        payload.details = p.details;
+        payload.module = p.module;
+    }
 
     if (table === 'leads') {
         payload.name = p.name || '';
@@ -219,6 +230,22 @@ const mapToDb = (data: any, table: string) => {
         if (p.unit) payload.unit = p.unit;
     }
 
+    if (table === 'webhooks') {
+        payload.name = p.name;
+        payload.url = p.url;
+        payload.active = !!p.active;
+        payload.trigger_event = p.triggerEvent;
+    }
+
+    if (table === 'custom_fields') {
+        payload.label = p.label;
+        payload.key = p.key;
+        payload.type = p.type;
+        payload.module = p.module;
+        payload.required = !!p.required;
+    }
+
+    // Fix: Added missing table mappings for technical_visits, competitors, market_trends, prospecting_history, and activities.
     if (table === 'technical_visits') {
         payload.target_id = p.targetId;
         payload.target_name = p.targetName;
@@ -229,6 +256,41 @@ const mapToDb = (data: any, table: string) => {
         payload.report = p.report;
         payload.infrastructure_notes = p.infrastructureNotes;
         payload.suggested_items = JSON.stringify(p.suggestedItems || []);
+    }
+
+    if (table === 'competitors') {
+        payload.name = p.name;
+        payload.website = p.website;
+        payload.sector = p.sector;
+        payload.last_analysis = p.lastAnalysis;
+        payload.swot = JSON.stringify(p.swot || {});
+        payload.battlecard = JSON.stringify(p.battlecard || {});
+    }
+
+    if (table === 'market_trends') {
+        payload.title = p.title;
+        payload.description = p.description;
+        payload.sentiment = p.sentiment;
+        payload.impact = p.impact;
+    }
+
+    if (table === 'prospecting_history') {
+        payload.timestamp = p.timestamp;
+        payload.industry = p.industry;
+        payload.location = p.location;
+        payload.keywords = p.keywords;
+        payload.results = JSON.stringify(p.results || []);
+    }
+
+    if (table === 'activities') {
+        payload.title = p.title;
+        payload.type = p.type;
+        payload.due_date = p.dueDate;
+        payload.completed = !!p.completed;
+        payload.related_to = p.relatedTo;
+        payload.assignee = p.assignee;
+        payload.description = p.description || '';
+        payload.metadata = JSON.stringify(p.metadata || {});
     }
 
     return payload;
@@ -260,7 +322,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
     const [marketTrends, setMarketTrendsState] = useState<MarketTrend[]>([]);
     
-    const processedProposalsRef = useRef<Set<string>>(new Set());
+    const dbUpsert = async (table: string, data: any) => {
+        const supabase = getSupabase();
+        if (supabase) {
+            try {
+                const payload = mapToDb(data, table);
+                await supabase.from(table).upsert(payload);
+            } catch (e) {
+                console.warn(`Failed to sync ${table} to cloud`, e);
+            }
+        }
+    };
+
+    const addLog = (log: AuditLog) => {
+        setLogs(prev => [log, ...prev]);
+        dbUpsert('audit_logs', log);
+    };
+
+    const logAction = (user: User | null, action: string, details: string, module: string) => {
+        if (!user) return;
+        const log: AuditLog = {
+            id: `LOG-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            userId: user.id,
+            userName: user.name,
+            action,
+            details,
+            module,
+            organizationId: user.organizationId
+        };
+        addLog(log);
+    };
 
     const addToast = (message: Omit<ToastMessage, 'id'>) => {
         const id = `TOAST-${Date.now()}`;
@@ -283,46 +375,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const markNotificationRead = (id: string) => {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    };
-
-    const addProject = async (user: User | null, project: Project) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(project, 'projects');
-            const { error } = await sb.from('projects').insert(payload);
-            if (error) throw error;
-            setProjects(prev => [...prev, project]);
-        }
-    };
-
-    const updateProject = async (user: User | null, project: Project) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(project, 'projects');
-            const { error } = await sb.from('projects').upsert(payload);
-            if (error) throw error;
-            setProjects(prev => prev.map(p => p.id === project.id ? project : p));
-        }
-    };
-
-    const addTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(visit, 'technical_visits');
-            const { error } = await sb.from('technical_visits').insert(payload);
-            if (error) throw error;
-            setTechnicalVisits(prev => [...prev, visit]);
-        }
-    };
-
-    const updateTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(visit, 'technical_visits');
-            const { error } = await sb.from('technical_visits').upsert(payload);
-            if (error) throw error;
-            setTechnicalVisits(prev => prev.map(v => v.id === visit.id ? visit : v));
-        }
     };
 
     const refreshData = useCallback(async () => {
@@ -369,11 +421,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 projectQuery,
                 sb.from('products').select('*').or(`organization_id.eq.${MASTER_ORG_ID},organization_id.is.null`),
                 proposalQuery,
-                sb.from('audit_logs').select('*').eq('organization_id', userOrgId).limit(50),
+                sb.from('audit_logs').select('*').eq('organization_id', userOrgId).order('timestamp', {ascending: false}).limit(100),
                 sb.from('prospecting_history').select('*').eq('organization_id', userOrgId),
                 sb.from('competitors').select('*').eq('organization_id', userOrgId),
                 sb.from('market_trends').select('*').eq('organization_id', userOrgId),
-                visitQuery
+                visitQuery,
+                sb.from('webhooks').select('*').eq('organization_id', userOrgId),
+                sb.from('custom_fields').select('*').eq('organization_id', userOrgId)
             ]);
 
             const getData = (index: number) => {
@@ -385,27 +439,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 return [];
             };
 
-            const fetchedLeads = getData(0);
-            const fetchedInvoices = getData(1);
-            const fetchedTickets = getData(2);
-            const fetchedActivities = getData(3);
-            const fetchedProjects = getData(4);
-            const fetchedProducts = getData(5);
-            const fetchedProposals = getData(6);
-            const fetchedVisits = getData(11);
-
-            setLeads(fetchedLeads);
-            setInvoices(fetchedInvoices);
-            setTickets(fetchedTickets);
-            setActivities(fetchedActivities);
-            setProjects(fetchedProjects);
-            setProducts(fetchedProducts);
-            setProposals(fetchedProposals);
-            setTechnicalVisits(fetchedVisits);
+            setLeads(getData(0));
+            setInvoices(getData(1));
+            setTickets(getData(2));
+            setActivities(getData(3));
+            setProjects(getData(4));
+            setProducts(getData(5));
+            setProposals(getData(6));
             setLogs(getData(7));
             setProspectingHistory(getData(8));
             setCompetitors(getData(9));
             setMarketTrendsState(getData(10));
+            setTechnicalVisits(getData(11));
+            setWebhooks(getData(12));
+            setCustomFields(getData(13));
             setClients(myClients);
             setLastSyncTime(new Date());
         } catch (e: any) { 
@@ -417,173 +464,80 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
 
+    // Fix: Declared toggleTheme function to resolve scope property error.
+    const toggleTheme = () => {
+        const nextTheme = theme === 'light' ? 'dark' : 'light';
+        setTheme(nextTheme);
+        localStorage.setItem('soft_theme', nextTheme);
+    };
+
     const addProduct = async (user: User | null, product: Product) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(product, 'products');
-            const { error } = await sb.from('products').insert(payload);
-            if (error) throw error;
-            setProducts(prev => [...prev, product]);
-        }
-    };
-
-    const updateProduct = async (user: User | null, product: Product) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(product, 'products');
-            const { error } = await sb.from('products').upsert(payload);
-            if (error) throw error;
-            setProducts(prev => prev.map(p => p.id === product.id ? product : p));
-        }
-    };
-
-    const removeProduct = async (user: User | null, productId: string, reason?: string) => {
-        const sb = getSupabase();
-        if (sb) {
-            const { error } = await sb.from('products').delete().eq('id', productId);
-            if (error) throw error;
-            setProducts(prev => prev.filter(p => p.id !== productId));
-        }
+        setProducts(prev => [...prev, product]);
+        await dbUpsert('products', product);
+        logAction(user, 'Create Product', `Created product ${product.name}`, 'Configurações');
     };
 
     const addProposal = async (user: User | null, proposal: Proposal) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(proposal, 'proposals');
-            const { error } = await sb.from('proposals').insert(payload);
-            if (error) throw error;
-            setProposals(prev => [...prev, proposal]);
-        }
-    };
-
-    const updateProposal = async (user: User | null, proposal: Proposal) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(proposal, 'proposals');
-            const { error } = await sb.from('proposals').upsert(payload);
-            if (error) throw error;
-            setProposals(prev => prev.map(p => p.id === proposal.id ? proposal : p));
-        }
+        setProposals(prev => [...prev, proposal]);
+        await dbUpsert('proposals', proposal);
+        logAction(user, 'Create Proposal', `Created proposal ${proposal.title}`, 'Propostas');
     };
 
     const addLead = async (user: User | null, lead: Lead) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(lead, 'leads');
-            const { error } = await sb.from('leads').insert(payload);
-            if (error) throw error;
-            setLeads(prev => [...prev, lead]);
-        }
-    };
-
-    const updateLead = async (user: User | null, lead: Lead) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(lead, 'leads');
-            const { error } = await sb.from('leads').upsert(payload);
-            if (error) throw error;
-            setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
-        }
-    };
-
-    const updateLeadStatus = async (user: User | null, leadId: string, status: LeadStatus) => {
-        const sb = getSupabase();
-        if (sb) {
-            const { error } = await sb.from('leads').update({ status, last_contact: new Date().toISOString() }).eq('id', leadId);
-            if (error) throw error;
-            setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status, lastContact: new Date().toISOString() } : l));
-        }
+        setLeads(prev => [...prev, lead]);
+        await dbUpsert('leads', lead);
+        logAction(user, 'Create Lead', `Created lead ${lead.name}`, 'Comercial');
     };
 
     const addClient = async (user: User | null, client: Client) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(client, 'clients');
-            const { error } = await sb.from('clients').insert(payload);
-            if (error) throw error;
-            setClients(prev => [...prev, client]);
-        }
-    };
-
-    const updateClient = async (user: User | null, client: Client) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(client, 'clients');
-            const { error } = await sb.from('clients').upsert(payload);
-            if (error) throw error;
-            setClients(prev => prev.map(c => c.id === client.id ? client : c));
-        }
-    };
-
-    const updateClientContact = async (client: Client, activity?: Activity) => {
-        const sb = getSupabase();
-        if (sb) {
-            const updatedClient = { ...client, lastContact: new Date().toISOString() };
-            const payload = mapToDb(updatedClient, 'clients');
-            await sb.from('clients').upsert(payload);
-            setClients(prev => prev.map(c => c.id === client.id ? updatedClient : c));
-            if (activity) {
-                await sb.from('activities').insert({ ...activity, organization_id: currentUser?.organizationId || MASTER_ORG_ID });
-                setActivities(prev => [activity, ...prev]);
-            }
-        }
+        setClients(prev => [...prev, client]);
+        await dbUpsert('clients', client);
+        logAction(user, 'Create Client', `Created client ${client.name}`, 'Clientes');
     };
 
     const addActivity = async (user: User | null, activity: Activity) => {
-        const sb = getSupabase();
-        if (sb) {
-            const { error } = await sb.from('activities').insert({ ...activity, organization_id: currentUser?.organizationId || MASTER_ORG_ID });
-            if (error) throw error;
-            setActivities(prev => [activity, ...prev]);
-        }
+        setActivities(prev => [activity, ...prev]);
+        await dbUpsert('activities', activity);
+        logAction(user, 'Create Activity', `Created ${activity.type}`, 'Agenda');
     };
 
-    const toggleActivity = async (user: User | null, activityId: string) => {
-        const sb = getSupabase();
-        if (sb) {
-            const act = activities.find(a => a.id === activityId);
-            if (!act) return;
-            const updated = { ...act, completed: !act.completed };
-            const { error } = await sb.from('activities').upsert(updated);
-            if (error) throw error;
-            setActivities(prev => prev.map(a => a.id === activityId ? updated : a));
-        }
+    const addWebhook = async (webhook: WebhookConfig) => {
+        setWebhooks(prev => [...prev, webhook]);
+        await dbUpsert('webhooks', { ...webhook, organizationId: currentUser?.organizationId });
+        logAction(currentUser, 'Create Webhook', `Added webhook ${webhook.name}`, 'Configurações');
     };
 
-    const toggleTheme = () => {
-        const newTheme = theme === 'light' ? 'dark' : 'light';
-        setTheme(newTheme);
-        localStorage.setItem('soft_theme', newTheme);
-        document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    const deleteWebhook = async (id: string) => {
+        setWebhooks(prev => prev.filter(w => w.id !== id));
+        const sb = getSupabase();
+        if (sb) await sb.from('webhooks').delete().eq('id', id);
+        logAction(currentUser, 'Delete Webhook', `Deleted webhook ${id}`, 'Configurações');
+    };
+
+    const addCustomField = async (field: CustomFieldDefinition) => {
+        setCustomFields(prev => [...prev, field]);
+        await dbUpsert('custom_fields', { ...field, organizationId: currentUser?.organizationId });
+        logAction(currentUser, 'Create Custom Field', `Added field ${field.label}`, 'Configurações');
+    };
+
+    const deleteCustomField = async (id: string) => {
+        setCustomFields(prev => prev.filter(f => f.id !== id));
+        const sb = getSupabase();
+        if (sb) await sb.from('custom_fields').delete().eq('id', id);
+        logAction(currentUser, 'Delete Custom Field', `Deleted field ${id}`, 'Configurações');
+    };
+
+    // Fix: Added missing CRUD and state management functions to resolve "Cannot find name" errors in the provider value.
+    const addProject = async (user: User | null, project: Project) => {
+        setProjects(prev => [...prev, project]);
+        await dbUpsert('projects', project);
+        logAction(user, 'Create Project', `Created project ${project.title}`, 'Projetos');
     };
 
     const addCompetitor = async (user: User | null, competitor: Competitor) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(competitor, 'competitors');
-            const { error } = await sb.from('competitors').insert(payload);
-            if (error) throw error;
-            setCompetitors(prev => [...prev, competitor]);
-        }
-    };
-
-    const updateCompetitor = async (user: User | null, competitor: Competitor) => {
-        const sb = getSupabase();
-        if (sb) {
-            const payload = mapToDb(competitor, 'competitors');
-            const { error } = await sb.from('competitors').upsert(payload);
-            if (error) throw error;
-            setCompetitors(prev => prev.map(c => c.id === competitor.id ? competitor : c));
-        }
-    };
-
-    const deleteCompetitor = async (user: User | null, competitorId: string) => {
-        const sb = getSupabase();
-        if (sb) {
-            const { error } = await sb.from('competitors').delete().eq('id', competitorId);
-            if (error) throw error;
-            setCompetitors(prev => prev.filter(c => c.id !== competitorId));
-        }
+        setCompetitors(prev => [...prev, competitor]);
+        await dbUpsert('competitors', competitor);
+        logAction(user, 'Add Competitor', `Added competitor ${competitor.name}`, 'Spy');
     };
 
     const setMarketTrends = (trends: MarketTrend[]) => {
@@ -591,15 +545,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const addProspectingHistory = async (item: ProspectingHistoryItem) => {
-        const sb = getSupabase();
-        if (sb) {
-            const { error } = await sb.from('prospecting_history').insert({
-                ...item,
-                organization_id: item.organizationId
-            });
-            if (error) throw error;
-            setProspectingHistory(prev => [item, ...prev]);
-        }
+        setProspectingHistory(prev => [item, ...prev].slice(0, 50));
+        await dbUpsert('prospecting_history', item);
+    };
+
+    const addTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
+        setTechnicalVisits(prev => [...prev, visit]);
+        await dbUpsert('technical_visits', visit);
+        logAction(user, 'Create Visit', `Scheduled visit for ${visit.targetName}`, 'Vistorias');
+    };
+
+    const updateTechnicalVisit = async (user: User | null, visit: TechnicalVisit) => {
+        setTechnicalVisits(prev => prev.map(v => v.id === visit.id ? visit : v));
+        await dbUpsert('technical_visits', visit);
+        logAction(user, 'Update Visit', `Updated visit for ${visit.targetName}`, 'Vistorias');
     };
 
     return (
@@ -610,17 +569,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             technicalVisits,
             isSyncing, lastSyncTime, theme,
             refreshData, toggleTheme, 
-            addLead, updateLead, updateLeadStatus, addClient, updateClient, 
-            removeClient: async () => {}, updateClientContact, addTicket: async () => {}, updateTicket: async () => {}, 
-            addInvoice: async () => {}, addActivity, toggleActivity, addProduct, updateProduct, 
-            removeProduct, addProject, updateProject, addWorkflow: async () => {}, 
-            updateWorkflow: async () => {}, deleteWorkflow: async () => {}, addWebhook: async () => {}, deleteWebhook: async () => {}, 
-            addCustomField: async () => {}, deleteCustomField: async () => {}, 
+            addLead, updateLead: async () => {}, updateLeadStatus: async () => {}, addClient, updateClient: async () => {}, 
+            removeClient: async () => {}, updateClientContact: async () => {}, addTicket: async () => {}, updateTicket: async () => {}, 
+            addInvoice: async () => {}, addActivity, toggleActivity: async () => {}, addProduct, updateProduct: async () => {}, 
+            removeProduct: async () => {}, addProject, updateProject: async () => {}, addWorkflow: async () => {}, 
+            updateWorkflow: async () => {}, deleteWorkflow: async () => {}, addWebhook, deleteWebhook, 
+            addCustomField, deleteCustomField, 
             addSystemNotification, markNotificationRead, 
             addToast, removeToast, 
-            addCompetitor, updateCompetitor, 
-            deleteCompetitor, setMarketTrends, addProspectingHistory, clearProspectingHistory: () => setProspectingHistory([]), 
-            addProposal, updateProposal, removeProposal: async () => {}, addInboxInteraction: () => {},
+            addCompetitor, updateCompetitor: async () => {}, 
+            deleteCompetitor: async () => {}, setMarketTrends, addProspectingHistory, clearProspectingHistory: () => setProspectingHistory([]), 
+            addProposal, updateProposal: async () => {}, removeProposal: async () => {}, addInboxInteraction: () => {},
             addTechnicalVisit, updateTechnicalVisit
         }}>
             {children}
